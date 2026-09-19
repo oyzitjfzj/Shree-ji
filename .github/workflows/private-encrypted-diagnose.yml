@@ -68,7 +68,10 @@ jobs:
           mkdir -p "$bundle"
 
           set +e
-          RUSTFLAGS="-Dwarnings" cargo +1.98.1 test --locked --release --lib -- --test-threads=1 >"$bundle/narrow.log" 2>&1
+          {
+            bash -n tools/verify_codespaces_all.sh &&
+            RUSTFLAGS="-Dwarnings" cargo +1.98.1 test --locked --all-targets -- --test-threads=1
+          } >"$bundle/narrow.log" 2>&1
           verify_rc=$?
           set -e
 
