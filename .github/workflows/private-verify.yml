@@ -65,11 +65,26 @@ jobs:
           git remote add origin "https://github.com/${private_repo}.git"
 
           auth="$(printf 'x-access-token:%s' "$private_token" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin "$expected_sha"
-          git checkout -q --detach FETCH_HEAD
+          checkout_log="$RUNNER_TEMP/las-private-checkout.log"
+          set +e
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1 origin "$expected_sha" >"$checkout_log" 2>&1
+          fetch_rc=$?
+          set -e
+          if [[ "$fetch_rc" -ne 0 ]]; then
+            echo "LAS_PRIVATE_CHECKOUT=FAIL"
+            echo "Private checkout diagnostic output intentionally suppressed."
+            exit 1
+          fi
+
+          git checkout -q --detach FETCH_HEAD >"$checkout_log" 2>&1
 
           actual="$(git rev-parse HEAD)"
-          [[ "$actual" == "$expected_sha" ]]
+          if [[ "$actual" != "$expected_sha" ]]; then
+            echo "LAS_PRIVATE_CHECKOUT=FAIL"
+            echo "Reason: exact revision mismatch"
+            exit 2
+          fi
 
           git checkout -q -B verify-target "$actual"
           unset private_token auth
