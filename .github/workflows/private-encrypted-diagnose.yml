@@ -67,14 +67,91 @@ jobs:
           bundle="$RUNNER_TEMP/private-diagnostic-bundle"
           mkdir -p "$bundle"
 
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          rm -rf "$ALR_PREFIX"
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+
+          ALR_WS="$RUNNER_TEMP/alire-workspace"
+          rm -rf "$ALR_WS"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null
+            alr with gnatprove=16.1.0 >/dev/null
+          )
+
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec alr exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$GPRBUILD_WRAPPER"
+
+          PROOF_DIR="$RUNNER_TEMP/root-authority-instances"
+          mkdir -p "$PROOF_DIR/obj"
+          cat > "$PROOF_DIR/root_authority_proof_instances.ads" <<'EOF_PROOF'
+          pragma SPARK_Mode (On);
+          with Root_Authority;
+
+          package Root_Authority_Proof_Instances is
+             package Capacity_1   is new Root_Authority (Max_Grants => 1);
+             package Capacity_2   is new Root_Authority (Max_Grants => 2);
+             package Capacity_16  is new Root_Authority (Max_Grants => 16);
+             package Capacity_256 is new Root_Authority (Max_Grants => 256);
+          end Root_Authority_Proof_Instances;
+          EOF_PROOF
+          cat > "$PROOF_DIR/root_authority_proof.gpr" <<EOF_PROOF_GPR
+          project Root_Authority_Proof is
+             for Source_Dirs use
+               ("$GITHUB_WORKSPACE/target/src/root_authority", "$PROOF_DIR");
+             for Object_Dir use "$PROOF_DIR/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022");
+             end Compiler;
+          end Root_Authority_Proof;
+          EOF_PROOF_GPR
+
           set +e
-          LAS_VERIFY_EXPECTED_BRANCH=verify-target bash tools/verify_codespaces_all.sh >"$bundle/canonical.log" 2>&1
-          verify_rc=$?
+          RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" \
+            cargo +1.98.1 check --locked --features root-ffi --all-targets >"$bundle/root-ffi-check.log" 2>&1
+          root_ffi_rc=$?
+          (
+            cd "$ALR_WS"
+            alr exec -- gnatprove \
+              -P"$PROOF_DIR/root_authority_proof.gpr" \
+              -U --mode=all --level=4 --proof=progressive:all \
+              --checks-as-errors=on --proof-warnings=on --report=statistics \
+              --warnings=error --pedantic -j2
+          ) >"$bundle/spark.log" 2>&1
+          spark_rc=$?
+          ffi_dir="$RUNNER_TEMP/root-authority-ffi"
+          mkdir -p "$ffi_dir"
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -p \
+              -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr" \
+              -XROOT_FFI_BUILD_DIR="$ffi_dir"
+          ) >"$bundle/abi-build.log" 2>&1
+          abi_rc=$?
           set -e
 
-          printf '%s\n' "$verify_rc" > "$bundle/canonical.rc"
+          printf '%s\n' "$root_ffi_rc" > "$bundle/root-ffi-check.rc"
+          printf '%s\n' "$spark_rc" > "$bundle/spark.rc"
+          printf '%s\n' "$abi_rc" > "$bundle/abi-build.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
-          echo "LAS_DIAG_CANONICAL_RC=$verify_rc"
+          echo "LAS_DIAG_ROOT_FFI_RC=$root_ffi_rc"
+          echo "LAS_DIAG_SPARK_RC=$spark_rc"
+          echo "LAS_DIAG_ABI_RC=$abi_rc"
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
