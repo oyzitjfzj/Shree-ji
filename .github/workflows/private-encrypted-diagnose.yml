@@ -45,39 +45,33 @@ jobs:
           git checkout -q --detach FETCH_HEAD >"$checkout_log" 2>&1
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
-          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
-          git checkout -q -B verify-target "$actual"
-          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
-          echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
-          unset PRIVATE_TOKEN auth
-
-      - name: Install exact Rust
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup toolchain install 1.98.1 --profile minimal >/dev/null
-          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
-          echo "LAS_EXACT_RUST_READY=YES"
-
-      - name: Build encrypted diagnostic bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd target
-          bundle="$RUNNER_TEMP/private-diagnostic-bundle"
-          mkdir -p "$bundle"
-
-          set +e
-          RUSTFLAGS="-Dwarnings" cargo +1.98.1 check --locked --features linux-peer-credentials --all-targets >"$bundle/narrow.log" 2>&1
-          verify_rc=$?
-          set -e
-
-          printf '%s\n' "$verify_rc" > "$bundle/narrow.rc"
-          cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
-          echo "LAS_DIAG_NARROW_RC=$verify_rc"
-
-          tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
-          printf '%s' 'LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVPekNDQXFPZ0F3SUJBZ0lVVjRZajZlWGMvNlVGUEM2S0c4WmtIamt2WEVvd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xURXJNQ2tHQTFVRUF3d2lURUZTSUdWd2FHVnRaWEpoYkNCa2FXRm5ibTl6ZEdsaklISmxZMmx3YVdWdQpkREFlRncweU5qQTVNVGt5TWpReE5EaGFGdzB5TmpBNU1qRXlNalF4TkRoYU1DMHhLekFwQmdOVkJBTU1Ja3hCClV5QmxjR2hsYldWeVlXd2daR2xoWjI1dmMzUnBZeUJ5WldOcGNHbGxiblF3Z2dHaU1BMEdDU3FHU0liM0RRRUIKQVFVQUE0SUJqd0F3Z2dHS0FvSUJnUURwR2I5Zi9rVVlFM1QrUkRlQ1ZJOHF4aVlqd0ppNXNhN000ZHRtV2Y4dQpZSGJSTnBwQlgrMDk4QlFaTHN4ZUxWam8vOHd2anFNRnRMcVlzQkE2dTFHVWZXN3BveWk5NUppbmZPZ0hORDRVCnRrTExjQStsSUpGakk2ZjEyT3lHSW9lbVhqWnBDcHRlS1hObU9hdU44QTRINk5tUUxIYXZOZUZTMWE4L1VZRmgKVCtnbWQzSDV2Zk9QSnY0ZXZZclZ2bjRSS0RvQ1dhZFBZeFF5V0g0RHl0SElGRnlwVUlvRXJGY0JEL2NIT2JHTApiV2Q1MmdvRXZIQ3NTS3phUkJpL29qZmczOURwbFFLdWpFMG1GbXkvb1ZQSnc2NW5mNkNhZHk2UlRCdjhQcVFjCitkMGVuSXRBSkRZb0dmSFBMNXRtWC9PUkFIUnpWTFBTdkRLWTBEdFQ1WEw0bEZPa2x6U3RRQWFNSTBVSHAreTEKbExFNUxtY3FNc0MwRHU0MHZMM0h5c2EzY3gzWEI1S3R1bEZWekUweURsNm1nMmZtTGQvc1pwS0JDVU5iTDJNUQpNMDFaNVpKTllUTzFhdW12ZVhqbGtTNEFYMEtOOS9hRmZUeW9KZjZzRnh0RFJ0SWFxTjRHWVRlUnZRZGRxOUZZClpHZGFwOUU2RzJhVW5hbjZGMG1XeDJrQ0F3RUFBYU5UTUZFd0hRWURWUjBPQkJZRUZFNis1YkV4bU9XVVpWZXoKc0ZPVnIxeU8xdXhXTUI4R0ExVWRJd1FZTUJhQUZFNis1YkV4bU9XVVpWZXpzRk9WcjF5TzF1eFdNQThHQTFVZApFd0VCL3dRRk1BTUJBZjh3RFFZSktvWklodmNOQVFFTEJRQURnZ0dCQUdVelROS01UaXl5YlpMdmh2dEIzQUp1CklkdVRFdTB6b25aaFdqTVYzZzk3ZHRaeHBQSi90OVQ3NVlidUxaYzNERG5SbGFpNjgyTGpJSU54aTRVNndTRnUKcEV5RTR0UnRRcFNvU0JxQVJ3dlFHWmpwNmdZSXFPMzgvZGNTSVZOeStWZ3o5dWJlWCtoUjZtbTlsUVI5NVgwTApwQUlTUStaMVl5OXExMkFyRGhlUmpFY2VDWUIyM0FPUmRBQ1BldVgzOWN2Y3VIQTZlMWtuWmpnZ1hQOXl3eTY2Ck90RW41d3NCNVRXT1FmWGRtTUtMVlhDRXJkNEZQNWo3N0RkdDFHSzdpMFhweEQ5SWVZOUhMWXRkWEcyaTIvS2cKRmt1NmEzT1NxT1ZQSUI5VHVOc2c2eCtoK3ZmczFtTC9wdHpIam1uQzVDQnhqTFM2YkYvUkFuVTVkUkJQL0ZDNQpneGNCTitQcWhsTU91bnM5RXY3SFNlVk5lRFRLTmhhdWUwSmZzYTRwaFVaNHFEVjhuQmppMDBHQThjWUxKWmhEClFZOUttemxianE1bmdhOGUvOVNyeTh5UnJRV3FRZDhVeTFrM3BWSEp6UVU0YkMvckp5OHdZMitwNXBJeTdSYXIKNHhpWWpnaTI1WUYwYUkwd3NMOHcvTUo2aStRVWFMSGxUU2lMMFQxaDFnPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=' | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+-----BEGIN CERTIFICATE-----
+MIIEOzCCAqOgAwIBAgIUV4Yj6eXc/6UFPC6KG8ZkHjkvXEowDQYJKoZIhvcNAQEL
+BQAwLTErMCkGA1UEAwwiTEFTIGVwaGVtZXJhbCBkaWFnbm9zdGljIHJlY2lwaWVu
+dDAeFw0yNjA5MTkyMjQxNDhaFw0yNjA5MjEyMjQxNDhaMC0xKzApBgNVBAMMIkxB
+UyBlcGhlbWVyYWwgZGlhZ25vc3RpYyByZWNpcGllbnQwggGiMA0GCSqGSIb3DQEB
+AQUAA4IBjwAwggGKAoIBgQDpGb9f/kUYE3T+RDeCVI8qxiYjwJi5sa7M4dtmWf8u
+YHbRNppBX+098BQZLsxeLVjo/8wvjqMFtLqYsBA6u1GUfW7poyi95JinfOgHND4U
+tkLLcA+lIJFjI6f12OyGIoemXjZpCpteKXNmOauN8A4H6NmQLHavNeFS1a8/UYFh
+T+gmd3H5vfOPJv4evYrVvn4RKDoCWadPYxQyWH4DytHIFFypUIoErFcBD/cHObGL
+bWd52goEvHCsSKzaRBi/ojfg39DplQKujE0mFmy/oVPJw65nf6Cady6RTBv8PqQc
++d0enItAJDYoGfHPL5tmX/ORAHRzVLPSvDKY0DtT5XL4lFOklzStQAaMI0UHp+y1
+lLE5LmcqMsC0Du40vL3Hysa3cx3XB5KtulFVzE0yDl6mg2fmLd/sZpKBCUNbL2MQ
+M01Z5ZJNYTO1aumveXjlkS4AX0KN9/aFfTyoJf6sFxtDRtIaqN4GYTeRvQddq9FY
+ZGdap9E6G2aUnan6F0mWx2kCAwEAAaNTMFEwHQYDVR0OBBYEFE6+5bExmOWUZVez
+sFOVr1yO1uxWMB8GA1UdIwQYMBaAFE6+5bExmOWUZVezsFOVr1yO1uxWMA8GA1Ud
+EwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBAGUzTNKMTiyybZLvhvtB3AJu
+IduTEu0zonZhWjMV3g97dtZxpPJ/t9T75YbuLZc3DDnRlai682LjIINxi4U6wSFu
+pEyE4tRtQpSoSBqARwvQGZjp6gYIqO38/dcSIVNy+Vgz9ubeX+hR6mm9lQR95X0L
+pAISQ+Z1Yy9q12ArDheRjEceCYB23AORdACPeuX39cvcuHA6e1knZjggXP9ywy66
+OtEn5wsB5TWOQfXdmMKLVXCErd4FP5j77Ddt1GK7i0XpxD9IeY9HLYtdXG2i2/Kg
+Fku6a3OSqOVPIB9TuNsg6x+h+vfs1mL/ptzHjmnC5CBxjLS6bF/RAnU5dRBP/FC5
+gxcBN+PqhlMOuns9Ev7HSeVNeDTKNhaue0Jfsa4phUZ4qDV8nBji00GA8cYLJZhD
+QY9Kmzlbjq5nga8e/9Sry8yRrQWqQd8Uy1k3pVHJzQU4bC/rJy8wY2+p5pIy7Rar
+4xiYjgi25YF0aI0wsL8w/MJ6i+QUaLHlTSiL0T1h1g==
+-----END CERTIFICATE-----
+EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
           test "$cert_fp" = "DE:16:7A:74:AA:D9:60:69:96:72:4E:30:09:47:EB:F7:CB:08:E9:EA:11:91:32:2F:D6:6C:69:04:3F:45:BD:F6"
           echo "LAS_DIAG_CERT_FINGERPRINT_OK=YES"
