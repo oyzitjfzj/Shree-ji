@@ -76,7 +76,7 @@ jobs:
               echo "GNAT_REPRO_\${upper}_ICE=NO"
             fi
             if [[ "$rc" -ne 0 ]]; then
-              grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -20 || true
+              head -80 "$dir/build.log" || true
             fi
           }
 
