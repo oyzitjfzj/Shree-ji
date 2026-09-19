@@ -1,0 +1,44 @@
+name: Verification runner preflight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/verification-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Exact toolchain/network preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v curl
+          command -v java
+          command -v python3
+          command -v /usr/bin/time
+          command -v size
+
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add --toolchain 1.98.1 rustfmt clippy
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version --verbose
+
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/tla2tools.jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar"
+          echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $RUNNER_TEMP/tla2tools.jar" \
+            | sha1sum --check --strict
+
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/alr.zip" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $RUNNER_TEMP/alr.zip" \
+            | sha256sum --check --strict
+
+          echo "LAS_PUBLIC_RUNNER_PREFLIGHT=PASS"
