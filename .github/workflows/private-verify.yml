@@ -1,0 +1,75 @@
+name: Private verification runner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-verification-runner
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate private inputs are configured
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_SHA: ${{ secrets.LAS_PRIVATE_SHA }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_SHA"
+          test -n "$PRIVATE_TOKEN"
+
+      - name: Checkout exact private revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          ref: ${{ secrets.LAS_PRIVATE_SHA }}
+          token: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: target
+
+      - name: Verify exact revision with private output suppressed
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ secrets.LAS_PRIVATE_SHA }}
+        run: |
+          set -u -o pipefail
+          cd target
+
+          actual="$(git rev-parse HEAD)"
+          if [[ "$actual" != "$EXPECTED_SHA" ]]; then
+            echo "LAS_PUBLIC_RUNNER_RESULT=FAIL"
+            echo "Reason: exact revision mismatch"
+            exit 2
+          fi
+
+          # Give the pinned detached revision a local verification branch name.
+          # This changes no source bytes; the canonical verifier explicitly
+          # supports an expected-branch override.
+          git checkout -q -B verify-target "$actual"
+
+          log="$RUNNER_TEMP/las-private-verification.log"
+          set +e
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target             bash tools/verify_codespaces_all.sh >"$log" 2>&1
+          rc=$?
+          set -e
+
+          # Deliberately do not print or upload the private verifier log.
+          # Public output is content-minimal: exact-run result only.
+          echo "LAS_PUBLIC_RUNNER_SHA_MATCH=YES"
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_VERIFY_ALL_RESULT=PASS$' "$log"; then
+            echo "LAS_PUBLIC_RUNNER_RESULT=PASS"
+            exit 0
+          fi
+
+          echo "LAS_PUBLIC_RUNNER_RESULT=FAIL"
+          echo "Private diagnostic output intentionally suppressed."
+          exit 1
