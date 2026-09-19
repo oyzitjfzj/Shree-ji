@@ -1,1 +1,1 @@
-trigger full canonical verification for formatted work head
+run canonical verifier 2026-09-20 exact private head c5f3393
