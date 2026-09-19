@@ -37,20 +37,42 @@ jobs:
           set -euo pipefail
           cd target
           fmt_log="$RUNNER_TEMP/fmt.log"
+
           set +e
           cargo +1.98.1 fmt --all -- --check >"$fmt_log" 2>&1
           fmt_rc=$?
+          cargo +1.98.1 fmt --all >/dev/null 2>&1
+          fmt_apply_rc=$?
           set -e
-          echo "LAS_DIAG_FMT_RC=$fmt_rc"
 
-          if [[ "$fmt_rc" -ne 0 ]]; then
-            cargo +1.98.1 fmt --all >/dev/null 2>&1
+          echo "LAS_DIAG_FMT_RC=$fmt_rc"
+          echo "LAS_DIAG_FMT_APPLY_RC=$fmt_apply_rc"
+
+          python3 - "$fmt_log" <<'PY'
+          import hashlib, pathlib, re, sys
+          text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          paths = set()
+          for raw in re.findall(r'(?:(?:[A-Za-z]:)?[^\s:()]+)?[A-Za-z0-9_.-]+\.rs', text):
+              p = raw.replace("\\", "/")
+              if "/target/" in p:
+                  p = p.split("/target/", 1)[1]
+              p = p.lstrip("./")
+              if p.endswith(".rs"):
+                  paths.add(p)
+          for p in sorted(paths):
+              print("LAS_DIAG_FMT_LOG_PATH_HASH=" + hashlib.sha256(p.encode()).hexdigest())
+          PY
+
+          if [[ "$fmt_apply_rc" -eq 0 ]]; then
             while IFS= read -r path; do
+              [[ -n "$path" ]] || continue
               hash="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
-              echo "LAS_DIAG_FMT_PATH_HASH=$hash"
+              echo "LAS_DIAG_FMT_DIFF_PATH_HASH=$hash"
             done < <(git diff --name-only)
             git reset --hard -q HEAD
           fi
+
+          exit 0
 
       - name: Diagnose default compile privately
         shell: bash
