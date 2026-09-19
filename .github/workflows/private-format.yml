@@ -1,0 +1,131 @@
+name: Private Rust formatting repair
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_FORMAT"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-rust-format-repair
+  cancel-in-progress: false
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout current private work head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          log="$RUNNER_TEMP/private-format-checkout.log"
+          set +e
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1 origin refs/heads/work/assurance-core >"$log" 2>&1
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 ]]; then
+            echo "LAS_PRIVATE_FORMAT_CHECKOUT=FAIL"
+            exit 1
+          fi
+          git checkout -q -B work/assurance-core FETCH_HEAD >"$log" 2>&1
+          start_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$start_sha"
+          printf '%s' "$start_sha" > "$RUNNER_TEMP/format-start-sha"
+          printf '%s' "$auth" > "$RUNNER_TEMP/format-auth"
+          chmod 600 "$RUNNER_TEMP/format-start-sha" "$RUNNER_TEMP/format-auth"
+          proof="$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRIVATE_FORMAT_START_PROOF=$proof"
+
+      - name: Install exact Rust formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          echo "LAS_PRIVATE_FORMAT_TOOLCHAIN=READY"
+
+      - name: Format and verify private tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+
+          cargo +1.98.1 fmt --all >/dev/null
+          cargo +1.98.1 fmt --all -- --check >/dev/null
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >/dev/null 2>&1
+
+          changed="$RUNNER_TEMP/private-format-paths"
+          git diff --name-only >"$changed"
+          test -s "$changed"
+
+          while IFS= read -r path; do
+            case "$path" in
+              *.rs) ;;
+              *)
+                echo "LAS_PRIVATE_FORMAT_SCOPE=FAIL"
+                exit 2
+                ;;
+            esac
+          done <"$changed"
+
+          git diff --check >/dev/null
+          count="$(wc -l <"$changed" | tr -d ' ')"
+          echo "LAS_PRIVATE_FORMAT_CHANGED_FILES=$count"
+          echo "LAS_PRIVATE_FORMAT_SCOPE=RUST_ONLY"
+          echo "LAS_PRIVATE_FORMAT_VERIFY=PASS"
+
+      - name: Commit and fast-forward exact work branch
+        shell: bash
+        env:
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd target
+
+          start_sha="$(cat "$RUNNER_TEMP/format-start-sha")"
+          auth="$(cat "$RUNNER_TEMP/format-auth")"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$auth"
+          echo "::add-mask::$start_sha"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            ls-remote origin refs/heads/work/assurance-core | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          if [[ "$remote_sha" != "$start_sha" ]]; then
+            echo "LAS_PRIVATE_FORMAT_PUSH=BLOCKED_REMOTE_MOVED"
+            exit 3
+          fi
+
+          git config user.name "LAS Verification Formatter"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -u
+          git commit -q -m "Format Rust source with pinned 1.98.1 rustfmt"
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            push -q origin HEAD:refs/heads/work/assurance-core
+
+          proof="$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRIVATE_FORMAT_PUSH=PASS"
+          echo "LAS_PRIVATE_FORMAT_COMMIT_PROOF=$proof"
