@@ -1,0 +1,112 @@
+name: Encrypted private diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ENCRYPTED_DIAG"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: encrypted-private-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout current private work snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          checkout_log="$RUNNER_TEMP/checkout.log"
+          set +e
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1 origin refs/heads/work/assurance-core >"$checkout_log" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -eq 0
+          git checkout -q --detach FETCH_HEAD >"$checkout_log" 2>&1
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Install exact Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          echo "LAS_EXACT_RUST_READY=YES"
+
+      - name: Build encrypted diagnostic bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          bundle="$RUNNER_TEMP/private-diagnostic-bundle"
+          mkdir -p "$bundle"
+
+          set +e
+          cargo +1.98.1 fmt --all -- --check >"$bundle/fmt-check.log" 2>&1
+          fmt_check_rc=$?
+          cargo +1.98.1 fmt --all >"$bundle/fmt-apply.log" 2>&1
+          fmt_apply_rc=$?
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >"$bundle/cargo-check.log" 2>&1
+          check_rc=$?
+          set -e
+
+          printf '%s\n' "$fmt_check_rc" > "$bundle/fmt-check.rc"
+          printf '%s\n' "$fmt_apply_rc" > "$bundle/fmt-apply.rc"
+          printf '%s\n' "$check_rc" > "$bundle/cargo-check.rc"
+          cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
+
+          git diff --name-only -z > "$bundle/formatted-paths.zlist"
+          if [[ -s "$bundle/formatted-paths.zlist" ]]; then
+            tar --null -T "$bundle/formatted-paths.zlist" -cf "$bundle/formatted-files.tar"
+          else
+            tar -cf "$bundle/formatted-files.tar" --files-from /dev/null
+          fi
+
+          echo "LAS_DIAG_FMT_CHECK_RC=$fmt_check_rc"
+          echo "LAS_DIAG_FMT_APPLY_RC=$fmt_apply_rc"
+          echo "LAS_DIAG_CARGO_CHECK_RC=$check_rc"
+
+          tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
+          printf '%s' 'LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVPekNDQXFPZ0F3SUJBZ0lVR2hXdnovOXZqUEdmaEE0L0REdnREbVJabk9zd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xURXJNQ2tHQTFVRUF3d2lURUZUSUdWd2FHVnRaWEpoYkNCa2FXRm5ibTl6ZEdsaklISmxZMmx3YVdWdQpkREFlRncweU5qQTVNVGt5TURReE5EQmFGdzB5TmpBNU1qRXlNRFF4TkRCYU1DMHhLekFwQmdOVkJBTU1Ja3hCClV5QmxjR2hsYldWeVlXd2daR2xoWjI1dmMzUnBZeUJ5WldOcGNHbGxiblF3Z2dHaU1BMEdDU3FHU0liM0RRRUIKQVFVQUE0SUJqd0F3Z2dHS0FvSUJnUUM1b1RvTXpENjFPZmM5ekFNdTZFenV5K1RJSmZKcXR3SWZFaGVDVm9icApDd0MydFc0WjdKR0htbmY4Q0VoRmkwOFdMY2dzcXppTG53MFUvU0dod28xdUJ2R2xOWkRGdFhiLzZWajVtRDNECll3a1BRVzV5VFNxM0Z4SEpwK3EyRXZzVHdqLzhxc0d6a1RUVksrZmp6VGRiL2theFh3OUxvOUdVSkx5OG1MUjQKQ3U0M1lsVGJNM1FHY1lSOFBQeS9HdVdlRDZKL3I2Q2FONWJYaGZRMEswS0NvdGhLU1Mwczd3a0VCUklLR2I5TApDYmJ4U2gxWGhOdGNBK3ZHZHVCdFNackpjWnU3TC9CMXY1QldWMkFoR3ZmMVR5TGFoS25DN0M2c05TL1lIQWRTCldLWVVEK2N1bjRROWFFOVlXaFdwbkZLc3ZIVDRTTDF4U2x3VUhCSGpDSHJmUHZqcmxzMDVBY2JmL2FwTHRvQW0KV042OFdMYzlndGVpNUlnR01hTnc5VzNUMldNbEZ6OW1SK0tCenZhV2NqQ2trV0VJR1VkQmlwVGMzc2E0VnRlMAowUzJOUldZOTBBYnFzMGRWK3lBSzhMbTBUQWlqKzRUeXExWXg1WXFDMEJvWXY5STZJVnF0ckdLK1N3aFdkb3l0CnNKUU41MitxdXQrajBuOHkramJFQVY4Q0F3RUFBYU5UTUZFd0hRWURWUjBPQkJZRUZKcmRra3dvNVdMVGg5dFkKYk9CUlFjc2JhM2hETUI4R0ExVWRJd1FZTUJhQUZKcmRra3dvNVdMVGg5dFliT0JSUWNzYmEzaERNQThHQTFVZApFd0VCL3dRRk1BTUJBZjh3RFFZSktvWklodmNOQVFFTEJRQURnZ0dCQUZmb2RwN0xTR0ZrZDRHRXJpS28vLzdrCkxDODVDV3lOR0NQMzVyZjYxZnNwb1h1RWlFalRpTFNXOURCZmNWMTRJb21Sakx3OGZIV1YrZERKdUVEazFVQTQKclJnNnN0M2JHaFNUbnNMdno5NGNkNkN2OHhZUmFuZUtZUktPbmE5TXdYSDRIczJSZmV4Mk5uVHFMVEhPOG9paAp5b3AzVDVHYkhkQzBlOFg5Sm9QVE4wSkRnNnNoMnBDNkUydlI2NFJUZ2Nob2NDZGhObmhCdC82ekV1Rjk1aHhpClVheG5OTEZicFFSeExVNVNNRWdsVkF6NG1KMGVtVGl3dXB4Sk1pNEUybGtNNm1Hb0RIODhBYTdqbXBHQlJiM3gKa3Nnb21jdVUraU1UNGxIVHJEcG5aQ3UrcXExWGRIMFhGREM5czYvdzVUQ1VscGxGVFVNOEllTUIvSDczb3dJSQp1STVaQ01YeGJUUGYybVJYMUdON3dITTQ4R0pPempaNmYvUXg3aC8vcmxyNSsxWTVnb1FVSlN5NCtPV2wyNlpmCjVZSkZoaWRZYWczbVpEbnMrYUFGMnFiRURlVHV3WEw0ZHdRSEQvMkppMmw5WjA3Q3JaWXBPeVppUmFrTzBoaFoKRTMvZlI4Vm9IaXVINzlEWEJ4d2ZGdGVUTEtkZDM2ZHRMbU4ybWF0OXp3PT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=' | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc \
+            -outform DER \
+            -in "$RUNNER_TEMP/private-diagnostic.tgz" \
+            -out "$RUNNER_TEMP/encrypted.cms" \
+            "$RUNNER_TEMP/recipient-cert.pem"
+
+          rm -rf "$bundle" "$RUNNER_TEMP/private-diagnostic.tgz" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_ENCRYPTED_DIAGNOSTIC_READY=YES"
+
+      - name: Upload ciphertext only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-diagnostic
+          path: ${{ runner.temp }}/encrypted.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
