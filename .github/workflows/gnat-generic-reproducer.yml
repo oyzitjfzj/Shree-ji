@@ -363,5 +363,95 @@ jobs:
           run_extended_case extended_spark spark
           run_extended_case extended_machine machine
 
+          run_array_case() {
+            local name="$1"
+            local with_model="$2"
+            local dir="$root/$name"
+            mkdir -p "$dir/obj"
+            local model_decl=""
+            local model_body=""
+            if [[ "$with_model" == "yes" ]]; then
+              model_decl='package Model with Ghost is
+                subtype Model_Index is Positive range 1 .. Max_Items;
+                subtype Parent_Ref is Natural range 0 .. Max_Items;
+                type Item_Model is record
+                   Parent : Parent_Ref := 0;
+                end record;
+                type Item_Model_Array is array (Model_Index) of Item_Model;
+                type Machine_Model is record
+                   Count : Natural range 0 .. Max_Items := 0;
+                   Items : Item_Model_Array;
+                end record;
+                function Slot (Value : Handle) return Natural with Global => null;
+             end Model;'
+              model_body='package body Model is
+                function Slot (Value : Handle) return Natural is
+                  (Natural (Value.Slot));
+             end Model;'
+            fi
+            cat > "$dir/repro.ads" <<EOF
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Machine is limited private;
+             $model_decl
+          private
+             subtype Slot_Index is Positive range 1 .. Max_Items;
+             type Slot_Reference is new Natural range 0 .. Max_Items;
+             type Handle is record
+                Domain : Natural := 0;
+                Slot   : Slot_Reference := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+             type Item_Record is record
+                Parent : Slot_Reference := 0;
+             end record;
+             type Item_Array is array (Slot_Index) of Item_Record;
+             type Machine is limited record
+                Count : Natural range 0 .. Max_Items := 0;
+                Items : Item_Array;
+             end record;
+          end Repro;
+          EOF
+            cat > "$dir/repro.adb" <<EOF
+          package body Repro is
+             $model_body
+          end Repro;
+          EOF
+            cat > "$dir/instance.ads" <<'EOF'
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF
+            cat > "$dir/repro.gpr" <<EOF
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022", "-gnatf", "-gnatwa", "-gnatwe", "-O2");
+             end Compiler;
+          end Repro_Project;
+          EOF
+            set +e
+            (cd "$RUNNER_TEMP/alr-ws" && alr exec -- gprbuild -p -P "$dir/repro.gpr") >"$dir/build.log" 2>&1
+            rc=$?
+            set -e
+            upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+            echo "GNAT_REPRO_"$upper"_RC=$rc"
+            if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
+              echo "GNAT_REPRO_"$upper"_ICE=YES"
+            else
+              echo "GNAT_REPRO_"$upper"_ICE=NO"
+            fi
+            if [[ "$rc" -ne 0 ]]; then
+              grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -80 || true
+            fi
+          }
+
+          run_array_case array_machine no
+          run_array_case array_machine_ghost yes
+
+
 
 
