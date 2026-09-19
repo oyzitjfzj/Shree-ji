@@ -1,1 +1,1 @@
-trigger encrypted Linux strict check after compiler hygiene fix
+trigger encrypted Linux strict check after targeted dead-code scoping
