@@ -45,6 +45,38 @@ jobs:
           git checkout -q --detach FETCH_HEAD >"$checkout_log" 2>&1
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
+          git checkout -q -B verify-target "$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Install exact Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          echo "LAS_EXACT_RUST_READY=YES"
+
+      - name: Build encrypted diagnostic bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          bundle="$RUNNER_TEMP/private-diagnostic-bundle"
+          mkdir -p "$bundle"
+
+          set +e
+          RUSTFLAGS="-Dwarnings" cargo +1.98.1 check --locked --features linux-peer-credentials --all-targets >"$bundle/narrow.log" 2>&1
+          verify_rc=$?
+          set -e
+
+          printf '%s\n' "$verify_rc" > "$bundle/narrow.rc"
+          cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
+          echo "LAS_DIAG_NARROW_RC=$verify_rc"
+
+          tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
           MIIEOzCCAqOgAwIBAgIUV4Yj6eXc/6UFPC6KG8ZkHjkvXEowDQYJKoZIhvcNAQEL
