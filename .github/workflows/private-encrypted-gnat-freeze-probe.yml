@@ -1,0 +1,162 @@
+name: Encrypted GNAT freeze probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_GNAT_FREEZE_PROBE"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: encrypted-gnat-freeze-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout current private work snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run exact temporary freeze probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          bundle="$RUNNER_TEMP/gnat-freeze-probe"
+          mkdir -p "$bundle"
+
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+
+          ALR_WS="$RUNNER_TEMP/alire-freeze-probe"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_freeze_probe >/dev/null
+          )
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/root_authority/root_authority.ads")
+          lines = p.read_text(encoding="utf-8").splitlines()
+          hits = [
+              i for i, line in enumerate(lines)
+              if " is new Natural range 0 .. Max_Grants;" in line
+          ]
+          if len(hits) != 1:
+              raise SystemExit(f"expected one generic bounded derived slot type, found {len(hits)}")
+          i = hits[0]
+          stripped = lines[i].strip()
+          parts = stripped.split()
+          if len(parts) < 2 or parts[0] != "type":
+              raise SystemExit("unexpected bounded type declaration shape")
+          typename = parts[1]
+          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+          lines.insert(i + 1, f"{indent}LAS_Diagnostic_Freeze : constant {typename} := 0;")
+          lines.insert(i + 2, f"{indent}pragma Unreferenced (LAS_Diagnostic_Freeze);")
+          p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+          ffi_dir="$RUNNER_TEMP/root-authority-freeze-probe"
+          mkdir -p "$ffi_dir"
+          set +e
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -p \
+              -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr" \
+              -XROOT_FFI_BUILD_DIR="$ffi_dir"
+          ) >"$bundle/freeze-probe.log" 2>&1
+          probe_rc=$?
+          set -e
+
+          printf '%s\n' "$probe_rc" > "$bundle/freeze-probe.rc"
+          cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
+          echo "LAS_GNAT_FREEZE_PROBE_RC=$probe_rc"
+          if grep -q "GNAT BUG DETECTED" "$bundle/freeze-probe.log"; then
+            echo "LAS_GNAT_FREEZE_PROBE_ICE=YES"
+          else
+            echo "LAS_GNAT_FREEZE_PROBE_ICE=NO"
+          fi
+
+          git checkout -q -- src/root_authority/root_authority.ads
+          tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
+
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+-----BEGIN CERTIFICATE-----
+MIIEOzCCAqOgAwIBAgIUV4Yj6eXc/6UFPC6KG8ZkHjkvXEowDQYJKoZIhvcNAQEL
+BQAwLTErMCkGA1UEAwwiTEFTIGVwaGVtZXJhbCBkaWFnbm9zdGljIHJlY2lwaWVu
+dDAeFw0yNjA5MTkyMjQxNDhaFw0yNjA5MjEyMjQxNDhaMC0xKzApBgNVBAMMIkxB
+UyBlcGhlbWVyYWwgZGlhZ25vc3RpYyByZWNpcGllbnQwggGiMA0GCSqGSIb3DQEB
+AQUAA4IBjwAwggGKAoIBgQDpGb9f/kUYE3T+RDeCVI8qxiYjwJi5sa7M4dtmWf8u
+YHbRNppBX+098BQZLsxeLVjo/8wvjqMFtLqYsBA6u1GUfW7poyi95JinfOgHND4U
+tkLLcA+lIJFjI6f12OyGIoemXjZpCpteKXNmOauN8A4H6NmQLHavNeFS1a8/UYFh
+T+gmd3H5vfOPJv4evYrVvn4RKDoCWadPYxQyWH4DytHIFFypUIoErFcBD/cHObGL
+bWd52goEvHCsSKzaRBi/ojfg39DplQKujE0mFmy/oVPJw65nf6Cady6RTBv8PqQc
++d0enItAJDYoGfHPL5tmX/ORAHRzVLPSvDKY0DtT5XL4lFOklzStQAaMI0UHp+y1
+lLE5LmcqMsC0Du40vL3Hysa3cx3XB5KtulFVzE0yDl6mg2fmLd/sZpKBCUNbL2MQ
+M01Z5ZJNYTO1aumveXjlkS4AX0KN9/aFfTyoJf6sFxtDRtIaqN4GYTeRvQddq9FY
+ZGdap9E6G2aUnan6F0mWx2kCAwEAAaNTMFEwHQYDVR0OBBYEFE6+5bExmOWUZVez
+sFOVr1yO1uxWMB8GA1UdIwQYMBaAFE6+5bExmOWUZVezsFOVr1yO1uxWMA8GA1Ud
+EwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBAGUzTNKMTiyybZLvhvtB3AJu
+IduTEu0zonZhWjMV3g97dtZxpPJ/t9T75YbuLZc3DDnRlai682LjIINxi4U6wSFu
+pEyE4tRtQpSoSBqARwvQGZjp6gYIqO38/dcSIVNy+Vgz9ubeX+hR6mm9lQR95X0L
+pAISQ+Z1Yy9q12ArDheRjEceCYB23AORdACPeuX39cvcuHA6e1knZjggXP9ywy66
+OtEn5wsB5TWOQfXdmMKLVXCErd4FP5j77Ddt1GK7i0XpxD9IeY9HLYtdXG2i2/Kg
+Fku6a3OSqOVPIB9TuNsg6x+h+vfs1mL/ptzHjmnC5CBxjLS6bF/RAnU5dRBP/FC5
+gxcBN+PqhlMOuns9Ev7HSeVNeDTKNhaue0Jfsa4phUZ4qDV8nBji00GA8cYLJZhD
+QY9Kmzlbjq5nga8e/9Sry8yRrQWqQd8Uy1k3pVHJzQU4bC/rJy8wY2+p5pIy7Rar
+4xiYjgi25YF0aI0wsL8w/MJ6i+QUaLHlTSiL0T1h1g==
+-----END CERTIFICATE-----
+          EOF_CERT
+          cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$cert_fp" = "DE:16:7A:74:AA:D9:60:69:96:72:4E:30:09:47:EB:F7:CB:08:E9:EA:11:91:32:2F:D6:6C:69:04:3F:45:BD:F6"
+          openssl cms -encrypt -binary -aes-256-cbc \
+            -outform DER \
+            -in "$RUNNER_TEMP/private-diagnostic.tgz" \
+            -out "$RUNNER_TEMP/encrypted.cms" \
+            "$RUNNER_TEMP/recipient-cert.pem"
+          rm -rf "$bundle" "$RUNNER_TEMP/private-diagnostic.tgz" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_GNAT_FREEZE_PROBE_CIPHERTEXT_READY=YES"
+
+      - name: Upload ciphertext only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-gnat-freeze-probe
+          path: ${{ runner.temp }}/encrypted.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
