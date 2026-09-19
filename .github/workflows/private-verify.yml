@@ -5,7 +5,6 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/private-verify.yml"
       - "RUN_VERIFY"
 
 permissions:
@@ -19,36 +18,26 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     steps:
-      - name: Validate and mask private input bundle
+      - name: Validate and mask private inputs
         shell: bash
         env:
-          LAS_VERIFY_INPUTS: ${{ secrets.LAS_VERIFY_INPUTS }}
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_SHA: ${{ secrets.LAS_PRIVATE_SHA }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "$LAS_VERIFY_INPUTS"
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_SHA"
+          test -n "$PRIVATE_TOKEN"
 
-          python3 - <<'PY'
-          import json, os, pathlib
-          data = json.loads(os.environ["LAS_VERIFY_INPUTS"])
-          required = ("repository", "sha", "token")
-          for key in required:
-              value = data.get(key)
-              if not isinstance(value, str) or not value.strip():
-                  raise SystemExit(f"missing private verification input: {key}")
-          p = pathlib.Path(os.environ["RUNNER_TEMP"]) / "las-private-inputs"
-          p.write_text(
-              data["repository"].strip() + "\n" +
-              data["sha"].strip() + "\n" +
-              data["token"].strip() + "\n",
-              encoding="utf-8",
-          )
-          p.chmod(0o600)
-          PY
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_SHA"
+          echo "::add-mask::$PRIVATE_TOKEN"
 
-          mapfile -t vals < "$RUNNER_TEMP/las-private-inputs"
-          for value in "${vals[@]}"; do
-            echo "::add-mask::$value"
-          done
+          printf '%s\n%s\n%s\n' \
+            "$PRIVATE_REPOSITORY" "$PRIVATE_SHA" "$PRIVATE_TOKEN" \
+            > "$RUNNER_TEMP/las-private-inputs"
+          chmod 600 "$RUNNER_TEMP/las-private-inputs"
 
       - name: Checkout exact private revision without public source logs
         shell: bash
@@ -66,11 +55,13 @@ jobs:
 
           auth="$(printf 'x-access-token:%s' "$private_token" | base64 -w0)"
           checkout_log="$RUNNER_TEMP/las-private-checkout.log"
+
           set +e
           git -c http.extraHeader="AUTHORIZATION: basic $auth" \
             fetch -q --depth=1 origin "$expected_sha" >"$checkout_log" 2>&1
           fetch_rc=$?
           set -e
+
           if [[ "$fetch_rc" -ne 0 ]]; then
             echo "LAS_PRIVATE_CHECKOUT=FAIL"
             echo "Private checkout diagnostic output intentionally suppressed."
@@ -78,8 +69,8 @@ jobs:
           fi
 
           git checkout -q --detach FETCH_HEAD >"$checkout_log" 2>&1
-
           actual="$(git rev-parse HEAD)"
+
           if [[ "$actual" != "$expected_sha" ]]; then
             echo "LAS_PRIVATE_CHECKOUT=FAIL"
             echo "Reason: exact revision mismatch"
@@ -98,11 +89,11 @@ jobs:
 
           log="$RUNNER_TEMP/las-private-verification.log"
           set +e
-          LAS_VERIFY_EXPECTED_BRANCH=verify-target             bash tools/verify_codespaces_all.sh >"$log" 2>&1
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target \
+            bash tools/verify_codespaces_all.sh >"$log" 2>&1
           rc=$?
           set -e
 
-          # Never print or upload the private verifier log from this public repo.
           if [[ "$rc" -eq 0 ]] && grep -q '^LAS_VERIFY_ALL_RESULT=PASS$' "$log"; then
             echo "LAS_PUBLIC_RUNNER_RESULT=PASS"
             exit 0
