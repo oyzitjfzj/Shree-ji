@@ -25,7 +25,9 @@ jobs:
           unzip -q "$RUNNER_TEMP/alr.zip" -d "$RUNNER_TEMP/alr"
           export PATH="$RUNNER_TEMP/alr/bin:$PATH"
           alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
-          echo "$RUNNER_TEMP/alr/bin" >> "$GITHUB_PATH"\n          mkdir "$RUNNER_TEMP/alr-ws"\n          (cd "$RUNNER_TEMP/alr-ws" && alr -n init --in-place --no-skel --lib gnat_repro_toolchain >/dev/null)
+          echo "$RUNNER_TEMP/alr/bin" >> "$GITHUB_PATH"
+          mkdir "$RUNNER_TEMP/alr-ws"
+          (cd "$RUNNER_TEMP/alr-ws" && alr -n init --in-place --no-skel --lib gnat_repro_toolchain >/dev/null)
 
       - name: Compile minimal variants
         shell: bash
