@@ -1,0 +1,87 @@
+name: Private narrow diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_DIAG"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          ref: ${{ secrets.LAS_PRIVATE_SHA }}
+          token: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: target
+
+      - name: Install exact Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add --toolchain 1.98.1 rustfmt clippy
+
+      - name: Diagnose formatting privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          fmt_log="$RUNNER_TEMP/fmt.log"
+          set +e
+          cargo +1.98.1 fmt --all -- --check >"$fmt_log" 2>&1
+          fmt_rc=$?
+          set -e
+          echo "LAS_DIAG_FMT_RC=$fmt_rc"
+
+          if [[ "$fmt_rc" -ne 0 ]]; then
+            cargo +1.98.1 fmt --all >/dev/null 2>&1
+            while IFS= read -r path; do
+              hash="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
+              echo "LAS_DIAG_FMT_PATH_HASH=$hash"
+            done < <(git diff --name-only)
+            git reset --hard -q HEAD
+          fi
+
+      - name: Diagnose default compile privately
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          check_log="$RUNNER_TEMP/check.log"
+
+          set +e
+          cargo +1.98.1 check --locked --all-targets >"$check_log" 2>&1
+          check_rc=$?
+          set -e
+          echo "LAS_DIAG_CHECK_RC=$check_rc"
+
+          grep -oE 'error\[E[0-9]+\]' "$check_log"             | sort -u             | sed -E 's/error\[([^]]+)\]/LAS_DIAG_RUST_ERROR_CODE=\1/' || true
+
+          for pair in             'UNRESOLVED_IMPORT:unresolved import'             'MISSING_FILE:No such file or directory'             'CUSTOM_BUILD:failed to run custom build command'             'VERSION_SELECT:failed to select a version'             'RUST_VERSION:requires rustc'             'DUPLICATE:defined multiple times'             'LINKER:linking with'             'COULD_NOT_COMPILE:could not compile'; do
+            key="${pair%%:*}"
+            pattern="${pair#*:}"
+            if grep -Fqi "$pattern" "$check_log"; then
+              echo "LAS_DIAG_CATEGORY_$key=YES"
+            fi
+          done
+
+          first_error="$(grep -m1 -E '^error(\[[^]]+\])?:' "$check_log" || true)"
+          if [[ -n "$first_error" ]]; then
+            normalized="$(printf '%s' "$first_error" | sed -E 's#(/[^ ]+)+#<PATH>#g')"
+            hash="$(printf '%s' "$normalized" | sha256sum | awk '{print $1}')"
+            echo "LAS_DIAG_FIRST_ERROR_HASH=$hash"
+          fi
+
+          exit 0
