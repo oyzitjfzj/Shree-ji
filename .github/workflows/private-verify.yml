@@ -94,11 +94,44 @@ jobs:
           rc=$?
           set -e
 
-          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_VERIFY_ALL_RESULT=PASS$' "$log"; then
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_VERIFY_ALL_RESULT=PASS "$log"; then
             echo "LAS_PUBLIC_RUNNER_RESULT=PASS"
             exit 0
           fi
 
           echo "LAS_PUBLIC_RUNNER_RESULT=FAIL"
+          if grep -q '^========== PRE-TLC VERIFICATION BLOCKED ========== "$log"; then
+            echo "LAS_DIAG_PRE_TLC_BLOCKED=YES"
+          else
+            echo "LAS_DIAG_PRE_TLC_BLOCKED=NO"
+          fi
+          if grep -q '^========== LAS VERIFICATION SUMMARY ========== "$log"; then
+            echo "LAS_DIAG_FINAL_SUMMARY=YES"
+          else
+            echo "LAS_DIAG_FINAL_SUMMARY=NO"
+          fi
+          if grep -q '^TLC_NOT_STARTED=' "$log"; then
+            echo "LAS_DIAG_TLC_STARTED=NO"
+          elif grep -q '^========== TLC:' "$log"; then
+            echo "LAS_DIAG_TLC_STARTED=YES"
+          else
+            echo "LAS_DIAG_TLC_STARTED=UNKNOWN"
+          fi
+
+          failed_count=0
+          while IFS= read -r line; do
+            name="${line#FAILED_CHECK=}"
+            hash="$(printf '%s' "$name" | sha256sum | awk '{print $1}')"
+            echo "LAS_DIAG_FAILED_HASH=$hash"
+            failed_count=$((failed_count + 1))
+          done < <(grep '^FAILED_CHECK=' "$log" || true)
+          echo "LAS_DIAG_FAILED_COUNT=$failed_count"
+
+          last_section="$(grep '^========== .* ========== "$log" | tail -n 1 || true)"
+          if [[ -n "$last_section" ]]; then
+            section_hash="$(printf '%s' "$last_section" | sha256sum | awk '{print $1}')"
+            echo "LAS_DIAG_LAST_SECTION_HASH=$section_hash"
+          fi
+
           echo "Private diagnostic output intentionally suppressed."
           exit 1
