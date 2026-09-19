@@ -1,0 +1,113 @@
+name: Private verification runner v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_VERIFY"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-verification-runner-v2
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate private inputs
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_SHA: ${{ secrets.LAS_PRIVATE_SHA }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_SHA"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_SHA"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+      - name: Checkout exact private revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          ref: ${{ secrets.LAS_PRIVATE_SHA }}
+          token: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: target
+
+      - name: Verify exact checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ secrets.LAS_PRIVATE_SHA }}
+        run: |
+          set -euo pipefail
+          cd target
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          git checkout -q -B verify-target "$actual"
+          echo "LAS_PRIVATE_CHECKOUT_EXACT=YES"
+
+      - name: Run canonical verifier
+        shell: bash
+        run: |
+          set -u -o pipefail
+          cd target
+          log="$RUNNER_TEMP/las-private-verification.log"
+
+          set +e
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target             bash tools/verify_codespaces_all.sh >"$log" 2>&1
+          rc=$?
+          set -e
+
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_VERIFY_ALL_RESULT=PASS$' "$log"; then
+            echo "LAS_PUBLIC_RUNNER_RESULT=PASS"
+            exit 0
+          fi
+
+          echo "LAS_PUBLIC_RUNNER_RESULT=FAIL"
+
+          if grep -q '^========== PRE-TLC VERIFICATION BLOCKED ==========$' "$log"; then
+            echo "LAS_DIAG_PRE_TLC_BLOCKED=YES"
+          else
+            echo "LAS_DIAG_PRE_TLC_BLOCKED=NO"
+          fi
+
+          if grep -q '^========== LAS VERIFICATION SUMMARY ==========$' "$log"; then
+            echo "LAS_DIAG_FINAL_SUMMARY=YES"
+          else
+            echo "LAS_DIAG_FINAL_SUMMARY=NO"
+          fi
+
+          if grep -q '^TLC_NOT_STARTED=' "$log"; then
+            echo "LAS_DIAG_TLC_STARTED=NO"
+          elif grep -q '^========== TLC:' "$log"; then
+            echo "LAS_DIAG_TLC_STARTED=YES"
+          else
+            echo "LAS_DIAG_TLC_STARTED=UNKNOWN"
+          fi
+
+          failed_count=0
+          while IFS= read -r line; do
+            name="${line#FAILED_CHECK=}"
+            hash="$(printf '%s' "$name" | sha256sum | awk '{print $1}')"
+            echo "LAS_DIAG_FAILED_HASH=$hash"
+            failed_count=$((failed_count + 1))
+          done < <(grep '^FAILED_CHECK=' "$log" || true)
+          echo "LAS_DIAG_FAILED_COUNT=$failed_count"
+
+          last_section="$(grep '^========== .* ==========$' "$log" | tail -n 1 || true)"
+          if [[ -n "$last_section" ]]; then
+            section_hash="$(printf '%s' "$last_section" | sha256sum | awk '{print $1}')"
+            echo "LAS_DIAG_LAST_SECTION_HASH=$section_hash"
+          fi
+
+          echo "Private diagnostic output intentionally suppressed."
+          exit 1
