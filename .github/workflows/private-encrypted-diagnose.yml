@@ -172,6 +172,37 @@ jobs:
               -cargs:Ada -O2
           ) >"$bundle/abi-o2.log" 2>&1
           abi_o2_rc=$?
+
+          alt15_select_rc=0
+          alt15_init_rc=125
+          alt15_rc=125
+          alr -n toolchain --select gnat_native=15.2.1 gprbuild=25.0.1 >"$bundle/alt15-select.log" 2>&1
+          alt15_select_rc=$?
+          if [[ "$alt15_select_rc" -eq 0 ]]; then
+            ALT15_WS="$RUNNER_TEMP/alire-alt15-workspace"
+            rm -rf "$ALT15_WS"
+            mkdir -p "$ALT15_WS"
+            (
+              cd "$ALT15_WS"
+              alr -n init --in-place --no-skel --lib las_alt15_toolchain >/dev/null
+            ) >"$bundle/alt15-init.log" 2>&1
+            alt15_init_rc=$?
+            if [[ "$alt15_init_rc" -eq 0 ]]; then
+              (
+                cd "$ALT15_WS"
+                alr exec -- gcc -dumpfullversion
+              ) >"$bundle/alt15-version.log" 2>&1
+              ffi_alt15_dir="$RUNNER_TEMP/root-authority-ffi-alt15"
+              mkdir -p "$ffi_alt15_dir"
+              (
+                cd "$ALT15_WS"
+                alr exec -- gprbuild -p \
+                  -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr" \
+                  -XROOT_FFI_BUILD_DIR="$ffi_alt15_dir"
+              ) >"$bundle/abi-alt15.log" 2>&1
+              alt15_rc=$?
+            fi
+          fi
           set -e
 
           printf '%s\n' "$root_ffi_rc" > "$bundle/root-ffi-check.rc"
@@ -180,6 +211,9 @@ jobs:
           printf '%s\n' "$abi_o0_rc" > "$bundle/abi-o0.rc"
           printf '%s\n' "$abi_o1_rc" > "$bundle/abi-o1.rc"
           printf '%s\n' "$abi_o2_rc" > "$bundle/abi-o2.rc"
+          printf '%s\n' "$alt15_select_rc" > "$bundle/alt15-select.rc"
+          printf '%s\n' "$alt15_init_rc" > "$bundle/alt15-init.rc"
+          printf '%s\n' "$alt15_rc" > "$bundle/abi-alt15.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
           echo "LAS_DIAG_ROOT_FFI_RC=$root_ffi_rc"
           echo "LAS_DIAG_SPARK_RC=$spark_rc"
@@ -187,6 +221,17 @@ jobs:
           echo "LAS_DIAG_ABI_O0_RC=$abi_o0_rc"
           echo "LAS_DIAG_ABI_O1_RC=$abi_o1_rc"
           echo "LAS_DIAG_ABI_O2_RC=$abi_o2_rc"
+          echo "LAS_DIAG_ALT15_SELECT_RC=$alt15_select_rc"
+          echo "LAS_DIAG_ALT15_INIT_RC=$alt15_init_rc"
+          echo "LAS_DIAG_ABI_ALT15_RC=$alt15_rc"
+          if [[ -f "$bundle/alt15-version.log" ]]; then
+            echo "LAS_DIAG_ALT15_VERSION=$(tr -d '\r\n' < "$bundle/alt15-version.log")"
+          fi
+          if [[ -f "$bundle/abi-alt15.log" ]] && grep -q "GNAT BUG DETECTED" "$bundle/abi-alt15.log"; then
+            echo "LAS_DIAG_ABI_ALT15_ICE=YES"
+          else
+            echo "LAS_DIAG_ABI_ALT15_ICE=NO"
+          fi
           for opt in o0 o1 o2; do
             if grep -q "GNAT BUG DETECTED" "$bundle/abi-$opt.log"; then
               echo "LAS_DIAG_ABI_${opt^^}_ICE=YES"
