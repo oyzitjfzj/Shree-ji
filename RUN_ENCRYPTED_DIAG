@@ -1,1 +1,1 @@
-trigger encrypted diagnostics latest private head
+trigger encrypted diagnostics after production fixes
