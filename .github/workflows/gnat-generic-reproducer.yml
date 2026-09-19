@@ -69,11 +69,11 @@ jobs:
             rc=$?
             set -e
             upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
-            echo "GNAT_REPRO_\${upper}_RC=$rc"
+            echo "GNAT_REPRO_"$upper"_RC=$rc"
             if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
-              echo "GNAT_REPRO_\${upper}_ICE=YES"
+              echo "GNAT_REPRO_"$upper"_ICE=YES"
             else
-              echo "GNAT_REPRO_\${upper}_ICE=NO"
+              echo "GNAT_REPRO_"$upper"_ICE=NO"
             fi
             if [[ "$rc" -ne 0 ]]; then
               head -80 "$dir/build.log" || true
