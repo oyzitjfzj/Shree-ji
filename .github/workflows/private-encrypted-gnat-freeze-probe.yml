@@ -73,21 +73,28 @@ jobs:
           from pathlib import Path
           p = Path("src/root_authority/root_authority.ads")
           lines = p.read_text(encoding="utf-8").splitlines()
+
+          bounded = [
+              line.strip().split()[1]
+              for line in lines
+              if line.strip().startswith("type ")
+              and " is new Natural range 0 .. Max_Grants;" in line
+          ]
+          if len(bounded) != 1:
+              raise SystemExit(f"expected one generic bounded derived type, found {len(bounded)}")
+          typename = bounded[0]
+
           hits = [
               i for i, line in enumerate(lines)
-              if " is new Natural range 0 .. Max_Grants;" in line
+              if f": {typename} :=" in line
           ]
-          if len(hits) != 1:
-              raise SystemExit(f"expected one generic bounded derived slot type, found {len(hits)}")
+          if not hits:
+              raise SystemExit("no record component uses the bounded derived type")
+
+          # The first component use after the declaration is the opaque-handle slot.
           i = hits[0]
-          stripped = lines[i].strip()
-          parts = stripped.split()
-          if len(parts) < 2 or parts[0] != "type":
-              raise SystemExit("unexpected bounded type declaration shape")
-          typename = parts[1]
-          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
-          lines.insert(i + 1, f"{indent}LAS_Diagnostic_Freeze : constant {typename} := 0;")
-          lines.insert(i + 2, f"{indent}pragma Unreferenced (LAS_Diagnostic_Freeze);")
+          prefix, suffix = lines[i].split(f": {typename} :=", 1)
+          lines[i] = f"{prefix}: Natural range 0 .. Max_Grants :={suffix}"
           p.write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
 
@@ -105,11 +112,11 @@ jobs:
 
           printf '%s\n' "$probe_rc" > "$bundle/freeze-probe.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
-          echo "LAS_GNAT_FREEZE_PROBE_RC=$probe_rc"
+          echo "LAS_GNAT_COMPONENT_PROBE_RC=$probe_rc"
           if grep -q "GNAT BUG DETECTED" "$bundle/freeze-probe.log"; then
-            echo "LAS_GNAT_FREEZE_PROBE_ICE=YES"
+            echo "LAS_GNAT_COMPONENT_PROBE_ICE=YES"
           else
-            echo "LAS_GNAT_FREEZE_PROBE_ICE=NO"
+            echo "LAS_GNAT_COMPONENT_PROBE_ICE=NO"
           fi
 
           git checkout -q -- src/root_authority/root_authority.ads
@@ -150,7 +157,7 @@ jobs:
             -out "$RUNNER_TEMP/encrypted.cms" \
             "$RUNNER_TEMP/recipient-cert.pem"
           rm -rf "$bundle" "$RUNNER_TEMP/private-diagnostic.tgz" "$RUNNER_TEMP/recipient-cert.pem"
-          echo "LAS_GNAT_FREEZE_PROBE_CIPHERTEXT_READY=YES"
+          echo "LAS_GNAT_COMPONENT_PROBE_CIPHERTEXT_READY=YES"
 
       - name: Upload ciphertext only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
