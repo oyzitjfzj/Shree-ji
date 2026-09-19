@@ -2,6 +2,11 @@ name: Private verification runner
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-verify.yml"
+      - "RUN_VERIFY"
 
 permissions:
   contents: read
@@ -14,47 +19,67 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     steps:
-      - name: Validate private inputs are configured
+      - name: Validate and mask private input bundle
         shell: bash
         env:
-          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
-          PRIVATE_SHA: ${{ secrets.LAS_PRIVATE_SHA }}
-          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          LAS_VERIFY_INPUTS: ${{ secrets.LAS_VERIFY_INPUTS }}
         run: |
           set -euo pipefail
-          test -n "$PRIVATE_REPOSITORY"
-          test -n "$PRIVATE_SHA"
-          test -n "$PRIVATE_TOKEN"
+          test -n "$LAS_VERIFY_INPUTS"
 
-      - name: Checkout exact private revision
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
-          ref: ${{ secrets.LAS_PRIVATE_SHA }}
-          token: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          persist-credentials: false
-          fetch-depth: 1
-          path: target
+          python3 - <<'PY'
+          import json, os, pathlib
+          data = json.loads(os.environ["LAS_VERIFY_INPUTS"])
+          required = ("repository", "sha", "token")
+          for key in required:
+              value = data.get(key)
+              if not isinstance(value, str) or not value.strip():
+                  raise SystemExit(f"missing private verification input: {key}")
+          p = pathlib.Path(os.environ["RUNNER_TEMP"]) / "las-private-inputs"
+          p.write_text(
+              data["repository"].strip() + "\n" +
+              data["sha"].strip() + "\n" +
+              data["token"].strip() + "\n",
+              encoding="utf-8",
+          )
+          p.chmod(0o600)
+          PY
 
-      - name: Verify exact revision with private output suppressed
+          mapfile -t vals < "$RUNNER_TEMP/las-private-inputs"
+          for value in "${vals[@]}"; do
+            echo "::add-mask::$value"
+          done
+
+      - name: Checkout exact private revision without public source logs
         shell: bash
-        env:
-          EXPECTED_SHA: ${{ secrets.LAS_PRIVATE_SHA }}
+        run: |
+          set -euo pipefail
+          mapfile -t vals < "$RUNNER_TEMP/las-private-inputs"
+          private_repo="${vals[0]}"
+          expected_sha="${vals[1]}"
+          private_token="${vals[2]}"
+
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${private_repo}.git"
+
+          auth="$(printf 'x-access-token:%s' "$private_token" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin "$expected_sha"
+          git checkout -q --detach FETCH_HEAD
+
+          actual="$(git rev-parse HEAD)"
+          [[ "$actual" == "$expected_sha" ]]
+
+          git checkout -q -B verify-target "$actual"
+          unset private_token auth
+          echo "LAS_PRIVATE_CHECKOUT_EXACT=YES"
+
+      - name: Run canonical verifier with private output suppressed
+        shell: bash
         run: |
           set -u -o pipefail
           cd target
-
-          actual="$(git rev-parse HEAD)"
-          if [[ "$actual" != "$EXPECTED_SHA" ]]; then
-            echo "LAS_PUBLIC_RUNNER_RESULT=FAIL"
-            echo "Reason: exact revision mismatch"
-            exit 2
-          fi
-
-          # Give the pinned detached revision a local verification branch name.
-          # This changes no source bytes; the canonical verifier explicitly
-          # supports an expected-branch override.
-          git checkout -q -B verify-target "$actual"
 
           log="$RUNNER_TEMP/las-private-verification.log"
           set +e
@@ -62,9 +87,7 @@ jobs:
           rc=$?
           set -e
 
-          # Deliberately do not print or upload the private verifier log.
-          # Public output is content-minimal: exact-run result only.
-          echo "LAS_PUBLIC_RUNNER_SHA_MATCH=YES"
+          # Never print or upload the private verifier log from this public repo.
           if [[ "$rc" -eq 0 ]] && grep -q '^LAS_VERIFY_ALL_RESULT=PASS$' "$log"; then
             echo "LAS_PUBLIC_RUNNER_RESULT=PASS"
             exit 0
