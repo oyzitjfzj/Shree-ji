@@ -1,1 +1,1 @@
-reproduce generic private handle field ICE 2026-09-20
+bisect generic body deferred constant ghost trigger 2026-09-20
