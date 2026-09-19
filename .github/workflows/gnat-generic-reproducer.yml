@@ -85,3 +85,53 @@ jobs:
           run_case subtype "subtype Slot_Reference is Natural range 0 .. Max_Items;"
           run_case bounded_type "type Slot_Reference is range 0 .. Max_Items;"
           run_case derived_type "type Slot_Reference is new Natural range 0 .. Max_Items;"
+          run_private_view_case() {
+            local name="$1"
+            local slot_decl="$2"
+            local dir="$root/$name"
+            mkdir -p "$dir/obj"
+            cat > "$dir/repro.ads" <<EOF
+          generic
+             Max_Items : Positive;
+          package Repro is
+             type Handle is private;
+          private
+             $slot_decl
+             type Handle is record
+                Domain : Natural := 0;
+                Slot   : Slot_Reference := 0;
+             end record;
+          end Repro;
+          EOF
+            cat > "$dir/instance.ads" <<'EOF'
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF
+            cat > "$dir/repro.gpr" <<EOF
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022", "-gnatf", "-gnatwa", "-gnatwe", "-O2");
+             end Compiler;
+          end Repro_Project;
+          EOF
+            set +e
+            (cd "$RUNNER_TEMP/alr-ws" && alr exec -- gprbuild -p -P "$dir/repro.gpr") >"$dir/build.log" 2>&1
+            rc=$?
+            set -e
+            upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+            echo "GNAT_REPRO_"$upper"_RC=$rc"
+            if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
+              echo "GNAT_REPRO_"$upper"_ICE=YES"
+            else
+              echo "GNAT_REPRO_"$upper"_ICE=NO"
+            fi
+            if [[ "$rc" -ne 0 ]]; then
+              grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -40 || true
+            fi
+          }
+
+          run_private_view_case private_view_subtype "subtype Slot_Reference is Natural range 0 .. Max_Items;"
+          run_private_view_case private_view_derived "type Slot_Reference is new Natural range 0 .. Max_Items;"
+
