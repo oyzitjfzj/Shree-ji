@@ -94,18 +94,18 @@ jobs:
           rc=$?
           set -e
 
-          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_VERIFY_ALL_RESULT=PASS; then
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_VERIFY_ALL_RESULT=PASS$' "$log"; then
             echo "LAS_PUBLIC_RUNNER_RESULT=PASS"
             exit 0
           fi
 
           echo "LAS_PUBLIC_RUNNER_RESULT=FAIL"
-          if grep -q '^========== PRE-TLC VERIFICATION BLOCKED ==========; then
+          if grep -q '^========== PRE-TLC VERIFICATION BLOCKED ==========$' "$log"; then
             echo "LAS_DIAG_PRE_TLC_BLOCKED=YES"
           else
             echo "LAS_DIAG_PRE_TLC_BLOCKED=NO"
           fi
-          if grep -q '^========== LAS VERIFICATION SUMMARY ==========; then
+          if grep -q '^========== LAS VERIFICATION SUMMARY ==========$' "$log"; then
             echo "LAS_DIAG_FINAL_SUMMARY=YES"
           else
             echo "LAS_DIAG_FINAL_SUMMARY=NO"
@@ -168,7 +168,7 @@ jobs:
           done < <(grep '^FAILED_CHECK=' "$log" || true)
           echo "LAS_DIAG_FAILED_COUNT=$failed_count"
 
-          last_section="$(grep '^========== .* ========== "$log" | tail -n 1 || true)"
+          last_section="$(grep '^========== .* ==========$' "$log" | tail -n 1 || true)"
           if [[ -n "$last_section" ]]; then
             section_hash="$(printf '%s' "$last_section" | sha256sum | awk '{print $1}')"
             echo "LAS_DIAG_LAST_SECTION_HASH=$section_hash"
