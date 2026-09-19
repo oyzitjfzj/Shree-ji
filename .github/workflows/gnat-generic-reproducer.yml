@@ -187,3 +187,96 @@ jobs:
           run_private_view_case private_view_subtype "subtype Slot_Reference is Natural range 0 .. Max_Items;"
           run_private_view_case private_view_derived "type Slot_Reference is new Natural range 0 .. Max_Items;"
 
+          run_body_case() {
+            local name="$1"
+            local mode="$2"
+            local dir="$root/$name"
+            mkdir -p "$dir/obj"
+            local visible_extra=""
+            local model_decl=""
+            local model_body=""
+            if [[ "$mode" == "constant" || "$mode" == "ghost" ]]; then
+              visible_extra="No_Handle : constant Handle;"
+            fi
+            if [[ "$mode" == "ghost" ]]; then
+              model_decl='package Model with Ghost is
+             function Slot (Value : Handle) return Natural
+               with Global => null, Post => Slot\047Result <= Max_Items;
+          end Model;'
+              model_body='package body Model is
+             function Slot (Value : Handle) return Natural is
+               (Natural (Value.Slot));
+          end Model;'
+            fi
+            cat > "$dir/repro.ads" <<EOF
+          generic
+             Max_Items : Positive;
+          package Repro is
+             type Handle is private;
+             $visible_extra
+             function Slot_Of (Value : Handle) return Natural
+               with Post => Slot_Of'Result <= Max_Items;
+             $model_decl
+          private
+             type Slot_Reference is new Natural range 0 .. Max_Items;
+             type Handle is record
+                Domain : Natural := 0;
+                Slot   : Slot_Reference := 0;
+             end record;
+             No_Handle_Private : constant Handle := (Domain => 0, Slot => 0);
+          end Repro;
+          EOF
+            if [[ "$mode" == "constant" || "$mode" == "ghost" ]]; then
+              python3 - "$dir/repro.ads" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])
+          s=p.read_text()
+          s=s.replace(
+              "No_Handle_Private : constant Handle := (Domain => 0, Slot => 0);",
+              "No_Handle : constant Handle := (Domain => 0, Slot => 0);"
+          )
+          p.write_text(s)
+          PY
+            fi
+            cat > "$dir/repro.adb" <<EOF
+          package body Repro is
+             function Slot_Of (Value : Handle) return Natural is
+               (Natural (Value.Slot));
+             $model_body
+          end Repro;
+          EOF
+            cat > "$dir/instance.ads" <<'EOF'
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF
+            cat > "$dir/repro.gpr" <<EOF
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022", "-gnatf", "-gnatwa", "-gnatwe", "-O2");
+             end Compiler;
+          end Repro_Project;
+          EOF
+            set +e
+            (cd "$RUNNER_TEMP/alr-ws" && alr exec -- gprbuild -p -P "$dir/repro.gpr") >"$dir/build.log" 2>&1
+            rc=$?
+            set -e
+            upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+            echo "GNAT_REPRO_"$upper"_RC=$rc"
+            if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
+              echo "GNAT_REPRO_"$upper"_ICE=YES"
+            else
+              echo "GNAT_REPRO_"$upper"_ICE=NO"
+            fi
+            if [[ "$rc" -ne 0 ]]; then
+              grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -50 || true
+            fi
+          }
+
+          run_body_case body_derived plain
+          run_body_case body_deferred_constant constant
+          run_body_case body_ghost ghost
+
+
