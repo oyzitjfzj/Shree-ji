@@ -143,15 +143,57 @@ jobs:
               -XROOT_FFI_BUILD_DIR="$ffi_dir"
           ) >"$bundle/abi-build.log" 2>&1
           abi_rc=$?
+
+          ffi_o0_dir="$RUNNER_TEMP/root-authority-ffi-o0"
+          ffi_o1_dir="$RUNNER_TEMP/root-authority-ffi-o1"
+          ffi_o2_dir="$RUNNER_TEMP/root-authority-ffi-o2"
+          mkdir -p "$ffi_o0_dir" "$ffi_o1_dir" "$ffi_o2_dir"
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -p \
+              -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr" \
+              -XROOT_FFI_BUILD_DIR="$ffi_o0_dir" \
+              -cargs:Ada -O0
+          ) >"$bundle/abi-o0.log" 2>&1
+          abi_o0_rc=$?
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -p \
+              -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr" \
+              -XROOT_FFI_BUILD_DIR="$ffi_o1_dir" \
+              -cargs:Ada -O1
+          ) >"$bundle/abi-o1.log" 2>&1
+          abi_o1_rc=$?
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -p \
+              -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr" \
+              -XROOT_FFI_BUILD_DIR="$ffi_o2_dir" \
+              -cargs:Ada -O2
+          ) >"$bundle/abi-o2.log" 2>&1
+          abi_o2_rc=$?
           set -e
 
           printf '%s\n' "$root_ffi_rc" > "$bundle/root-ffi-check.rc"
           printf '%s\n' "$spark_rc" > "$bundle/spark.rc"
           printf '%s\n' "$abi_rc" > "$bundle/abi-build.rc"
+          printf '%s\n' "$abi_o0_rc" > "$bundle/abi-o0.rc"
+          printf '%s\n' "$abi_o1_rc" > "$bundle/abi-o1.rc"
+          printf '%s\n' "$abi_o2_rc" > "$bundle/abi-o2.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
           echo "LAS_DIAG_ROOT_FFI_RC=$root_ffi_rc"
           echo "LAS_DIAG_SPARK_RC=$spark_rc"
           echo "LAS_DIAG_ABI_RC=$abi_rc"
+          echo "LAS_DIAG_ABI_O0_RC=$abi_o0_rc"
+          echo "LAS_DIAG_ABI_O1_RC=$abi_o1_rc"
+          echo "LAS_DIAG_ABI_O2_RC=$abi_o2_rc"
+          for opt in o0 o1 o2; do
+            if grep -q "GNAT BUG DETECTED" "$bundle/abi-$opt.log"; then
+              echo "LAS_DIAG_ABI_${opt^^}_ICE=YES"
+            else
+              echo "LAS_DIAG_ABI_${opt^^}_ICE=NO"
+            fi
+          done
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
