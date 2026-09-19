@@ -1,1 +1,1 @@
-trigger encrypted diagnostics current head 0775d15
+trigger encrypted diagnostics after staged lint scoping
