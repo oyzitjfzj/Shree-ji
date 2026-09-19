@@ -46,6 +46,7 @@ jobs:
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
           printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
+          git checkout -q -B verify-target "$actual"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
           unset PRIVATE_TOKEN auth
@@ -67,34 +68,18 @@ jobs:
           mkdir -p "$bundle"
 
           set +e
-          cargo +1.98.1 fmt --all -- --check >"$bundle/fmt-check.log" 2>&1
-          fmt_check_rc=$?
-          cargo +1.98.1 fmt --all >"$bundle/fmt-apply.log" 2>&1
-          fmt_apply_rc=$?
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >"$bundle/cargo-check.log" 2>&1
-          check_rc=$?
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target bash tools/verify_codespaces_all.sh >"$bundle/canonical-verifier.log" 2>&1
+          verify_rc=$?
           set -e
 
-          printf '%s\n' "$fmt_check_rc" > "$bundle/fmt-check.rc"
-          printf '%s\n' "$fmt_apply_rc" > "$bundle/fmt-apply.rc"
-          printf '%s\n' "$check_rc" > "$bundle/cargo-check.rc"
+          printf '%s\n' "$verify_rc" > "$bundle/canonical-verifier.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
-
-          git diff --name-only -z > "$bundle/formatted-paths.zlist"
-          if [[ -s "$bundle/formatted-paths.zlist" ]]; then
-            tar --null -T "$bundle/formatted-paths.zlist" -cf "$bundle/formatted-files.tar"
-          else
-            tar -cf "$bundle/formatted-files.tar" --files-from /dev/null
-          fi
-
-          echo "LAS_DIAG_FMT_CHECK_RC=$fmt_check_rc"
-          echo "LAS_DIAG_FMT_APPLY_RC=$fmt_apply_rc"
-          echo "LAS_DIAG_CARGO_CHECK_RC=$check_rc"
+          echo "LAS_DIAG_CANONICAL_RC=$verify_rc"
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
-          printf '%s' 'LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVPekNDQXFPZ0F3SUJBZ0lVR2hXdnovOXZqUEdmaEE0L0REdnREbVJabk9zd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xURXJNQ2tHQTFVRUF3d2lURUZUSUdWd2FHVnRaWEpoYkNCa2FXRm5ibTl6ZEdsaklISmxZMmx3YVdWdQpkREFlRncweU5qQTVNVGt5TURReE5EQmFGdzB5TmpBNU1qRXlNRFF4TkRCYU1DMHhLekFwQmdOVkJBTU1Ja3hCClV5QmxjR2hsYldWeVlXd2daR2xoWjI1dmMzUnBZeUJ5WldOcGNHbGxiblF3Z2dHaU1BMEdDU3FHU0liM0RRRUIKQVFVQUE0SUJqd0F3Z2dHS0FvSUJnUUM1b1RvTXpENjFPZmM5ekFNdTZFenV5K1RJSmZKcXR3SWZFaGVDVm9icApDd0MydFc0WjdKR0htbmY4Q0VoRmkwOFdMY2dzcXppTG53MFUvU0dod28xdUJ2R2xOWkRGdFhiLzZWajVtRDNECll3a1BRVzV5VFNxM0Z4SEpwK3EyRXZzVHdqLzhxc0d6a1RUVksrZmp6VGRiL2theFh3OUxvOUdVSkx5OG1MUjQKQ3U0M1lsVGJNM1FHY1lSOFBQeS9HdVdlRDZKL3I2Q2FONWJYaGZRMEswS0NvdGhLU1Mwczd3a0VCUklLR2I5TApDYmJ4U2gxWGhOdGNBK3ZHZHVCdFNackpjWnU3TC9CMXY1QldWMkFoR3ZmMVR5TGFoS25DN0M2c05TL1lIQWRTCldLWVVEK2N1bjRROWFFOVlxaFdwbkZLc3ZIVDRTTDF4U2x3VUhCSGpDSHJmUHZqcmxzMDVBY2JmL2FwTHRvQW0KV042OFdMYzlndGVpNUlnR01hTnc5VzNUMldNbEZ6OW1SK0tCenZhV2NqQ2trV0VJR1VkQmlwVGMzc2E0VnRlMAowUzJOUldZOTBBYnFzMGRWK3lBSzhMbTBUQWlqKzRUeXExWXg1WXFDMEJvWXY5STZJVnF0ckdLK1N3aFdkb3l0CnNKUU41MitxdXQrajBuOHkramJFQVY4Q0F3RUFBYU5UTUZFd0hRWURWUjBPQkJZRUZKcmRra3dvNVdMVGg5dFkKYk9CUlFjc2JhM2hETUI4R0ExVWRJd1FZTUJhQUZKcmRra3dvNVdMVGg5dFliT0JSUWNzYmEzaERNQThHQTFVZApFd0VCL3dRRk1BTUJBZjh3RFFZSktvWklodmNOQVFFTEJRQURnZ0dCQUZmb2RwN0xTR0ZrZDRHRXJpS28vLzdrCkxDODVDV3lOR0NQMzVyZjYxZnNwb1h1RWlFalRpTFNXOURCZmNWMTRJb21Sakx3OGZIV1YrZERKdUVEazFVQTQKclJnNnN0M2JHaFNUbnNMdno5NGNkNkN2OHhZUmFuZUtZUktPbmE5TXdYSDRIczJSZmV4Mk5uVHFMVEhPOG9paAp5b3AzVDVHYkhkQzBlOFg5Sm9QVE4wSkRnNnNoMnBDNkUydlI2NFJUZ2Nob2NDZGhObmhCdC82ekV1Rjk1aHhpClVheG5OTEZicFFSeExVNVNNRWdsVkF6NG1KMGVtVGl3dXB4Sk1pNEUybGtNNm1Hb0RIODhBYTdqbXBHQlJiM3gKa3Nnb21jdVUraU1UNGxIVHJEcG5aQ3UrcXExWGRIMFhGREM5czYvdzVUQ1VscGxGVFVNOEllTUIvSDczb3dJSQp1STVaQ01YeGJUUGYybVJYMUdON3dITTQ4R0pPempaNmYvUXg3aC8vcmxyNSsxWTVnb1FVSlN5NCtPV2wyNlpmCjVZSkZoaWRZYWczbVpEbnMrYUFGMnFiRURlVHV3WEw0ZHdRSEQvMkppMmw5WjA3Q3JaWXBPeVppUmFrTzBoaFoKRTMvZlI4Vm9IaXVINzlEWEJ4d2ZGdGVUTEtkZDM2ZHRMbU4ybWF0OXp3PT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=' | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
+          printf '%s' 'LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVPekNDQXFPZ0F3SUJBZ0lVYXZ4NnpzU29FejBHSG5kOEE3U2w5bFIxeVRZd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xURXJNQ2tHQTFVRUF3d2lURUZUSUdWd2FHVnRaWEpoYkNCa2FXRm5ibTl6ZEdsaklISmxZMmx3YVdWdQpkREFlRncweU5qQTVNVGt5TVRVek16ZGFGdzB5TmpBNU1qQXlNVFV6TXpkYU1DMHhLekFwQmdOVkJBTU1Ja3hCClV5QmxjR2hsYldWeVlXd2daR2xoWjI1dmMzUnBZeUJ5WldOcGNHbGxiblF3Z2dHaU1BMEdDU3FHU0liM0RRRUIKQVFVQUE0SUJqd0F3Z2dHS0FvSUJnUUN6QXFINlBoS0pqMVl1bHJZZFVHWExPMW54QjBVOWt1d0g4NmRkUG5kRQp4anVBUEZGZWRPZU1tR28xMzFKc2FsekNCWHNPdGFlUnRLQkkrcWVxWDhmT1hwK1ovdllqS3V3N2h0eU5yOE9nCmVubUxBM0tEQU5UV3ZwMklyRTdHeVNrUDkzNUd6MDUxZVBqZ1RMSHVtcG1vc2VVbTExRmJKK0VQWGlBbG1SazUKNXlRMnhuUmNBWFBOaHlIWW5Gclh2V0puaGs3Vks3M2NIc0l3QkROT0hKTHlkdFk3ajR4L0x1UWpEbDhTeWZvVQpjUnZrTGFXM0RkM3YyV3ZYc1hPRytacHVyNXN6QjFSRnR3dkswZkpjRVR5UnRyVnM0c1h5SUhiNFIwVGpncVlzCi81YXZPMCtEQnRRc2xFdHg4TS9GUUY4MFF0QXhIZFc0eFVlWjBMVEhsSTdQdlgrSzVBKzMrZzFVbWNPeVU5bkYKZXFkOG93MlRLRkxzUVcwN05YdnhpVDdycVVWWTZPWEJUR1BXcnBOd2NXejZaSWg3NVpRME9BdU5IS093WDN4bwpaK1NsbGQvazhtVE5tRU51M2hYSnc4OHVqbmpqTksrZXNlWVhMTWN5SlY3QU10UW5DYUY1cDVPZkFrbkhROTZtCms5aHpwOTdvQ1V5MGdvZ1pDNlRwRmVNQ0F3RUFBYU5UTUZFd0hRWURWUjBPQkJZRUZMdHI3Um5SVlFNYy9lT0wKbXpkL2RwdjJGNzBHTUI4R0ExVWRJd1FZTUJhQUZMdHI3Um5SVlFNYy9lT0xtemQvZHB2MkY3MEdNQThHQTFVZApFd0VCL3dRRk1BTUJBZjh3RFFZSktvWklodmNOQVFFTEJRQURnZ0dCQUxFL3ZPSFR3YVozb1o0S0pZZmJ5Ly9ZCnU1cEswa3ZSa05icUNnTlZLQ25SaUluYlNnUFU4RWpxNU1JeVZic1NKbEhoYk1uYnltZEs2S2x3dWV4dFo3VnEKdG5PUk1HOFlabExhWGFLbnlpc0U1SzA5VFI3TCs1T3FQZ2x2REUzRWY5WWVvdTUzMzBvb0tSOGZSMHJGV1ZkTgpkZGJwYmZSODRjRnJyVnA2emtLMFJub05Ha0Y4L0F3Q095cE1EUUFkWFhvZ3FwWndVWGI4NUt0cGI4VzRlSlZFClFKK2tHUTZzaUxtcWt3VUoxQnNlVHNnN2svMjFycisweFA1MlFsVWJBVk9wQzJ3WDJUdld5RCtjMVRnMGx4c3AKZFVXS051OTRjV0FPd1g5Rmt0OXFWb21lWWlTUnlYNU1SRTdiVXR6cm9DVGdIRUdNRDlmaDlETHBFUnNtZ0dGYQo3SzFxVWxjRHZINy96TGtPSzlDelVoS0tiSFErcmRIOVFSSE95UUhYMy9PcXJhQmFadEtnamIvWm1KaktTT2xkCjZsOVY2b3lqeHRCWm1hTlV5NVJOY1dnYldSdkVRUG9XUWlvZHhoa2VoWWxFRWVUcllENzh3cXVCKzJRdVpqak8Ka0VsVUlJSEdLRTZycldaT3R4dkNMM2JFUHREMVV6VkZtaFd2RDR3VWt3PT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=' | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "67:27:F3:17:A0:7F:D4:D5:C5:4C:FF:02:CA:3F:8B:F7:4A:67:33:AF:6B:A7:0E:98:A2:BD:D0:39:0D:67:1B:DC"
+          test "$cert_fp" = "8F:CF:AD:2A:F6:4A:AD:30:43:69:65:4B:EF:D8:45:89:1C:70:78:31:4C:9C:0C:4B:16:90:4F:FD:C5:5F:11:61"
           echo "LAS_DIAG_CERT_FINGERPRINT_OK=YES"
           openssl cms -encrypt -binary -aes-256-cbc \
             -outform DER \
