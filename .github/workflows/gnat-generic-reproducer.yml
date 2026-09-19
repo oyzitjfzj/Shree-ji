@@ -201,7 +201,7 @@ jobs:
             if [[ "$mode" == "ghost" ]]; then
               model_decl='package Model with Ghost is
              function Slot (Value : Handle) return Natural
-               with Global => null, Post => Slot\047Result <= Max_Items;
+               with Global => null;
           end Model;'
               model_body='package body Model is
              function Slot (Value : Handle) return Natural is
@@ -278,5 +278,90 @@ jobs:
           run_body_case body_derived plain
           run_body_case body_deferred_constant constant
           run_body_case body_ghost ghost
+
+          run_extended_case() {
+            local name="$1"
+            local mode="$2"
+            local dir="$root/$name"
+            mkdir -p "$dir/obj"
+            local pkg_aspects=""
+            local machine_visible=""
+            local machine_private=""
+            if [[ "$mode" == "spark" || "$mode" == "machine" ]]; then
+              pkg_aspects=" with SPARK_Mode, Always_Terminates"
+            fi
+            if [[ "$mode" == "machine" ]]; then
+              machine_visible="type Machine is limited private;"
+              machine_private='type Machine is limited record
+                Count : Natural range 0 .. Max_Items := 0;
+                Last  : Handle := No_Handle;
+             end record;'
+            fi
+            cat > "$dir/repro.ads" <<EOF
+          generic
+             Max_Items : Positive;
+          package Repro$pkg_aspects is
+             type Handle is private;
+             No_Handle : constant Handle;
+             $machine_visible
+             function Slot_Of (Value : Handle) return Natural
+               with Post => Slot_Of'Result <= Max_Items;
+             package Model with Ghost is
+                function Slot (Value : Handle) return Natural
+                  with Global => null;
+             end Model;
+          private
+             type Slot_Reference is new Natural range 0 .. Max_Items;
+             type Handle is record
+                Domain : Natural := 0;
+                Slot   : Slot_Reference := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+             $machine_private
+          end Repro;
+          EOF
+            cat > "$dir/repro.adb" <<'EOF'
+          package body Repro is
+             function Slot_Of (Value : Handle) return Natural is
+               (Natural (Value.Slot));
+             package body Model is
+                function Slot (Value : Handle) return Natural is
+                  (Natural (Value.Slot));
+             end Model;
+          end Repro;
+          EOF
+            cat > "$dir/instance.ads" <<'EOF'
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF
+            cat > "$dir/repro.gpr" <<EOF
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022", "-gnatf", "-gnatwa", "-gnatwe", "-O2");
+             end Compiler;
+          end Repro_Project;
+          EOF
+            set +e
+            (cd "$RUNNER_TEMP/alr-ws" && alr exec -- gprbuild -p -P "$dir/repro.gpr") >"$dir/build.log" 2>&1
+            rc=$?
+            set -e
+            upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+            echo "GNAT_REPRO_"$upper"_RC=$rc"
+            if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
+              echo "GNAT_REPRO_"$upper"_ICE=YES"
+            else
+              echo "GNAT_REPRO_"$upper"_ICE=NO"
+            fi
+            if [[ "$rc" -ne 0 ]]; then
+              grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -60 || true
+            fi
+          }
+
+          run_extended_case extended_plain plain
+          run_extended_case extended_spark spark
+          run_extended_case extended_machine machine
+
 
 
