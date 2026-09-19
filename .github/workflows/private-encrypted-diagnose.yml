@@ -68,13 +68,13 @@ jobs:
           mkdir -p "$bundle"
 
           set +e
-          RUSTFLAGS="-Dwarnings" cargo +1.98.1 check --locked --features linux-peer-credentials --all-targets >"$bundle/narrow.log" 2>&1
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target bash tools/verify_codespaces_all.sh >"$bundle/canonical.log" 2>&1
           verify_rc=$?
           set -e
 
-          printf '%s\n' "$verify_rc" > "$bundle/narrow.rc"
+          printf '%s\n' "$verify_rc" > "$bundle/canonical.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
-          echo "LAS_DIAG_NARROW_RC=$verify_rc"
+          echo "LAS_DIAG_CANONICAL_RC=$verify_rc"
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
