@@ -1,0 +1,85 @@
+name: GNAT generic field reproducer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_GNAT_REPRO"
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install exact Ada toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            -o "$RUNNER_TEMP/alr.zip" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $RUNNER_TEMP/alr.zip" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/alr"
+          unzip -q "$RUNNER_TEMP/alr.zip" -d "$RUNNER_TEMP/alr"
+          export PATH="$RUNNER_TEMP/alr/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
+          echo "$RUNNER_TEMP/alr/bin" >> "$GITHUB_PATH"
+
+      - name: Compile minimal variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/repro"
+          mkdir -p "$root"
+
+          run_case() {
+            local name="$1"
+            local slot_decl="$2"
+            local dir="$root/$name"
+            mkdir -p "$dir/obj"
+            cat > "$dir/repro.ads" <<EOF
+          generic
+             Max_Items : Positive;
+          package Repro is
+          private
+             $slot_decl
+             type Handle is record
+                Domain : Natural := 0;
+                Slot   : Slot_Reference := 0;
+             end record;
+          end Repro;
+          EOF
+            cat > "$dir/instance.ads" <<'EOF'
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF
+            cat > "$dir/repro.gpr" <<EOF
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022", "-gnatf", "-gnatwa", "-gnatwe", "-O2");
+             end Compiler;
+          end Repro_Project;
+          EOF
+            set +e
+            (cd "$dir" && alr exec -- gprbuild -p -P repro.gpr instance.ads) >"$dir/build.log" 2>&1
+            rc=$?
+            set -e
+            upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+            echo "GNAT_REPRO_\${upper}_RC=$rc"
+            if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
+              echo "GNAT_REPRO_\${upper}_ICE=YES"
+            else
+              echo "GNAT_REPRO_\${upper}_ICE=NO"
+            fi
+            if [[ "$rc" -ne 0 ]]; then
+              grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -20 || true
+            fi
+          }
+
+          run_case subtype "subtype Slot_Reference is Natural range 0 .. Max_Items;"
+          run_case bounded_type "type Slot_Reference is range 0 .. Max_Items;"
+          run_case derived_type "type Slot_Reference is new Natural range 0 .. Max_Items;"
