@@ -14,15 +14,44 @@ jobs:
   diagnose:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact private revision
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          repository: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
-          ref: ${{ secrets.LAS_PRIVATE_SHA }}
-          token: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          persist-credentials: false
-          fetch-depth: 1
-          path: target
+      - name: Checkout current private work snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          checkout_log="$RUNNER_TEMP/las-private-checkout.log"
+          set +e
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1 origin refs/heads/work/assurance-core >"$checkout_log" 2>&1
+          fetch_rc=$?
+          set -e
+          if [[ "$fetch_rc" -ne 0 ]]; then
+            echo "LAS_PRIVATE_CHECKOUT=FAIL"
+            echo "Private checkout diagnostics intentionally suppressed."
+            exit 1
+          fi
+
+          git checkout -q --detach FETCH_HEAD >"$checkout_log" 2>&1
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
+          git checkout -q -B verify-target "$actual"
+          unset PRIVATE_TOKEN auth
+          echo "LAS_PRIVATE_CHECKOUT_EXACT=YES"
 
       - name: Install exact Rust
         shell: bash
