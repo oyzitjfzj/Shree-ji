@@ -122,6 +122,22 @@ jobs:
           EOF_PROOF_GPR
 
           set +e
+          cargo +1.98.1 fmt --all -- --check >"$bundle/fmt-check.log" 2>&1
+          fmt_check_rc=$?
+          cargo +1.98.1 fmt --all >"$bundle/fmt-apply.log" 2>&1
+          fmt_apply_rc=$?
+          git diff --binary -- '*.rs' >"$bundle/rustfmt.diff"
+          git diff --name-only -- '*.rs' >"$bundle/rustfmt-paths.txt"
+
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >"$bundle/clippy-default.log" 2>&1
+          clippy_default_rc=$?
+          cargo +1.98.1 clippy --locked --features linux-peer-credentials --all-targets -- -D warnings >"$bundle/clippy-linux.log" 2>&1
+          clippy_linux_rc=$?
+          GPRBUILD="$GPRBUILD_WRAPPER" cargo +1.98.1 clippy --locked --features root-ffi --all-targets -- -D warnings >"$bundle/clippy-root-ffi.log" 2>&1
+          clippy_root_ffi_rc=$?
+          GPRBUILD="$GPRBUILD_WRAPPER" cargo +1.98.1 clippy --locked --all-features --all-targets -- -D warnings >"$bundle/clippy-all.log" 2>&1
+          clippy_all_rc=$?
+
           RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" \
             cargo +1.98.1 check --locked --features root-ffi --all-targets >"$bundle/root-ffi-check.log" 2>&1
           root_ffi_rc=$?
@@ -215,6 +231,13 @@ jobs:
           printf '%s\n' "$alt15_init_rc" > "$bundle/alt15-init.rc"
           printf '%s\n' "$alt15_rc" > "$bundle/abi-alt15.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
+          echo "LAS_DIAG_FMT_CHECK_RC=$fmt_check_rc"
+          echo "LAS_DIAG_FMT_APPLY_RC=$fmt_apply_rc"
+          echo "LAS_DIAG_FMT_CHANGED_COUNT=$(wc -l <"$bundle/rustfmt-paths.txt" | tr -d ' ')"
+          echo "LAS_DIAG_CLIPPY_DEFAULT_RC=$clippy_default_rc"
+          echo "LAS_DIAG_CLIPPY_LINUX_RC=$clippy_linux_rc"
+          echo "LAS_DIAG_CLIPPY_ROOT_FFI_RC=$clippy_root_ffi_rc"
+          echo "LAS_DIAG_CLIPPY_ALL_RC=$clippy_all_rc"
           echo "LAS_DIAG_ROOT_FFI_RC=$root_ffi_rc"
           echo "LAS_DIAG_SPARK_RC=$spark_rc"
           echo "LAS_DIAG_ABI_RC=$abi_rc"
@@ -243,30 +266,30 @@ jobs:
           tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIERzCCAq+gAwIBAgIUNWV2eDuNGO2OT1s15iRpWE6ZBbMwDQYJKoZIhvcNAQEL
-          BQAwMzExMC8GA1UEAwwoTEFTIGVwaGVtZXJhbCBkaWFnbm9zdGljIGN1cnJlbnQg
-          c2Vzc2lvbjAeFw0yNjA5MjAwODQ5MjhaFw0yNjA5MjIwODQ5MjhaMDMxMTAvBgNV
-          BAMMKExBUyBlcGhlbWVyYWwgZGlhZ25vc3RpYyBjdXJyZW50IHNlc3Npb24wggGi
-          MA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQCpbB85J7veU/NiZUzmocgujD8w
-          FYzjBqtakB65F28vT/9WAsIxxwbrzS3wnVo2vznAGoid7LeU5vgSuyd9j93nnm4z
-          lzARHT8ekFsWi1QxN9N93xCujjtPiemFgxk6IPq1XbpcFJ+lu/P678PFbnsYScnJ
-          tzfhYVRJBAVpJcTanUY5tGvwjQxeyE7zKYFbXFpg9/aKccZ7L5qQCRlHg/Vk/24S
-          poNZLaB0tMOfsUp1pdzsFsw4F4ayCs7gbRr3kphkF8BEncnaRt70L6fHjb68j1C9
-          YG5aUQfn1Krr/53+isQRa397xY1VsGk7ixOShcnJETGDQ725yP1OwCtOfhNUzWVx
-          8Qe/uhRJgf9ctMfZg3WDWufcUZCiCUT/QoobAERB7dXQWY9CECShBZbY1QgRZgu0
-          CxdJ0YGWfjNUosEZ7o8OF2aVxYyn0CaosRelt6NsE3JhMyfj/7QNBB5fj/s1dubH
-          Y4jNLbSKYKw1o/K2TDQ1Y6oUQ5L7fnvCOsRykUcCAwEAAaNTMFEwHQYDVR0OBBYE
-          FGuaDM9sTvEiCQd3ixpWVqD/flxcMB8GA1UdIwQYMBaAFGuaDM9sTvEiCQd3ixpW
-          VqD/flxcMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBACAyxt/+
-          KRaPM8TA+pc638a58F9dTvvUqt6fJT81f1Wk6jJBtivHlxETGjjimM67j1MGo949
-          Ul8fXxJhl8RqZvxbii1exAGEzMCeua0D8TwQdBr5eFi6Emv5AM6UurPj4CoQ9oWw
-          ePNFEneD1sbV1L+ojLDnM+lSeTo0PF7suZsdUZrcKhi8+W5er6RWFtWcS3dL6Vj6
-          dNdcovxpz996IoPygRbbNdhFlWJwziu9sUTOk7X5fwhRcZy+n5DXc1lBXId5mX+9
-          EA/v1KhK7kOMgqaJbHhn1JoXjgnZmjSW850vDKpk6udWHXhg6+Zh6kmoj9yg1Kwh
-          456aPQEjNyFhzXvJyBQp94t6UKUHCl4o+4cWGgNlJSjQQgSgxZVamv3L7vAY74Dg
-          FlWNq8yiUZ/LWcgLf3KzTTzZjto81Y2gvOfa8PiSlBPLQyNAtSvOVn49hjfdrQ17
-          dHF2HYk0ZJj7VR78jt7IZo6+KYDFIGXWaMQ6txZ4dqtHc7m5M7KrHC1XeA==
-          -----END CERTIFICATE-----
+MIIERzCCAq+gAwIBAgIUYZrJ8dte5/Bv1zTdH4u1QsGaJhAwDQYJKoZIhvcNAQEL
+BQAwMzExMC8GA1UEAwwoTEFTIGVwaGVtZXJhbCBkaWFnbm9zdGljIGN1cnJlbnQg
+c2Vzc2lvbjAeFw0yNjA5MjAxMDQxNTBaFw0yNjA5MjIxMDQxNTBaMDMxMTAvBgNV
+BAMMKExBUyBlcGhlbWVyYWwgZGlhZ25vc3RpYyBjdXJyZW50IHNlc3Npb24wggGi
+MA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQC7zFBNOEtprGoEc6ZMOgh2G1np
+B+yvnILUDDHHR6IVT+giNpOqYRdbQxT1jlod6RaCbvImurp0I9CygvXE2NIz4jD6
+bYqeYWcPgFwerMuBk/o6TbQSHmmHPU8bKKxLgmaQuvnr787teVnA1cokEBOPZF8m
+iUkrdY5O6skMYXV2bfWSln2xApUjauj8vqCFVD9PFy2VuHpMk5ApWda8y4gTphMO
+02XW1C7Jj8v7FAeZWLX6MoZIotkA5Hj2MLAha+mfaqfQE/515BW3h0BtSQ0qQvdo
+yqw42E7wBRQKgFC1/6xx3TY3W8McIsqSAyuUA7BgA6MBB/H5JkOJPzzw47v1Vi/L
+5oZJXQvLrGx8ncy9R8xv8wjj8FR7KltrB78IFDMccJQGafDTvTzFagw4K/KShOXe
+6F4CVG29BvL9TtiswbKrdhG1C3QlqAV8S/DvzUdEr1EGp0T8wLP0y1zR6BlHSXiN
+N4ezn4n5NyzJyTkJ3KwclBrBBvBsrlOCGo3TpL8CAwEAAaNTMFEwHQYDVR0OBBYE
+FFLI/fKLaLAvSG6hZXidQniWem4xMB8GA1UdIwQYMBaAFFLI/fKLaLAvSG6hZXid
+QniWem4xMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBAH1VaaDS
++Kmu3QWcsLymouvrWZRn3rJ4pSDXncwxTEdtWWI2W3pcsZPQ5DTN7CoeJ5Z35U7d
+a4MtRUtO8FCg2Ht8oiX0rbyw5nn/pocofTZ/CPnB3W17f5788llnK2UxnXD/872q
+vN9IV+2mNwfiX3sY4wZLhmzUP4WU33xcVM0dfTo9lbFvB09v2I7kaDQQUYlb2dEp
+gRexKJX4Gea9hwL0Xgn21WXenBXhzHHYS644897DFPxBlmBD+9wrpnJRvj6AmP8h
+9jTEm0rNkYS/e6sPE9oj2sbJJBRA4K76Zyy0Dtq54cojSheHAeoUdLPk5L8RplYu
+P1hU+OAWJj7Hznq1iOTdcD3T+vDljT/3IFZxZwAjn1zwKoXwjIr6FrHjycm8MyMD
+rEFVfhCYPuvqOMZA7Vc6zMuw/ixEEmjFSaCk0d7e1JKeNq+YRqc0tWXhr/rMhRoH
+eBZKUr5yIt0SOPwHpghEdk+bMaKw3quG18GMhLDdin0aKhYCJRzV2fZutA==
+-----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
           test "$cert_fp" = "C6:8F:16:BB:32:47:3D:2C:B7:9B:75:20:1F:F0:C4:8A:18:54:CC:70:94:0E:9D:05:3F:70:D5:99:BD:A0:7D:57"
