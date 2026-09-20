@@ -55,13 +55,54 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
-          p = Path("src/root_authority/root_authority.ads")
-          text = p.read_text(encoding="utf-8")
-          old = "   type Slot_Reference is new Natural range 0 .. Max_Grants;"
-          new = "   subtype Slot_Reference is Natural range 0 .. Max_Grants;"
+
+          ads = Path("src/root_authority/root_authority.ads")
+          text = ads.read_text(encoding="utf-8")
+          old = """   type Grant_Handle is record
+      Domain : Domain_Epoch := 0;
+      Slot   : Natural := 0;
+   end record;"""
+          new = """   type Handle_Slot_Reference is new Natural;
+
+   type Grant_Handle is record
+      Domain : Domain_Epoch := 0;
+      Slot   : Handle_Slot_Reference := 0;
+   end record;"""
           if text.count(old) != 1:
-              raise SystemExit(f"expected one Slot_Reference declaration, found {text.count(old)}")
-          p.write_text(text.replace(old, new, 1), encoding="utf-8")
+              raise SystemExit(f"Grant_Handle shape count={text.count(old)}")
+          ads.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          adb = Path("src/root_authority/root_authority.adb")
+          body = adb.read_text(encoding="utf-8")
+          replacements = [
+              ("and then Grant.Slot <= Machine.Issued_Count",
+               "and then Natural (Grant.Slot) <= Machine.Issued_Count"),
+              ("(if Grant.Slot <= Max_Grants then Grant.Slot else 0);",
+               "(if Natural (Grant.Slot) <= Max_Grants then Natural (Grant.Slot) else 0);"),
+              ("Slot   => New_Slot);",
+               "Slot   => Handle_Slot_Reference (New_Slot));"),
+              ("Natural (I) = Grant.Slot",
+               "Natural (I) = Natural (Grant.Slot)"),
+              ("Natural (J) = Grant.Slot",
+               "Natural (J) = Natural (Grant.Slot)"),
+          ]
+          for old_s, new_s in replacements:
+              body = body.replace(old_s, new_s)
+          adb.write_text(body, encoding="utf-8")
+
+          bridge = Path("src/root_authority/root_authority-deployment_bridge.adb")
+          b = bridge.read_text(encoding="utf-8")
+          replacements = [
+              ("Root_Grant.Slot > Max_Grants", "Natural (Root_Grant.Slot) > Max_Grants"),
+              ("Root_Child.Slot > Max_Grants", "Natural (Root_Child.Slot) > Max_Grants"),
+              ("Slot   => Root_Grant.Slot", "Slot   => Natural (Root_Grant.Slot)"),
+              ("Slot   => Root_Child.Slot", "Slot   => Natural (Root_Child.Slot)"),
+              ("Slot   => Parent.Slot", "Slot   => Handle_Slot_Reference (Parent.Slot)"),
+              ("Slot   => Grant.Slot", "Slot   => Handle_Slot_Reference (Grant.Slot)"),
+          ]
+          for old_s, new_s in replacements:
+              b = b.replace(old_s, new_s)
+          bridge.write_text(b, encoding="utf-8")
           PY
 
           ALR_ZIP="$RUNNER_TEMP/alr.zip"
