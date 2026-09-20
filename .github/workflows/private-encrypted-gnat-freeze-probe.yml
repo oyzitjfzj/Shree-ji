@@ -125,7 +125,7 @@ jobs:
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/current-root-targeted.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
-                    -----BEGIN CERTIFICATE-----
+          -----BEGIN CERTIFICATE-----
           MIIEOzCCAqOgAwIBAgIUDBZasai+Ovtq1ILg6TyIudQmRe4wDQYJKoZIhvcNAQEL
           BQAwLTErMCkGA1UEAwwiTEFTIGVwaGVtZXJhbCBHTkFUIGN1cnJlbnQgc2Vzc2lv
           bjAeFw0yNjA5MjAxNTAwNTdaFw0yNjA5MjIxNTAwNTdaMC0xKzApBgNVBAMMIkxB
