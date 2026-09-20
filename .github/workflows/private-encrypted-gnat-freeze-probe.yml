@@ -1,4 +1,4 @@
-name: Encrypted GNAT fail-closed-projection probe
+name: Encrypted current Root targeted verification
 
 on:
   push:
@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: encrypted-gnat-freeze-probe
+  group: encrypted-current-root-targeted
   cancel-in-progress: false
 
 jobs:
-  probe:
+  verify:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout current private work snapshot
@@ -42,97 +42,41 @@ jobs:
           echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
           unset PRIVATE_TOKEN auth
 
-      - name: Probe fixed-layout fail-closed projection with ABI and SPARK
+      - name: Verify current Root ABI and SPARK
         shell: bash
         run: |
           set -euo pipefail
           cd target
-          bundle="$RUNNER_TEMP/gnat-predicate-probe"
+          bundle="$RUNNER_TEMP/current-root-targeted"
           mkdir -p "$bundle"
 
           ALR_ZIP="$RUNNER_TEMP/alr.zip"
           ALR_PREFIX="$RUNNER_TEMP/alr"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
-            --output "$ALR_ZIP" \
-            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$ALR_ZIP"             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
           echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
           mkdir -p "$ALR_PREFIX"
           unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
           export PATH="$ALR_PREFIX/bin:$PATH"
           alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
 
-          ALR_WS="$RUNNER_TEMP/alire-predicate-probe"
+          ALR_WS="$RUNNER_TEMP/alire-current-root"
           mkdir -p "$ALR_WS"
           (
             cd "$ALR_WS"
-            alr -n init --in-place --no-skel --lib las_predicate_probe >/dev/null
+            alr -n init --in-place --no-skel --lib las_current_root >/dev/null
             alr with gnatprove=16.1.0 >/dev/null
           )
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          ads = Path("src/root_authority/root_authority.ads")
-          text = ads.read_text(encoding="utf-8")
-          type_pattern = re.compile(
-              r"   type Grant_Handle is record\n"
-              r"\s+Domain : Domain_Epoch := 0;\n"
-              r"\s+Slot   : Natural := 0;\n"
-              r"\s+end record\n"
-              r"\s+with Type_Invariant => Grant_Handle\.Slot <= Max_Grants;"
-          )
-          type_new = "\n".join([
-              "   type Grant_Handle is record",
-              "      Domain : Domain_Epoch := 0;",
-              "      Slot   : Natural := 0;",
-              "   end record;",
-          ])
-          text2, count = type_pattern.subn(type_new, text, count=1)
-          if count != 1:
-              raise SystemExit(f"expected one current Grant_Handle shape, found {count}")
-          ads.write_text(text2, encoding="utf-8")
-
-          adb = Path("src/root_authority/root_authority.adb")
-          body = adb.read_text(encoding="utf-8")
-          valid_pattern = re.compile(
-              r"(and then Grant\.Slot /= 0\n)(\s+and then Grant\.Slot <= Machine\.Issued_Count)"
-          )
-          def add_bound(match):
-              return (
-                  match.group(1)
-                  + "         and then Grant.Slot <= Max_Grants\n"
-                  + match.group(2)
-              )
-          body2, count = valid_pattern.subn(add_bound, body, count=1)
-          if count != 1:
-              raise SystemExit(f"expected one Handle_Is_Valid slot guard, found {count}")
-
-          slot_pattern = re.compile(
-              r"function Handle_Slot \(Grant : Grant_Handle\) return Natural is\n\s*\(Grant\.Slot\);"
-          )
-          slot_new = "\n".join([
-              "function Handle_Slot (Grant : Grant_Handle) return Natural is",
-              "        (if Grant.Slot <= Max_Grants then Grant.Slot else 0);",
-          ])
-          body3, count = slot_pattern.subn(slot_new, body2, count=1)
-          if count != 1:
-              raise SystemExit(f"expected one Handle_Slot body, found {count}")
-          adb.write_text(body3, encoding="utf-8")
-          PY
-
-          ffi_dir="$RUNNER_TEMP/root-authority-predicate-abi"
+          ffi_dir="$RUNNER_TEMP/root-authority-current-abi"
           mkdir -p "$ffi_dir"
           set +e
           (
             cd "$ALR_WS"
-            alr exec -- gprbuild -p \
-              -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr" \
-              -XROOT_FFI_BUILD_DIR="$ffi_dir"
+            alr exec -- gprbuild -p               -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr"               -XROOT_FFI_BUILD_DIR="$ffi_dir"
           ) >"$bundle/abi.log" 2>&1
           abi_rc=$?
 
-          PROOF_DIR="$RUNNER_TEMP/root-authority-predicate-proof"
+          PROOF_DIR="$RUNNER_TEMP/root-authority-current-proof"
           mkdir -p "$PROOF_DIR/obj"
           cat > "$PROOF_DIR/root_authority_proof_instances.ads" <<'EOF_PROOF'
           pragma SPARK_Mode (On);
@@ -158,11 +102,7 @@ jobs:
 
           (
             cd "$ALR_WS"
-            alr exec -- gnatprove \
-              -P"$PROOF_DIR/root_authority_proof.gpr" \
-              -U --mode=all --level=4 --proof=progressive:all \
-              --checks-as-errors=on --proof-warnings=on --report=statistics \
-              --warnings=error --pedantic -j2
+            alr exec -- gnatprove               -P"$PROOF_DIR/root_authority_proof.gpr"               -U --mode=all --level=4 --proof=progressive:all               --checks-as-errors=on --proof-warnings=on --report=statistics               --warnings=error --pedantic -j2
           ) >"$bundle/spark.log" 2>&1
           spark_rc=$?
           set -e
@@ -170,63 +110,59 @@ jobs:
           printf '%s\n' "$abi_rc" > "$bundle/abi.rc"
           printf '%s\n' "$spark_rc" > "$bundle/spark.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
-          echo "LAS_PROJECTION_ABI_RC=$abi_rc"
-          echo "LAS_PROJECTION_SPARK_RC=$spark_rc"
+          echo "LAS_CURRENT_ROOT_ABI_RC=$abi_rc"
+          echo "LAS_CURRENT_ROOT_SPARK_RC=$spark_rc"
           if grep -q "GNAT BUG DETECTED" "$bundle/abi.log"; then
-            echo "LAS_PROJECTION_ABI_ICE=YES"
+            echo "LAS_CURRENT_ROOT_ABI_ICE=YES"
           else
-            echo "LAS_PROJECTION_ABI_ICE=NO"
+            echo "LAS_CURRENT_ROOT_ABI_ICE=NO"
           fi
           if grep -q "GNAT BUG DETECTED" "$bundle/spark.log"; then
-            echo "LAS_PROJECTION_SPARK_ICE=YES"
+            echo "LAS_CURRENT_ROOT_SPARK_ICE=YES"
           else
-            echo "LAS_PROJECTION_SPARK_ICE=NO"
+            echo "LAS_CURRENT_ROOT_SPARK_ICE=NO"
           fi
 
-          tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
+          tar -C "$bundle" -czf "$RUNNER_TEMP/current-root-targeted.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIEWTCCAsGgAwIBAgIUOgA2nlNJjkHGCl+Sx9O5YBYYo6swDQYJKoZIhvcNAQEL
-          BQAwPDE6MDgGA1UEAwwxTEFTIGVwaGVtZXJhbCBkaWFnbm9zdGljIHJlY2lwaWVu
-          dCBhY3RpdmUgc2Vzc2lvbjAeFw0yNjA5MjAwODM4MzJaFw0yNjA5MjIwODM4MzJa
-          MDwxOjA4BgNVBAMMMUxBUyBlcGhlbWVyYWwgZGlhZ25vc3RpYyByZWNpcGllbnQg
-          YWN0aXZlIHNlc3Npb24wggGiMA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQCg
-          ssQSCH20SyQIsNN8F0trJiLaCA9sXD9ySI6wK7lmfVmWXojEyRldwWAl9U9E/ztE
-          JE3uNypB5IY30/ft2fw5wZl2TN0O3hDvejb2jw2r/dwN5PgKr7Gq6xQANJHWGwzD
-          pwxQiIC9B0pvfHwGAKfQ+778kDxUhXxb07hQia7N4SfLx9VG+jpHU17v4EvkyTvp
-          +zh+Tsrc3131+GSzlRy9Yu4yFx+Hm81opdW7t+8mSHXOS/GqfBoC6k8d4kHehrt4
-          A2UHOvX/s3Xr1ckUPkCzI8utCTyMJyGIIye+kFZ/RoGpZYaeSGOMdYBzfuzexhhS
-          KugF/5TdXknhlxO+Uv4wCF69I0B3LXRtnJC2i08OSXxVdGt7H4X4cS874S7wY42P
-          G6gxzoIR3YzXcvEf0LkIQM3mYTC/hPU9xLL+VfR3El5Qmh9uaq0maYZ8ygUXT8pQ
-          s0Aq2jELcr4llPN2teT+38AUfvAjLtjVaSk7N16mYZxpVYhmqIf/wW2GG+CXAm0C
-          AwEAAaNTMFEwHQYDVR0OBBYEFNkghbfroyAwahTUlDZ16ltj8U9xMB8GA1UdIwQY
-          MBaAFNkghbfroyAwahTUlDZ16ltj8U9xMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
-          hvcNAQELBQADggGBAGV9MNhDBqCFfX07EyP7xx4tqZzwZ23cBHOiN51ijVOjHVaW
-          mwnV7MTXIli7RQH5iEQAO6RG47mqOEcDuTTM82suWWiFC/t5BsNIaCCyr79TyeJs
-          J0oFLRmc6H48TTKh9AgVM71ZDPj7twlzOOKIO0DFG7yvkgd8CkexcepYeAC2Vw/m
-          R84i/iR8Wl1EThxIh1UEchIb0BgGnVa2PP+ANqpf7KMGc+2SQwkuu4IQu3zwpC0l
-          vb/8CXJ1W5LbJNKCD38r8s4dAZmvAHHnBOS8W5q5UnIPENb0l+sMaSpfk7s+N5Wr
-          K0XmkIMe/+VnwapKuZZe1Ri2eFs63yMUtpvx0WKL2zxFsJQDUmGC2zCodqrze3o4
-          k3cpq8sHDUZJ1NiCzJ4OeoMR8d7/MJiYXEhYtxSY44qolB4n5B5dDbF+Mi+E4ajv
-          xhYzTx0AelaqsbHlu/TWkGHjAeWCm4oHacoPVjejP94ayjZUKV8EX/6j+rT6KQJ3
-          U7Kf/xZeaIlb8JQAXA==
+          MIIERzCCAq+gAwIBAgIUNWV2eDuNGO2OT1s15iRpWE6ZBbMwDQYJKoZIhvcNAQEL
+          BQAwMzExMC8GA1UEAwwoTEFTIGVwaGVtZXJhbCBkaWFnbm9zdGljIGN1cnJlbnQg
+          c2Vzc2lvbjAeFw0yNjA5MjAwODQ5MjhaFw0yNjA5MjIwODQ5MjhaMDMxMTAvBgNV
+          BAMMKExBUyBlcGhlbWVyYWwgZGlhZ25vc3RpYyBjdXJyZW50IHNlc3Npb24wggGi
+          MA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQCpbB85J7veU/NiZUzmocgujD8w
+          FYzjBqtakB65F28vT/9WAsIxxwbrzS3wnVo2vznAGoid7LeU5vgSuyd9j93nnm4z
+          lzARHT8ekFsWi1QxN9N93xCujjtPiemFgxk6IPq1XbpcFJ+lu/P678PFbnsYScnJ
+          tzfhYVRJBAVpJcTanUY5tGvwjQxeyE7zKYFbXFpg9/aKccZ7L5qQCRlHg/Vk/24S
+          poNZLaB0tMOfsUp1pdzsFsw4F4ayCs7gbRr3kphkF8BEncnaRt70L6fHjb68j1C9
+          YG5aUQfn1Krr/53+isQRa397xY1VsGk7ixOShcnJETGDQ725yP1OwCtOfhNUzWVx
+          8Qe/uhRJgf9ctMfZg3WDWufcUZCiCUT/QoobAERB7dXQWY9CECShBZbY1QgRZgu0
+          CxdJ0YGWfjNUosEZ7o8OF2aVxYyn0CaosRelt6NsE3JhMyfj/7QNBB5fj/s1dubH
+          Y4jNLbSKYKw1o/K2TDQ1Y6oUQ5L7fnvCOsRykUcCAwEAAaNTMFEwHQYDVR0OBBYE
+          FGuaDM9sTvEiCQd3ixpWVqD/flxcMB8GA1UdIwQYMBaAFGuaDM9sTvEiCQd3ixpW
+          VqD/flxcMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBACAyxt/+
+          KRaPM8TA+pc638a58F9dTvvUqt6fJT81f1Wk6jJBtivHlxETGjjimM67j1MGo949
+          Ul8fXxJhl8RqZvxbii1exAGEzMCeua0D8TwQdBr5eFi6Emv5AM6UurPj4CoQ9oWw
+          ePNFEneD1sbV1L+ojLDnM+lSeTo0PF7suZsdUZrcKhi8+W5er6RWFtWcS3dL6Vj6
+          dNdcovxpz996IoPygRbbNdhFlWJwziu9sUTOk7X5fwhRcZy+n5DXc1lBXId5mX+9
+          EA/v1KhK7kOMgqaJbHhn1JoXjgnZmjSW850vDKpk6udWHXhg6+Zh6kmoj9yg1Kwh
+          456aPQEjNyFhzXvJyBQp94t6UKUHCl4o+4cWGgNlJSjQQgSgxZVamv3L7vAY74Dg
+          FlWNq8yiUZ/LWcgLf3KzTTzZjto81Y2gvOfa8PiSlBPLQyNAtSvOVn49hjfdrQ17
+          dHF2HYk0ZJj7VR78jt7IZo6+KYDFIGXWaMQ6txZ4dqtHc7m5M7KrHC1XeA==
           -----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "59:FB:B5:50:A8:E1:27:9C:7E:EB:36:C8:01:B1:7F:20:25:0E:69:08:0A:AE:2E:CE:75:F0:95:EA:EC:87:33:2C"
-          openssl cms -encrypt -binary -aes-256-cbc \
-            -outform DER \
-            -in "$RUNNER_TEMP/private-diagnostic.tgz" \
-            -out "$RUNNER_TEMP/encrypted.cms" \
-            "$RUNNER_TEMP/recipient-cert.pem"
-          rm -rf "$bundle" "$RUNNER_TEMP/private-diagnostic.tgz" "$RUNNER_TEMP/recipient-cert.pem"
-          echo "LAS_PROJECTION_PROBE_CIPHERTEXT_READY=YES"
+          test "$cert_fp" = "C6:8F:16:BB:32:47:3D:2C:B7:9B:75:20:1F:F0:C4:8A:18:54:CC:70:94:0E:9D:05:3F:70:D5:99:BD:A0:7D:57"
+          echo "LAS_CURRENT_ROOT_CERT_OK=YES"
+          openssl cms -encrypt -binary -aes-256-cbc             -outform DER             -in "$RUNNER_TEMP/current-root-targeted.tgz"             -out "$RUNNER_TEMP/current-root-targeted.cms"             "$RUNNER_TEMP/recipient-cert.pem"
+          rm -rf "$bundle" "$RUNNER_TEMP/current-root-targeted.tgz" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_CURRENT_ROOT_CIPHERTEXT_READY=YES"
 
       - name: Upload ciphertext only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: encrypted-gnat-predicate-probe
-          path: ${{ runner.temp }}/encrypted.cms
+          name: encrypted-current-root-targeted
+          path: ${{ runner.temp }}/current-root-targeted.cms
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
