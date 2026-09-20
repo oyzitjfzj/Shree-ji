@@ -266,34 +266,33 @@ jobs:
           tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIEVzCCAr+gAwIBAgIUc1tmE1gvvHyivtkYn3aS6qXl14gwDQYJKoZIhvcNAQEL
-          BQAwOzE5MDcGA1UEAwwwTEFTIGVwaGVtZXJhbCByb290ZmZpIGRpYWdub3N0aWMg
-          Y3VycmVudCBzZXNzaW9uMB4XDTI2MDkyMDE2MTgwOFoXDTI2MDkyMjE2MTgwOFow
-          OzE5MDcGA1UEAwwwTEFTIGVwaGVtZXJhbCByb290ZmZpIGRpYWdub3N0aWMgY3Vy
-          cmVudCBzZXNzaW9uMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA4K0O
-          6vE/pGKwbGndr3Xl1ZYCtVsRyNlWEl8OdhPLas85VFTs81kZpC1y+7K6iYuajKUp
-          hY13yXD6wULURCqw+dX1u4QXBR1q+UaVcSf7K6aEmcVfOMf5Gp8AnGKhrq2v0dfn
-          FLWWn+k/nEl4NWOv807DBAme0E6NbV3t7jwILYEIGynfoOYCA1I1SsnGcf+EN7XT
-          WR911bzjTkQAsYzZU8nCyJqgIrU7yHDYW9uvmFwDce8f+PBmCzLgIqoM0xYSRsNE
-          rXmA86FAMDwsMitxhFmG1WGjtLjTh+uKLu9J2FBnTnczs6gONk5U0QmCTXQBx9x3
-          P6n0tOnyr9mY4JCDDjUrRvFcm0+dqiExwyIliE1Yx+oje7BSbDUccjt9LZwn/im1
-          NcccCiAGVSHklTQr+4h+ce3vzpzHYULBD+3GAtPvpZF1zVj6jyjDjgqJAGIi3eRo
-          W22eepszx4JOoRRliA42iJHpA88Dm9kNWwB6negICwTqB75bMqnqZGCoeJTdAgMB
-          AAGjUzBRMB0GA1UdDgQWBBT+S31klNW2NI5onxoldt+/GVO9KjAfBgNVHSMEGDAW
-          gBT+S31klNW2NI5onxoldt+/GVO9KjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3
-          DQEBCwUAA4IBgQCyS2xcvpThMLG1D8vfrKzR4jyIYGS4dNkN9nr4jeMWv+a44x1R
-          fSw1YtS9atdU2CG5UcxK6PaKGUlj/Ivrq81GgF/CNNTy7UjPxh8tqvoE3mPf+XsV
-          +9O9pkWw6YioZjQZ1X2V4rXMQO7WKyL3vIn13go4CufI2H4WD5nYXl4JD1TVv6ob
-          em616T9lS6hicjNQd4AJPC6+Xnu2zW1jTMUhcL83Nf0rUw75kGYFcg+gIxEXygjV
-          Abc4YrSVyDhe8jcgw8DjDpSuf+ne0QNBX6TlxlYjrYnIYjitJOVC9nBZbcofx+f6
-          xPvw/rZQQpGVoR0CdackTBixmW/pf3JtqYXVMg3mI3m9kPBc2IpVG+0vzcnFjl5n
-          lCyTIraCOVKCrW/SQnOam4zeaV6k/pHtfNaaZoZoR9yBcFk+rZZdb0b73WrFWeN1
-          udK2JG1lBFTLHtWZl7czhdxRnuAFMJ0VgKvN4EAhO7nIqFQxmF9m2XmYrtRLLWHG
-          TpsxjSCJYAYCrSw=
+          MIIEPzCCAqegAwIBAgIUWVAroYc8KFByeZ5B1IBvnKSBuBYwDQYJKoZIhvcNAQEL
+          BQAwLzEtMCsGA1UEAwwkTEFTIGVwaGVtZXJhbCBjbGlwcHkgY3VycmVudCBzZXNz
+          aW9uMB4XDTI2MDkyMDE2NDgxOVoXDTI2MDkyMjE2NDgxOVowLzEtMCsGA1UEAwwk
+          TEFTIGVwaGVtZXJhbCBjbGlwcHkgY3VycmVudCBzZXNzaW9uMIIBojANBgkqhkiG
+          9w0BAQEFAAOCAY8AMIIBigKCAYEAvnR6UwwbC9yAXoQXJ1sc6P/YDOsNykvkCvrA
+          GR81Sn/biyljEbspIEps4JaVwh14T4FElO1NUKyZBPZMaFNGY/l13cdQ7O4wnmqC
+          hqG5TKha4nQ8uBksIGKJ3YdIBH9xXZSqGJEFZAgtXPlLx8dsKxJe5bmcnYeWntHu
+          chDgKaunDwIKPJi5Wt+8cxlJBgnfJC4dqKTAUGL0yUo49SB7DCNLoNlhX95vnKpv
+          ixY+aqbG5SrO7tOPFQUZ6eFAYVXDpLwC6mJolgqM24e6XX08TH3DDDxNxYhhrn/c
+          bscCMOf3bH/v+rrk4BtpGjp3oKJu7deEICyrObWm8dAiVzUX0/KzEcjEyKtQvb66
+          ZS9yQ9pzny7i4UdwtIcYFZUCTFw2XeeEB/VCyk+1NzXifmBHX78L8clrsGt12OyM
+          MHzKZV0OgoQO7M26/UlXCTXuIdZsSdkRXNmHz9pD+ih/eLYlWANAFYe6pfiDaaOW
+          8/EkpPTFyR+QDG6a0Q4NJHRNoFArAgMBAAGjUzBRMB0GA1UdDgQWBBTwbC+7404V
+          4Nm2YFem4HtNex+tWzAfBgNVHSMEGDAWgBTwbC+7404V4Nm2YFem4HtNex+tWzAP
+          BgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQByBDELenC3vonIvmT2
+          oXv+y/HVc+UwQvs8qkZf+apls6FWzcClvp4SEZuVEWuhqsB17fuE+agFOGQyyuFk
+          hyH1htaad8y865W+JJ1xW4YNl4THsOso+4f67JxeTfYj2nEcsPU54rXNFZA/AYBJ
+          BLLQz/WL0OaCnGTXKAov9/PDnGBzSfCtL6ob+cUWM+BDnxjDu6hLMudKJ5DC5Pai
+          FTgEibQvphYqqk+TSh5R2umqN8+Wro70u1KxyZYl8t7IbbTMIJcHb3nYE9rhW2Ml
+          fLuaW7dlisVESgGV3pSKz1uImro+28VUnFQGkAux0CX0vbIF+/yNz1lJ3bpAhade
+          VBiR+h/3DlqShL+jJVMHMLUAkrOyMv7fe4KFtpQQK+6ir5aZXkNLhb9fX6V7ZOio
+          n3/GdgNQ0gvlTSYZ8OWF3IUZuARuXB6vU5OJP0h61puLZn6BfT7BRtuWqP3v8q4L
+          6F7NdnN24Qq4V3eFP1MsxK1GhoeXc/xwyOuTaaHIGv+Noqc=
           -----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "2F:04:00:AE:7A:E4:A2:78:8B:07:1F:54:B6:B1:86:CD:C6:97:A1:3A:06:88:8A:01:BC:37:80:68:29:12:95:34"
+          test "$cert_fp" = "4A:E6:27:02:38:41:9C:1A:A6:D9:0D:B4:06:81:33:C8:FA:06:20:17:06:D3:01:98:CB:E8:74:CB:70:BF:12:85"
           echo "LAS_DIAG_CERT_FINGERPRINT_OK=YES"
           openssl cms -encrypt -binary -aes-256-cbc \
             -outform DER \
