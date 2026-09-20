@@ -58,16 +58,20 @@ jobs:
 
           ads = Path("src/root_authority/root_authority.ads")
           text = ads.read_text(encoding="utf-8")
-          old = """   type Grant_Handle is record
-      Domain : Domain_Epoch := 0;
-      Slot   : Natural := 0;
-   end record;"""
-          new = """   type Handle_Slot_Reference is new Natural;
-
-   type Grant_Handle is record
-      Domain : Domain_Epoch := 0;
-      Slot   : Handle_Slot_Reference := 0;
-   end record;"""
+          old = "\n".join([
+              "   type Grant_Handle is record",
+              "      Domain : Domain_Epoch := 0;",
+              "      Slot   : Natural := 0;",
+              "   end record;",
+          ])
+          new = "\n".join([
+              "   type Handle_Slot_Reference is new Natural;",
+              "",
+              "   type Grant_Handle is record",
+              "      Domain : Domain_Epoch := 0;",
+              "      Slot   : Handle_Slot_Reference := 0;",
+              "   end record;",
+          ])
           if text.count(old) != 1:
               raise SystemExit(f"Grant_Handle shape count={text.count(old)}")
           ads.write_text(text.replace(old, new, 1), encoding="utf-8")
