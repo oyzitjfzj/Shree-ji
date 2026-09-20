@@ -48,6 +48,14 @@ jobs:
             branch: work/root-a654-triple-helper-query-proc
           - label: public_formal_proc
             branch: work/root-a654-triple-public-formal-proc
+          - label: stub_minus_public
+            branch: work/root-a654-stub-minus-public
+          - label: stub_minus_formal
+            branch: work/root-a654-stub-minus-formal
+          - label: stub_minus_query
+            branch: work/root-a654-stub-minus-query
+          - label: stub_minus_proc
+            branch: work/root-a654-stub-minus-proc
     steps:
       - name: Checkout exact private probe
         shell: bash
