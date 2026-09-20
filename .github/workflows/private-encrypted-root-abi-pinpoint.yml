@@ -801,6 +801,22 @@ jobs:
           set -e
           echo "LAS_CORE_DEBUG_RC=$core_debug_rc"
           echo "LAS_CORE_DEBUG_LOG_SHA256=$(sha256sum "$bundle/core-debug.log" | awk '{print $1}')"
+
+          set +e
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -f -p -P"$core_probe/core_probe.gpr" \
+              -cargs:Ada -gnatp
+          ) >"$bundle/core-noassert.log" 2>&1
+          core_noassert_rc=$?
+          set -e
+          echo "LAS_CORE_NOASSERT_RC=$core_noassert_rc"
+          if grep -q "GNAT BUG DETECTED" "$bundle/core-noassert.log"; then
+            echo "LAS_CORE_NOASSERT_ICE=YES"
+          else
+            echo "LAS_CORE_NOASSERT_ICE=NO"
+          fi
+          echo "LAS_CORE_NOASSERT_LOG_SHA256=$(sha256sum "$bundle/core-noassert.log" | awk '{print $1}')"
           core_locations="$(grep -Eo '[A-Za-z0-9_-]*root_authority[A-Za-z0-9_-]*\.(ads|adb):[0-9]+(:[0-9]+)?' "$bundle/core-only.log" | awk '!seen[$0]++' | paste -sd, - || true)"
           if [[ -n "$core_locations" ]]; then
             echo "LAS_CORE_ONLY_LOCATIONS=$core_locations"
