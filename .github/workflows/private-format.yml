@@ -40,14 +40,14 @@ jobs:
           log="$RUNNER_TEMP/private-format-checkout.log"
           set +e
           git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            fetch -q --depth=1 origin refs/heads/work/assurance-core >"$log" 2>&1
+            fetch -q --depth=1 origin refs/heads/work/clippy-closure-probe >"$log" 2>&1
           rc=$?
           set -e
           if [[ "$rc" -ne 0 ]]; then
             echo "LAS_PRIVATE_FORMAT_CHECKOUT=FAIL"
             exit 1
           fi
-          git checkout -q -B work/assurance-core FETCH_HEAD >"$log" 2>&1
+          git checkout -q -B work/clippy-closure-probe FETCH_HEAD >"$log" 2>&1
           start_sha="$(git rev-parse HEAD)"
           echo "::add-mask::$start_sha"
           printf '%s' "$start_sha" > "$RUNNER_TEMP/format-start-sha"
@@ -109,7 +109,7 @@ jobs:
           echo "::add-mask::$start_sha"
 
           remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            ls-remote origin refs/heads/work/assurance-core | awk '{print $1}')"
+            ls-remote origin refs/heads/work/clippy-closure-probe | awk '{print $1}')"
           echo "::add-mask::$remote_sha"
           if [[ "$remote_sha" != "$start_sha" ]]; then
             echo "LAS_PRIVATE_FORMAT_PUSH=BLOCKED_REMOTE_MOVED"
@@ -124,7 +124,7 @@ jobs:
           echo "::add-mask::$new_sha"
 
           git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            push -q origin HEAD:refs/heads/work/assurance-core
+            push -q origin HEAD:refs/heads/work/clippy-closure-probe
 
           proof="$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
           echo "LAS_PRIVATE_FORMAT_PUSH=PASS"
