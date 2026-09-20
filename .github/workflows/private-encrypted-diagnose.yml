@@ -292,7 +292,7 @@ eBZKUr5yIt0SOPwHpghEdk+bMaKw3quG18GMhLDdin0aKhYCJRzV2fZutA==
 -----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "C6:8F:16:BB:32:47:3D:2C:B7:9B:75:20:1F:F0:C4:8A:18:54:CC:70:94:0E:9D:05:3F:70:D5:99:BD:A0:7D:57"
+          test "$cert_fp" = "CC:B8:56:8C:70:A4:50:D2:8B:55:FF:A5:48:91:8B:B6:E8:D3:D7:CC:81:12:F3:83:71:46:03:90:F3:3D:8D:26"
           echo "LAS_DIAG_CERT_FINGERPRINT_OK=YES"
           openssl cms -encrypt -binary -aes-256-cbc \
             -outform DER \
