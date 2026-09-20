@@ -670,7 +670,7 @@ jobs:
               echo "GNAT_REPRO_SCALAR_ENVELOPE_ICE=NO"
             fi
             if [[ "$rc" -ne 0 ]]; then
-              grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -80 || true
+              cat "$dir/build.log"
             fi
           }
 
