@@ -1,0 +1,150 @@
+name: SOL encrypted GNAT core diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_GNAT_SOL_PROBE"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sol-encrypted-gnat-core
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private work snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/root-history-29618-probe
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_CURRENT_GNAT_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Compile current Root core and encrypt diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$ALR_ZIP"             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+
+          ALR_WS="$RUNNER_TEMP/alire-current-gnat"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_current_gnat >/dev/null
+          )
+
+          probe="$RUNNER_TEMP/root-core-current"
+          mkdir -p "$probe/obj"
+          cat > "$probe/root_authority_core_probe.ads" <<'EOF_PROBE'
+          with Root_Authority;
+          package Root_Authority_Core_Probe is
+             package Core is new Root_Authority (Max_Grants => 256);
+          end Root_Authority_Core_Probe;
+          EOF_PROBE
+          cat > "$probe/core_probe.gpr" <<EOF_GPR
+          project Core_Probe is
+             for Source_Dirs use ("$GITHUB_WORKSPACE/target/src/root_authority", "$probe");
+             for Object_Dir use "$probe/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022");
+             end Compiler;
+          end Core_Probe;
+          EOF_GPR
+
+          set +e
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -f -p -P"$probe/core_probe.gpr" -cargs:Ada -gnatG -gnatd.n
+          ) >"$RUNNER_TEMP/current-core-debug.log" 2>&1
+          rc=$?
+          set -e
+
+          echo "LAS_CURRENT_GNAT_CORE_RC=$rc"
+          if grep -q "GNAT BUG DETECTED" "$RUNNER_TEMP/current-core-debug.log"; then
+            echo "LAS_CURRENT_GNAT_CORE_ICE=YES"
+          else
+            echo "LAS_CURRENT_GNAT_CORE_ICE=NO"
+          fi
+          echo "LAS_CURRENT_GNAT_LOG_SHA256=$(sha256sum "$RUNNER_TEMP/current-core-debug.log" | awk '{print $1}')"
+
+          bundle="$RUNNER_TEMP/current-gnat-private"
+          mkdir -p "$bundle"
+          cp "$RUNNER_TEMP/current-core-debug.log" "$bundle/core-debug.log"
+          cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
+          printf '%s\n' "$rc" > "$bundle/core.rc"
+          tar -C "$bundle" -czf "$RUNNER_TEMP/current-gnat-private.tgz" .
+
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIEUTCCArmgAwIBAgIUP7PL8QzIWQguCXX+dz60gXfg92YwDQYJKoZIhvcNAQEL
+          BQAwODE2MDQGA1UEAwwtTEFTIGVwaGVtZXJhbCBHTkFUIGRpYWdub3N0aWMgY3Vy
+          cmVudCBzZXNzaW9uMB4XDTI2MDkyMDE0NTg1NloXDTI2MDkyMjE0NTg1NlowODE2
+          MDQGA1UEAwwtTEFTIGVwaGVtZXJhbCBHTkFUIGRpYWdub3N0aWMgY3VycmVudCBz
+          ZXNzaW9uMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAyImbRwqF72yP
+          CCN5nZUwrzYFp0cfG9JtZxNTqO9lnsVO5pvYmnMVScnAtDx5H02d4mFpGUXINxDr
+          vF1+ccerHNWOsoiamHtVfC+66zK6eYhC16nXT3prVQw9KCArH74XRU+IMNY2CXet
+          udp3Xua00GTIPE+MjOkIZ67k6r0XqAqM8VuhAW7QDeNoWj5xB9kZ0DJWj3dlxnlP
+          V4TRwDO/TppAwE4jzgrmz9EpczvAUD6T5SnBCqGqEgWfG4u7PJyPBFTjF9CzmXhc
+          yyADyBk+zFh5wOxL9wLb0Zp+kHKZ/PpgXaB1YOST+FslKdQdgLmr/whahbZ5HCS3
+          S3/6+MXv807O2fzPpGVu7lOfOSNpJGodjUZ0zjoxcqLIA+ueUW+/MUPz1WtlBRYH
+          mQPMnT5JwNt5Z469uG4n8Xw/tUd8p+lA5wfl/juv5+VlLnC9nz+DdgLiXqBVcEhY
+          CXh4OdspLOghxV0J1QRz8Bj/9gSGp8JKm1zKlgf87L0joeVDYxxLAgMBAAGjUzBR
+          MB0GA1UdDgQWBBSZVZy7SfM74c5Js5ItQGfc+KbpGjAfBgNVHSMEGDAWgBSZVZy7
+          SfM74c5Js5ItQGfc+KbpGjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUA
+          A4IBgQBi3285vzNLNQwHCBKJQLAC0Dfgs75o4SnnEKJSLfDDNUBnio2CmaP+01S7
+          P1Dp3dU7owvTYmQSdpGYpxNq17o9+j6q8sSuZYza/9k28h4KXyOnkUZkfNf92OnN
+          SnZWy3TljjNrruz/LD/O59r5lio7ryH1GdUXTy1AzGvPtKShrRHTFTZH3V3G4WKk
+          EmVgAaARSvh6SXVopE2L8pvZABg284IZl4n6VSqF6AWEVUza0LQ0u5BJJra5ajjB
+          sHW5Fnq6kG9KCGpr2jv9O5fzkuFYtEtM6XjvH0kOmwudXLIROwV4xiEv/GDJN5hW
+          aoNlIUAL8kFz4r2rq7CekqhqhGV9k+/EnndBl23blv6xIZXD3q+4Rb73eL9fWkaH
+          xCgusnZXE7Nf/YZ+qRxQ3Gd0Wn/9mUoRipx81DsbRtyGasSjmYZjKQvEMBH9Dqg5
+          h0r4Ik32sywt8f+p1PgtE08cn50BEenUAeZgGbtgaBc5tiXTaFDnjvmMTAKEHF9T
+          IUx/QNs=
+          -----END CERTIFICATE-----
+          EOF_CERT
+          cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$cert_fp" = "16:D9:17:31:CA:1F:51:48:C0:2F:AE:F2:F2:36:91:C0:58:EE:97:DB:32:8F:2E:43:25:88:BA:B4:7F:AC:D7:9B"
+          echo "LAS_CURRENT_GNAT_CERT_OK=YES"
+          openssl cms -encrypt -binary -aes-256-cbc             -outform DER             -in "$RUNNER_TEMP/current-gnat-private.tgz"             -out "$RUNNER_TEMP/current-gnat-private.cms"             "$RUNNER_TEMP/recipient-cert.pem"
+          rm -rf "$bundle" "$RUNNER_TEMP/current-gnat-private.tgz" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_CURRENT_GNAT_CIPHERTEXT_READY=YES"
+
+      - name: Upload ciphertext only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-current-gnat-core
+          path: ${{ runner.temp }}/current-gnat-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
