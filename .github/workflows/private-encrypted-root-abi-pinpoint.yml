@@ -640,6 +640,84 @@ jobs:
           end Repro;'
 
 
+          run_synth_body_case ghost_delta 'generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             package Model with Ghost is
+                subtype Model_Index is Positive range 1 .. Max_Items;
+                type Item_Model is record
+                   Used : Boolean := False;
+                   Count : Natural := 0;
+                end record;
+                type Item_Array is array (Model_Index) of Item_Model;
+                type Machine_Model is record
+                   Count : Natural range 0 .. Max_Items := 0;
+                   Data : Item_Array;
+                end record;
+                function Update
+                  (Before : Machine_Model;
+                   Index  : Model_Index) return Machine_Model
+                  with Global => null;
+             end Model;
+          end Repro;' 'package body Repro is
+             package body Model is
+                function Update
+                  (Before : Machine_Model;
+                   Index  : Model_Index) return Machine_Model is
+                  (Before with delta
+                     Data =>
+                       (Before.Data with delta
+                          Index =>
+                            (Before.Data (Index) with delta
+                               Used => True,
+                               Count => Before.Data (Index).Count + 1)));
+             end Model;
+          end Repro;'
+
+          run_synth_body_case ghost_delta_handle 'generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             type Handle is private;
+             package Model with Ghost is
+                subtype Model_Index is Positive range 1 .. Max_Items;
+                type Item_Model is record
+                   Used : Boolean := False;
+                end record;
+                type Item_Array is array (Model_Index) of Item_Model;
+                type Machine_Model is record
+                   Count : Natural range 0 .. Max_Items := 0;
+                   Data : Item_Array;
+                end record;
+                function Handle_Slot (Value : Handle) return Natural
+                  with Global => null,
+                       Post => Handle_Slot'\''Result <= Max_Items;
+                function Update
+                  (Before : Machine_Model;
+                   Item   : Handle) return Machine_Model
+                  with Global => null;
+             end Model;
+          private
+             type Handle is record
+                Slot : Natural := 0;
+             end record;
+          end Repro;' 'package body Repro is
+             package body Model is
+                function Handle_Slot (Value : Handle) return Natural is (Value.Slot);
+                function Update
+                  (Before : Machine_Model;
+                   Item   : Handle) return Machine_Model is
+                  (if Handle_Slot (Item) in Model_Index then
+                      (Before with delta
+                         Data =>
+                           (Before.Data with delta
+                              Model_Index (Handle_Slot (Item)) =>
+                                (Before.Data (Model_Index (Handle_Slot (Item))) with delta
+                                   Used => True)))
+                   else Before);
+             end Model;
+          end Repro;'
+
+
           bundle="$RUNNER_TEMP/abi-pinpoint-bundle"
           ffi_dir="$RUNNER_TEMP/root-authority-abi-pinpoint"
           mkdir -p "$bundle" "$ffi_dir"
