@@ -828,33 +828,33 @@ jobs:
           tar -C "$bundle" -czf "$RUNNER_TEMP/abi-pinpoint.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          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
+          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
-          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
+          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
-          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
+          MA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQCTY0C2lCRVDd/vTnFUSqNGbMCb
+          FMS667ONIyojblHYd1rJh+HbzSNJW4Gz7acHAwm/LIlpD0YTNlpNpRQ+42ow5Iwk
+          gAYA0Tk7Qy/WI05kBYdAOLVsFcGnXft1GKwp7iC1c9hTjvsHliYiDFjMgQe5TCjK
+          LMVZLVuQMXdvGIPusQMK5EtXRgqEqKaGvmcmNEPv9T4mP04idnSzd3fR/wbHad8s
+          wDSGVK3TRS6OekibqkdSaejowUC+1ff/FxTxcB245uFttU7Z2CTT9SOzjnlSByWd
+          Rn6C5jKWvIF4Dye+WuKWhAENYRbD6ibxQXX7F8icg4WuvYsit2WI9CrUbRo5aR0b
+          dFg/RnjVYyFicCHm3PA/6cVy3Jk95XaFjYJeuiqpgun2JXBSe/y92sjPD8sazSo0
+          mqfzTuCOmjlYtEzbaWATpcdqFXPtLtNY1vJU4lvRT2/MqK95uX2EwqaDTm7TrcwN
+          OnoMTEteoXknDXc/nJUS8LIipa18oeaahl5lnw0CAwEAAaNTMFEwHQYDVR0OBBYE
+          FIEk6awVVbrZC/VC8cqAGVfQf9RdMB8GA1UdIwQYMBaAFIEk6awVVbrZC/VC8cqA
+          GVfQf9RdMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBAHRsurYZ
+          MSnnFELO4cw8kXbZolFYhgVupLsYUDwc35lz042OGEeweIrZV1RnrhkoYA3VbeU2
+          Zc/oyCyKFFjny1D6lJnnBlIxuaev8sH3TZ6yzjJHCU0YE+OyA0QM7d08EaZsEWEF
+          xMt0cahBO6AsWnWesh25UQ1GOniGiPRjHbvjXfNOkETcV2H0GTuujKAW24zIRjsE
+          Dt9H/ssJv7ok46382G3CHhvWx222+TIk4yvvoeo3ic0Cm2qPHJmULMvEHDqLIg01
+          XHQaSXykmt2je5AAj8o+iPPrBLP4izi7lkfIfRKmJrkFPDOm7FEPMwwNnlQIEWwS
+          tH1MLSLOe2ub4fEnve/lj5V6hD9TLYUhAXdjwhr5do33m5QOI8Fj33pSyYX776dt
+          GrE+q1c/mFOeuGfnRH1f2eilLmj1XFFVJXc2XllC0Sh/3/7lnFQM0LQkPfUsMovl
+          mTa/n3ii7xNGQgI2kno1petSzLbYMEr1Ofr4ooGy8cjxnI2njZ+iE2ufsA==
           -----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "B5:BD:CE:51:D4:3A:0A:34:A4:A9:BA:5B:0A:41:AA:35:81:44:07:73:EC:9C:CE:ED:33:0F:07:D3:EC:71:DD:82"
+          test "$cert_fp" = "A2:02:7F:5B:25:FE:CD:0A:8B:7D:2A:FA:39:DF:0A:0D:F8:27:A4:CA:54:17:69:68:74:E0:83:2A:F0:FF:75:02"
           echo "LAS_ABI_PINPOINT_CERT_OK=YES"
           openssl cms -encrypt -binary -aes-256-cbc             -outform DER             -in "$RUNNER_TEMP/abi-pinpoint.tgz"             -out "$RUNNER_TEMP/abi-pinpoint.cms"             "$RUNNER_TEMP/recipient-cert.pem"
           rm -rf "$bundle" "$RUNNER_TEMP/abi-pinpoint.tgz" "$RUNNER_TEMP/recipient-cert.pem"
