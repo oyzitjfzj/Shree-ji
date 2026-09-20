@@ -33,7 +33,7 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/root-formal-explicit-ghost-probe
           git checkout -q --detach FETCH_HEAD
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
@@ -125,34 +125,34 @@ jobs:
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/current-root-targeted.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
-          -----BEGIN CERTIFICATE-----
-          MIIERzCCAq+gAwIBAgIUNWV2eDuNGO2OT1s15iRpWE6ZBbMwDQYJKoZIhvcNAQEL
-          BQAwMzExMC8GA1UEAwwoTEFTIGVwaGVtZXJhbCBkaWFnbm9zdGljIGN1cnJlbnQg
-          c2Vzc2lvbjAeFw0yNjA5MjAwODQ5MjhaFw0yNjA5MjIwODQ5MjhaMDMxMTAvBgNV
-          BAMMKExBUyBlcGhlbWVyYWwgZGlhZ25vc3RpYyBjdXJyZW50IHNlc3Npb24wggGi
-          MA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQCpbB85J7veU/NiZUzmocgujD8w
-          FYzjBqtakB65F28vT/9WAsIxxwbrzS3wnVo2vznAGoid7LeU5vgSuyd9j93nnm4z
-          lzARHT8ekFsWi1QxN9N93xCujjtPiemFgxk6IPq1XbpcFJ+lu/P678PFbnsYScnJ
-          tzfhYVRJBAVpJcTanUY5tGvwjQxeyE7zKYFbXFpg9/aKccZ7L5qQCRlHg/Vk/24S
-          poNZLaB0tMOfsUp1pdzsFsw4F4ayCs7gbRr3kphkF8BEncnaRt70L6fHjb68j1C9
-          YG5aUQfn1Krr/53+isQRa397xY1VsGk7ixOShcnJETGDQ725yP1OwCtOfhNUzWVx
-          8Qe/uhRJgf9ctMfZg3WDWufcUZCiCUT/QoobAERB7dXQWY9CECShBZbY1QgRZgu0
-          CxdJ0YGWfjNUosEZ7o8OF2aVxYyn0CaosRelt6NsE3JhMyfj/7QNBB5fj/s1dubH
-          Y4jNLbSKYKw1o/K2TDQ1Y6oUQ5L7fnvCOsRykUcCAwEAAaNTMFEwHQYDVR0OBBYE
-          FGuaDM9sTvEiCQd3ixpWVqD/flxcMB8GA1UdIwQYMBaAFGuaDM9sTvEiCQd3ixpW
-          VqD/flxcMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBACAyxt/+
-          KRaPM8TA+pc638a58F9dTvvUqt6fJT81f1Wk6jJBtivHlxETGjjimM67j1MGo949
-          Ul8fXxJhl8RqZvxbii1exAGEzMCeua0D8TwQdBr5eFi6Emv5AM6UurPj4CoQ9oWw
-          ePNFEneD1sbV1L+ojLDnM+lSeTo0PF7suZsdUZrcKhi8+W5er6RWFtWcS3dL6Vj6
-          dNdcovxpz996IoPygRbbNdhFlWJwziu9sUTOk7X5fwhRcZy+n5DXc1lBXId5mX+9
-          EA/v1KhK7kOMgqaJbHhn1JoXjgnZmjSW850vDKpk6udWHXhg6+Zh6kmoj9yg1Kwh
-          456aPQEjNyFhzXvJyBQp94t6UKUHCl4o+4cWGgNlJSjQQgSgxZVamv3L7vAY74Dg
-          FlWNq8yiUZ/LWcgLf3KzTTzZjto81Y2gvOfa8PiSlBPLQyNAtSvOVn49hjfdrQ17
-          dHF2HYk0ZJj7VR78jt7IZo6+KYDFIGXWaMQ6txZ4dqtHc7m5M7KrHC1XeA==
+                    -----BEGIN CERTIFICATE-----
+          MIIEOzCCAqOgAwIBAgIUDBZasai+Ovtq1ILg6TyIudQmRe4wDQYJKoZIhvcNAQEL
+          BQAwLTErMCkGA1UEAwwiTEFTIGVwaGVtZXJhbCBHTkFUIGN1cnJlbnQgc2Vzc2lv
+          bjAeFw0yNjA5MjAxNTAwNTdaFw0yNjA5MjIxNTAwNTdaMC0xKzApBgNVBAMMIkxB
+          UyBlcGhlbWVyYWwgR05BVCBjdXJyZW50IHNlc3Npb24wggGiMA0GCSqGSIb3DQEB
+          AQUAA4IBjwAwggGKAoIBgQDOhIl47xdFw2KivT30XRSlyaIP6nACSC0xFJQAZ/cM
+          TyynbRt8/SSOEPXUX/JZ+PcUOQWMJuJHrw//DgoGTmr8/+a/6WNG0KZUKXCAVPdc
+          LMUXGCn1fJ8zkKjs5lpcVGT/NAmgdY5C/euKjT4spWaTPc+YWyZLVubgvxpjz55S
+          1YP7dIuD0o41Y1chFRxa0iBuyMcEifFEeIuF/DUFr7Bwb282hNwJOZXGcaMSgvU5
+          CYRzQnKs96YQaynOFFXswrMRx8P1CC7uWpg8AVwyhXwnay4VjjzSudPHpEG1/eY9
+          t/M2jXwDkL/mbR4Nc2/CCVJW6171RmEzhZMU05Yo2HOg3dqn+JGHNXJd/rxftWgp
+          Onw1J7o478JFnk9xT38rXqnuchCTm30Txdb1O7Q7vgqAZh5cXUhJ2ppI7QkpoaVC
+          ODtntb5HLXJZOl60L8pPvidsCR40/AOlw1xsvnotA5qyU9JY/u8z1yB5O8ZkGivL
+          ZcvvqYzSTwarTsLUe3GbvdECAwEAAaNTMFEwHQYDVR0OBBYEFGVtm5uLBGMymlF4
+          JlRUwfShrPfdMB8GA1UdIwQYMBaAFGVtm5uLBGMymlF4JlRUwfShrPfdMA8GA1Ud
+          EwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBAJqFgOcow36RtZM0WXk95kvT
+          I2urUCEDzCS/9d9rGlY92wlqYTSBHvRbVdo2UWqnfXV7d6pwvnt5MXiIPCe31oPN
+          5DErZqif0vQRe0CCCbQQGfE1oRl1ZiXgT9uvwceWLWz8lLtdRZsdRFMbve38ZQE4
+          0arMaqIAuPwHEfIFAemLZ3fH06gzNMuoWVrfXIjs7V6Qd46MgDVzJT2hfKhy0EFa
+          OFW58r832Iion+988aGiFTn9QSE1bUbkVv+LGMRc6qIX4hyqx1lz191Rx7f7tj9V
+          bp2XVGrX32GmYmYltAt1sh3XcBAQLqvzvU6a49O7RI99Sb8gFI6AcY2nY1eos4Uh
+          zEKPNICwmpOl14xm2daqZHpI0st7FNmNnvrnZnHaXvMTnv5CDikl4EN2MBOEYLkK
+          RPGWTp7K6QtKlQW5H+wD+DP6Zf6okkyTzxKKE9rVbs6+SM5Aa5CvpCsZH35Xa5US
+          rcvKmc+S0mHgUmPqPlVSTQkFD7Nf9mQGCsofXI/+ZA==
           -----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "C6:8F:16:BB:32:47:3D:2C:B7:9B:75:20:1F:F0:C4:8A:18:54:CC:70:94:0E:9D:05:3F:70:D5:99:BD:A0:7D:57"
+          test "$cert_fp" = "59:7C:77:6C:A9:10:5C:E1:2C:3B:73:CE:A0:1E:12:2A:D3:88:E3:30:BF:FB:E8:45:18:19:C8:F5:DF:79:89:9A"
           echo "LAS_CURRENT_ROOT_CERT_OK=YES"
           openssl cms -encrypt -binary -aes-256-cbc             -outform DER             -in "$RUNNER_TEMP/current-root-targeted.tgz"             -out "$RUNNER_TEMP/current-root-targeted.cms"             "$RUNNER_TEMP/recipient-cert.pem"
           rm -rf "$bundle" "$RUNNER_TEMP/current-root-targeted.tgz" "$RUNNER_TEMP/recipient-cert.pem"
