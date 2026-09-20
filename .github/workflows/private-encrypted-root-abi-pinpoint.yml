@@ -444,6 +444,79 @@ jobs:
           end Repro;'
 
 
+          run_synth_body_case contract_graph 'generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Machine is limited private;
+             package Model with Ghost is
+                type Machine_Model is record
+                   Count : Natural range 0 .. Max_Items := 0;
+                end record;
+                function Snapshot (Value : Machine) return Machine_Model
+                  with Global => null;
+                function Slot_Of (Value : Handle) return Natural
+                  with Global => null,
+                       Post => Slot_Of'\''Result <= Max_Items;
+                function Transition
+                  (Before : Machine_Model;
+                   After  : Machine_Model;
+                   Item   : Handle) return Boolean
+                  with Global => null;
+             end Model;
+             procedure Install
+               (State : in out Machine;
+                Item  : out Handle)
+               with Global => null,
+                    Post => Model.Transition
+                              (Model.Snapshot (State)'\''Old,
+                               Model.Snapshot (State),
+                               Item);
+          private
+             subtype Slot_Index is Positive range 1 .. Max_Items;
+             type Handle is record
+                Domain : Natural := 0;
+                Slot   : Natural := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+             type Item_Record is record
+                Used : Boolean := False;
+             end record;
+             type Item_Array is array (Slot_Index) of Item_Record;
+             type Machine is limited record
+                Count : Natural range 0 .. Max_Items := 0;
+                Data  : Item_Array;
+             end record;
+          end Repro;' 'package body Repro is
+             package body Model is
+                function Snapshot (Value : Machine) return Machine_Model is
+                  (Count => Value.Count);
+                function Slot_Of (Value : Handle) return Natural is
+                  (Value.Slot);
+                function Transition
+                  (Before : Machine_Model;
+                   After  : Machine_Model;
+                   Item   : Handle) return Boolean is
+                  (After.Count >= Before.Count
+                   and then Slot_Of (Item) <= Max_Items);
+             end Model;
+             procedure Install
+               (State : in out Machine;
+                Item  : out Handle)
+             is
+             begin
+                if State.Count < Max_Items then
+                   State.Count := State.Count + 1;
+                   State.Data (Slot_Index (State.Count)).Used := True;
+                   Item := (Domain => 1, Slot => State.Count);
+                else
+                   Item := No_Handle;
+                end if;
+             end Install;
+          end Repro;'
+
+
           bundle="$RUNNER_TEMP/abi-pinpoint-bundle"
           ffi_dir="$RUNNER_TEMP/root-authority-abi-pinpoint"
           mkdir -p "$bundle" "$ffi_dir"
