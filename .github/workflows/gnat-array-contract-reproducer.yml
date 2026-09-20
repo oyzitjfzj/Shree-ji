@@ -148,3 +148,145 @@ jobs:
           if [[ "$rc" -ne 0 ]]; then
             grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -100 || true
           fi
+
+
+      - name: Compile synthetic dispatch array contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/alr/bin:$PATH"
+          dir="$RUNNER_TEMP/repro-dispatch"
+          mkdir -p "$dir/obj"
+
+          cat > "$dir/repro.ads" <<'EOF_SPEC2'
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Dispatch is limited private;
+             type Machine is limited private;
+
+             function Dispatch_Is_Valid (Value : Dispatch) return Boolean
+               with Global => null;
+
+             package Model with Ghost is
+                subtype Model_Slot is Positive range 1 .. Max_Items;
+                type Item_Model is record
+                   Used : Boolean := False;
+                end record;
+                type Item_Model_Array is array (Model_Slot) of Item_Model;
+                type Machine_Model is record
+                   Count : Natural range 0 .. Max_Items := 0;
+                   Items : Item_Model_Array;
+                end record;
+                function Snapshot (Value : Machine) return Machine_Model
+                  with Global => null;
+                function Transition
+                  (Before : Machine_Model;
+                   After  : Machine_Model;
+                   Grant  : Handle;
+                   Output : Dispatch;
+                   Result : Boolean) return Boolean
+                  with Global => null;
+             end Model;
+
+             procedure Commit_One
+               (State  : in out Machine;
+                Grant  : Handle;
+                Output : out Dispatch;
+                Result : out Boolean)
+               with Global => null,
+                    Depends => ((State, Output, Result) => (State, Grant)),
+                    Post => Model.Transition
+                      (Model.Snapshot (State)'Old,
+                       Model.Snapshot (State),
+                       Grant, Output, Result);
+
+          private
+             subtype Slot_Index is Positive range 1 .. Max_Items;
+             type Handle_Word is mod 2 ** 96
+               with Size => 96;
+             type Handle is new Handle_Word
+               with Default_Value => 0;
+             No_Handle : constant Handle := 0;
+
+             type Dispatch is limited record
+                Valid : Boolean := False;
+                Grant : Handle := No_Handle;
+             end record;
+
+             type Item_Record is record
+                Used : Boolean := False;
+             end record;
+             type Item_Array is array (Slot_Index) of Item_Record;
+             type Machine is limited record
+                Count : Natural range 0 .. Max_Items := 0;
+                Items : Item_Array;
+             end record;
+          end Repro;
+          EOF_SPEC2
+
+          cat > "$dir/repro.adb" <<'EOF_BODY2'
+          package body Repro is
+             function Dispatch_Is_Valid (Value : Dispatch) return Boolean is
+               (Value.Valid);
+
+             package body Model is
+                function Snapshot (Value : Machine) return Machine_Model is
+                  (Count => Value.Count,
+                   Items =>
+                     (for I in Model_Slot =>
+                        (Used => Value.Items (Slot_Index (I)).Used)));
+
+                function Transition
+                  (Before : Machine_Model;
+                   After  : Machine_Model;
+                   Grant  : Handle;
+                   Output : Dispatch;
+                   Result : Boolean) return Boolean is
+                  (After.Count >= Before.Count);
+             end Model;
+
+             procedure Commit_One
+               (State  : in out Machine;
+                Grant  : Handle;
+                Output : out Dispatch;
+                Result : out Boolean)
+             is
+             begin
+                Output.Valid := True;
+                Output.Grant := Grant;
+                Result := True;
+             end Commit_One;
+          end Repro;
+          EOF_BODY2
+
+          cat > "$dir/instance.ads" <<'EOF_INSTANCE2'
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF_INSTANCE2
+
+          cat > "$dir/repro.gpr" <<EOF_GPR2
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022", "-O2");
+             end Compiler;
+          end Repro_Project;
+          EOF_GPR2
+
+          set +e
+          (cd "$RUNNER_TEMP/alr-ws" && alr exec -- gprbuild -p -P "$dir/repro.gpr") >"$dir/build.log" 2>&1
+          rc=$?
+          set -e
+          echo "GNAT_REPRO_DISPATCH_ARRAY_CONTRACT_RC=$rc"
+          if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
+            echo "GNAT_REPRO_DISPATCH_ARRAY_CONTRACT_ICE=YES"
+          else
+            echo "GNAT_REPRO_DISPATCH_ARRAY_CONTRACT_ICE=NO"
+          fi
+          if [[ "$rc" -ne 0 ]]; then
+            grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -100 || true
+          fi
