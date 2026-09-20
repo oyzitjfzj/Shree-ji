@@ -36,6 +36,18 @@ jobs:
             branch: work/root-a654-pair-helper-public
           - label: public_formal
             branch: work/root-a654-pair-public-formal
+          - label: helper_public_formal
+            branch: work/root-a654-triple-helper-public-formal
+          - label: helper_formal_query
+            branch: work/root-a654-triple-helper-formal-query
+          - label: helper_formal_proc
+            branch: work/root-a654-triple-helper-formal-proc
+          - label: formal_query_proc
+            branch: work/root-a654-triple-formal-query-proc
+          - label: helper_query_proc
+            branch: work/root-a654-triple-helper-query-proc
+          - label: public_formal_proc
+            branch: work/root-a654-triple-public-formal-proc
     steps:
       - name: Checkout exact private probe
         shell: bash
