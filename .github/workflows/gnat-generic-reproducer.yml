@@ -567,6 +567,63 @@ jobs:
           run_contract_case contract_machine
 
 
+          run_scalar_case() {
+            local dir="$root/scalar_handle"
+            mkdir -p "$dir/obj"
+            cat > "$dir/repro.ads" <<'EOF'
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             type Handle is private;
+             No_Handle : constant Handle;
+             function Slot_Of (Value : Handle) return Natural
+               with Post => Slot_Of'Result <= Max_Items;
+          private
+             type Handle_Word is mod 2 ** 96
+               with Size => 96;
+             type Handle is new Handle_Word
+               with Default_Value => 0;
+             No_Handle : constant Handle := 0;
+          end Repro;
+          EOF
+            cat > "$dir/repro.adb" <<'EOF'
+          package body Repro is
+             Factor : constant Handle_Word := Handle_Word (Max_Items) + 1;
+             function Slot_Of (Value : Handle) return Natural is
+               (Natural (Handle_Word (Value) mod Factor));
+          end Repro;
+          EOF
+            cat > "$dir/instance.ads" <<'EOF'
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF
+            cat > "$dir/repro.gpr" <<EOF
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022", "-gnatf", "-gnatwa", "-gnatwe", "-O2");
+             end Compiler;
+          end Repro_Project;
+          EOF
+            set +e
+            (cd "$RUNNER_TEMP/alr-ws" && alr exec -- gprbuild -p -P "$dir/repro.gpr") >"$dir/build.log" 2>&1
+            rc=$?
+            set -e
+            echo "GNAT_REPRO_SCALAR_HANDLE_RC=$rc"
+            if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
+              echo "GNAT_REPRO_SCALAR_HANDLE_ICE=YES"
+            else
+              echo "GNAT_REPRO_SCALAR_HANDLE_ICE=NO"
+            fi
+            if [[ "$rc" -ne 0 ]]; then
+              cat "$dir/build.log"
+            fi
+          }
+
+          run_scalar_case
+
+
 
 
 
