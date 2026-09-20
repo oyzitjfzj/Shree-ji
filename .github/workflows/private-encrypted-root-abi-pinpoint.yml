@@ -517,6 +517,130 @@ jobs:
           end Repro;'
 
 
+          run_synth_body_case private_accessor_graph 'with Interfaces;
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             subtype U64 is Interfaces.Unsigned_64;
+             type Domain_Id is new U64;
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Control is limited private;
+             type Token is limited private;
+             type Machine is limited private;
+
+             function Token_Valid (Value : Token) return Boolean
+               with Global => null;
+             function Token_Domain (Value : Token) return Domain_Id
+               with Global => null,
+                    Pre => Token_Valid (Value);
+             function Token_Item (Value : Token) return Handle
+               with Global => null,
+                    Pre => Token_Valid (Value);
+
+             package Model with Ghost is
+                type Machine_Model is record
+                   Count : Natural range 0 .. Max_Items := 0;
+                end record;
+                function Snapshot (Value : Machine) return Machine_Model
+                  with Global => null;
+                function Handle_Slot (Value : Handle) return Natural
+                  with Global => null,
+                       Post => Handle_Slot'\''Result <= Max_Items;
+                function Control_Domain (Value : Control) return Domain_Id
+                  with Global => null;
+             end Model;
+
+          private
+             subtype Slot_Index is Positive range 1 .. Max_Items;
+             type Handle is record
+                Domain : Domain_Id := 0;
+                Slot   : Natural := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+             type Control is limited record
+                Domain : Domain_Id := 0;
+                Armed  : Boolean := False;
+             end record;
+             type Token is limited record
+                Valid  : Boolean := False;
+                Domain : Domain_Id := 0;
+                Item   : Handle := No_Handle;
+             end record;
+             type Item_Record is record
+                Used : Boolean := False;
+             end record;
+             type Item_Array is array (Slot_Index) of Item_Record;
+             type Machine is limited record
+                Count : Natural range 0 .. Max_Items := 0;
+                Data  : Item_Array;
+             end record;
+          end Repro;' 'package body Repro is
+             function Token_Valid (Value : Token) return Boolean is (Value.Valid);
+             function Token_Domain (Value : Token) return Domain_Id is (Value.Domain);
+             function Token_Item (Value : Token) return Handle is (Value.Item);
+             package body Model is
+                function Snapshot (Value : Machine) return Machine_Model is
+                  (Count => Value.Count);
+                function Handle_Slot (Value : Handle) return Natural is
+                  (Value.Slot);
+                function Control_Domain (Value : Control) return Domain_Id is
+                  (Value.Domain);
+             end Model;
+          end Repro;'
+
+          run_synth_body_case private_accessor_invariant_graph 'with Interfaces;
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             subtype U64 is Interfaces.Unsigned_64;
+             type Domain_Id is new U64;
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Control is limited private;
+             type Token is limited private;
+             type Machine is limited private;
+             function Token_Valid (Value : Token) return Boolean with Global => null;
+             function Token_Domain (Value : Token) return Domain_Id
+               with Global => null, Pre => Token_Valid (Value);
+             package Model with Ghost is
+                function Handle_Slot (Value : Handle) return Natural
+                  with Global => null,
+                       Post => Handle_Slot'\''Result <= Max_Items;
+                function Control_Domain (Value : Control) return Domain_Id with Global => null;
+             end Model;
+          private
+             subtype Slot_Index is Positive range 1 .. Max_Items;
+             type Handle is record
+                Domain : Domain_Id := 0;
+                Slot   : Natural := 0;
+             end record
+               with Type_Invariant => Handle.Slot <= Max_Items;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+             type Control is limited record
+                Domain : Domain_Id := 0;
+                Armed  : Boolean := False;
+             end record;
+             type Token is limited record
+                Valid  : Boolean := False;
+                Domain : Domain_Id := 0;
+                Item   : Handle := No_Handle;
+             end record;
+             type Item_Array is array (Slot_Index) of Boolean;
+             type Machine is limited record
+                Count : Natural range 0 .. Max_Items := 0;
+                Data  : Item_Array;
+             end record;
+          end Repro;' 'package body Repro is
+             function Token_Valid (Value : Token) return Boolean is (Value.Valid);
+             function Token_Domain (Value : Token) return Domain_Id is (Value.Domain);
+             package body Model is
+                function Handle_Slot (Value : Handle) return Natural is (Value.Slot);
+                function Control_Domain (Value : Control) return Domain_Id is (Value.Domain);
+             end Model;
+          end Repro;'
+
+
           bundle="$RUNNER_TEMP/abi-pinpoint-bundle"
           ffi_dir="$RUNNER_TEMP/root-authority-abi-pinpoint"
           mkdir -p "$bundle" "$ffi_dir"
