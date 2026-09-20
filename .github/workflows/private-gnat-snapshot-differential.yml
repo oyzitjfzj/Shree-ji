@@ -1,0 +1,129 @@
+name: Private GNAT snapshot differential
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_GNAT_SNAPSHOT_DIFF"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-gnat-snapshot-differential
+  cancel-in-progress: false
+
+jobs:
+  differential:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private work snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_GNAT_DIFF_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Compare GNAT 16.1.0 with pinned 16.1.1 snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$ALR_ZIP"             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+
+          ALR_WS="$RUNNER_TEMP/alire-gnat-diff"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_gnat_diff >/dev/null
+          )
+
+          probe="$RUNNER_TEMP/root-core-diff"
+          mkdir -p "$probe/base-obj" "$probe/snapshot-obj"
+          cat > "$probe/root_authority_core_probe.ads" <<'EOF_PROBE'
+          with Root_Authority;
+          package Root_Authority_Core_Probe is
+             package Core is new Root_Authority (Max_Grants => 256);
+          end Root_Authority_Core_Probe;
+          EOF_PROBE
+
+          set +e
+          (
+            cd "$ALR_WS"
+            alr exec -- gnatmake -c -gnat2022 -gnatf               -D"$probe/base-obj"               -I"$GITHUB_WORKSPACE/target/src/root_authority"               "$probe/root_authority_core_probe.ads"
+          ) >"$RUNNER_TEMP/gnat-16.1.0.log" 2>&1
+          base_rc=$?
+          set -e
+          echo "LAS_GNAT_1610_RC=$base_rc"
+          if grep -q "GNAT BUG DETECTED" "$RUNNER_TEMP/gnat-16.1.0.log"; then
+            echo "LAS_GNAT_1610_ICE=YES"
+          else
+            echo "LAS_GNAT_1610_ICE=NO"
+          fi
+          echo "LAS_GNAT_1610_LOG_SHA256=$(sha256sum "$RUNNER_TEMP/gnat-16.1.0.log" | awk '{print $1}')"
+
+          SNAP_TGZ="$RUNNER_TEMP/gnat-16.1.1-snapshot.tar.gz"
+          SNAP_ROOT="$RUNNER_TEMP/gnat-16.1.1-snapshot"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$SNAP_TGZ"             "https://github.com/alire-project/GNAT-FSF-builds/releases/download/gnat-16.1.1-snapshot/gnat-x86_64-linux-16.1.1-20260912.tar.gz" >/dev/null 2>&1
+          echo "fa0912c6c023cbc7a482739b1a828329396008d1485992249f596706bb4bd795  $SNAP_TGZ" | sha256sum --check --strict >/dev/null
+          mkdir -p "$SNAP_ROOT"
+          tar -xzf "$SNAP_TGZ" -C "$SNAP_ROOT"
+          SNAP_GNATMAKE="$(find "$SNAP_ROOT" -type f -name gnatmake -perm -u+x | head -n1)"
+          test -n "$SNAP_GNATMAKE"
+          SNAP_BIN="$(dirname "$SNAP_GNATMAKE")"
+          "$SNAP_GNATMAKE" --version >"$RUNNER_TEMP/gnat-snapshot-version.txt" 2>&1
+          if grep -q "16.1.1" "$RUNNER_TEMP/gnat-snapshot-version.txt"; then
+            echo "LAS_GNAT_1611_VERSION_OK=YES"
+          else
+            echo "LAS_GNAT_1611_VERSION_OK=NO"
+            exit 2
+          fi
+
+          set +e
+          (
+            export PATH="$SNAP_BIN:$PATH"
+            "$SNAP_GNATMAKE" -c -gnat2022 -gnatf               -D"$probe/snapshot-obj"               -I"$GITHUB_WORKSPACE/target/src/root_authority"               "$probe/root_authority_core_probe.ads"
+          ) >"$RUNNER_TEMP/gnat-16.1.1.log" 2>&1
+          snapshot_rc=$?
+          set -e
+          echo "LAS_GNAT_1611_RC=$snapshot_rc"
+          if grep -q "GNAT BUG DETECTED" "$RUNNER_TEMP/gnat-16.1.1.log"; then
+            echo "LAS_GNAT_1611_ICE=YES"
+          else
+            echo "LAS_GNAT_1611_ICE=NO"
+          fi
+          echo "LAS_GNAT_1611_LOG_SHA256=$(sha256sum "$RUNNER_TEMP/gnat-16.1.1.log" | awk '{print $1}')"
+
+          if [[ "$base_rc" -ne 0 ]] && grep -q "GNAT BUG DETECTED" "$RUNNER_TEMP/gnat-16.1.0.log"              && [[ "$snapshot_rc" -eq 0 ]]              && ! grep -q "GNAT BUG DETECTED" "$RUNNER_TEMP/gnat-16.1.1.log"; then
+            echo "LAS_GNAT_DIFF_RESULT=SNAPSHOT_CLEARS_ICE"
+          elif [[ "$snapshot_rc" -ne 0 ]] && grep -q "GNAT BUG DETECTED" "$RUNNER_TEMP/gnat-16.1.1.log"; then
+            echo "LAS_GNAT_DIFF_RESULT=ICE_PERSISTS"
+          else
+            echo "LAS_GNAT_DIFF_RESULT=INCONCLUSIVE"
+          fi
