@@ -107,33 +107,34 @@ jobs:
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIEOzCCAqOgAwIBAgIUHwecJhMmRhS/Kkb96fbXCWFsElIwDQYJKoZIhvcNAQEL
-          BQAwLTErMCkGA1UEAwwiTEFTIGVwaGVtZXJhbCBHTkFUIGN1cnJlbnQgc2Vzc2lv
-          bjAeFw0yNjA5MjAxNDQ2MDJaFw0yNjA5MjIxNDQ2MDJaMC0xKzApBgNVBAMMIkxB
-          UyBlcGhlbWVyYWwgR05BVCBjdXJyZW50IHNlc3Npb24wggGiMA0GCSqGSIb3DQEB
-          AQUAA4IBjwAwggGKAoIBgQCxwOkhgAep06vnSX+8rrjB7Ed+TPhOtae8S8EsOP7l
-          GdfCILfnjsWgmHKfLJgkJzj+1r3/seouN8Np7B5xzJVh0EglklCx9qMjmuBL4AfF
-          N/asqIGGkL4dAtw0l/VW/Yg35l8r6OP8pc7JJF02t3ARiO+8Qcy2edvD+BdJ3IM5
-          sNbZGOZ0X9F0dE/SacA6D28pt2kbducvMRTCfeT/hvXj8Enb4t/zBVqn3eWtXLGG
-          Dr0/AyzDq8TDxMmsPJxgMGjabhCiwmyI6ssj5pQbkINMJRaHZoIq6QFp3UKPJWEZ
-          4Fpd5CT3MuJwUJjuEdy08liHrXpQIe3f7b+zbp7kBYnXlpLvelHVI5BMrvw/S2SN
-          /6wwyQjPmdt6YpgcoC1gLS4cJWabyquP509xk7z1cF644BoKC/z9PupjGq6um8IU
-          HET2TKX/9+ZXexW6gLnvzx2Atvg3fzF9FRyBBJ9/f71oZ5o2xp4MJovmGKF9EHR+
-          /m0RRq4G55mQCax6B6fD0f0CAwEAAaNTMFEwHQYDVR0OBBYEFIz1/tN75MjIyeuY
-          8VifVowRZ69bMB8GA1UdIwQYMBaAFIz1/tN75MjIyeuY8VifVowRZ69bMA8GA1Ud
-          EwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBAJ0ImREg++R6wAQSU+/LNmqP
-          2eEQnqkDQFfIx6ogPdzdLTtRpeS8cbfhFY+ms9umBevZm6nbnH3NGaZaXXUsXYLa
-          vPWsrM8aKmCKDKSZgt4AB7ttXiPiJ7x1zwFGFGAHiL4kCxfUrr3s9t7jsMm+W8Q2
-          lLUyuJYG5Itn+NY99gw7R55inkZqA+mVA7a9yBG9lWw0QiKt5U9OHKexW0UywXyg
-          mSllkeLuQF+UX2ufJe2juE/r6uJE+zV8ds2wrxi10F/yDWe8W8jm3xVHPZC9C2i/
-          U/ZZfvD3UB6v1PGqHezl42O99S1NRfnTuKHkOnnaJaUM6Zv3Z30fBAeUzufNtcLX
-          jJ2wr4h38y+WzkrHkNckq3Tfqa03zX+jpBppN1kHiE9sUefFJbR3GN3tZi25xmpP
-          ReiyMmqCRsNCZLTTvztjhLjDU+m/PTDvCLQzbK+rXM75G3pX64n2547rJj8YRrKm
-          ZtsxYi8rIiePeYvzEQLMZc9oE5vKZtvRRYRWujPpHg==
+          MIIEUTCCArmgAwIBAgIUP7PL8QzIWQguCXX+dz60gXfg92YwDQYJKoZIhvcNAQEL
+          BQAwODE2MDQGA1UEAwwtTEFTIGVwaGVtZXJhbCBHTkFUIGRpYWdub3N0aWMgY3Vy
+          cmVudCBzZXNzaW9uMB4XDTI2MDkyMDE0NTg1NloXDTI2MDkyMjE0NTg1NlowODE2
+          MDQGA1UEAwwtTEFTIGVwaGVtZXJhbCBHTkFUIGRpYWdub3N0aWMgY3VycmVudCBz
+          ZXNzaW9uMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAyImbRwqF72yP
+          CCN5nZUwrzYFp0cfG9JtZxNTqO9lnsVO5pvYmnMVScnAtDx5H02d4mFpGUXINxDr
+          vF1+ccerHNWOsoiamHtVfC+66zK6eYhC16nXT3prVQw9KCArH74XRU+IMNY2CXet
+          udp3Xua00GTIPE+MjOkIZ67k6r0XqAqM8VuhAW7QDeNoWj5xB9kZ0DJWj3dlxnlP
+          V4TRwDO/TppAwE4jzgrmz9EpczvAUD6T5SnBCqGqEgWfG4u7PJyPBFTjF9CzmXhc
+          yyADyBk+zFh5wOxL9wLb0Zp+kHKZ/PpgXaB1YOST+FslKdQdgLmr/whahbZ5HCS3
+          S3/6+MXv807O2fzPpGVu7lOfOSNpJGodjUZ0zjoxcqLIA+ueUW+/MUPz1WtlBRYH
+          mQPMnT5JwNt5Z469uG4n8Xw/tUd8p+lA5wfl/juv5+VlLnC9nz+DdgLiXqBVcEhY
+          CXh4OdspLOghxV0J1QRz8Bj/9gSGp8JKm1zKlgf87L0joeVDYxxLAgMBAAGjUzBR
+          MB0GA1UdDgQWBBSZVZy7SfM74c5Js5ItQGfc+KbpGjAfBgNVHSMEGDAWgBSZVZy7
+          SfM74c5Js5ItQGfc+KbpGjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUA
+          A4IBgQBi3285vzNLNQwHCBKJQLAC0Dfgs75o4SnnEKJSLfDDNUBnio2CmaP+01S7
+          P1Dp3dU7owvTYmQSdpGYpxNq17o9+j6q8sSuZYza/9k28h4KXyOnkUZkfNf92OnN
+          SnZWy3TljjNrruz/LD/O59r5lio7ryH1GdUXTy1AzGvPtKShrRHTFTZH3V3G4WKk
+          EmVgAaARSvh6SXVopE2L8pvZABg284IZl4n6VSqF6AWEVUza0LQ0u5BJJra5ajjB
+          sHW5Fnq6kG9KCGpr2jv9O5fzkuFYtEtM6XjvH0kOmwudXLIROwV4xiEv/GDJN5hW
+          aoNlIUAL8kFz4r2rq7CekqhqhGV9k+/EnndBl23blv6xIZXD3q+4Rb73eL9fWkaH
+          xCgusnZXE7Nf/YZ+qRxQ3Gd0Wn/9mUoRipx81DsbRtyGasSjmYZjKQvEMBH9Dqg5
+          h0r4Ik32sywt8f+p1PgtE08cn50BEenUAeZgGbtgaBc5tiXTaFDnjvmMTAKEHF9T
+          IUx/QNs=
           -----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "B8:05:13:32:87:44:BC:69:22:4B:3C:F2:35:7B:35:0C:85:73:AD:36:6D:43:C8:16:23:44:82:E9:94:80:51:98"
+          test "$cert_fp" = "16:D9:17:31:CA:1F:51:48:C0:2F:AE:F2:F2:36:91:C0:58:EE:97:DB:32:8F:2E:43:25:88:BA:B4:7F:AC:D7:9B"
           echo "LAS_CURRENT_GNAT_CERT_OK=YES"
           openssl cms -encrypt -binary -aes-256-cbc             -outform DER             -in "$RUNNER_TEMP/current-gnat-private.tgz"             -out "$RUNNER_TEMP/current-gnat-private.cms"             "$RUNNER_TEMP/recipient-cert.pem"
           rm -rf "$bundle" "$RUNNER_TEMP/current-gnat-private.tgz" "$RUNNER_TEMP/recipient-cert.pem"
