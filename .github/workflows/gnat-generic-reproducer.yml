@@ -624,6 +624,59 @@ jobs:
           run_scalar_case
 
 
+          run_scalar_envelope_case() {
+            local dir="$root/scalar_envelope"
+            mkdir -p "$dir/obj"
+            cat > "$dir/repro.ads" <<'EOF'
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Envelope is limited private;
+          private
+             type Handle_Word is mod 2 ** 96
+               with Size => 96;
+             type Handle is new Handle_Word
+               with Default_Value => 0;
+             No_Handle : constant Handle := 0;
+             type Envelope is limited record
+                Valid : Boolean := False;
+                Item  : Handle := No_Handle;
+             end record;
+          end Repro;
+          EOF
+            cat > "$dir/instance.ads" <<'EOF'
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF
+            cat > "$dir/repro.gpr" <<EOF
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022", "-gnatf", "-gnatwa", "-gnatwe", "-O2");
+             end Compiler;
+          end Repro_Project;
+          EOF
+            set +e
+            (cd "$RUNNER_TEMP/alr-ws" && alr exec -- gprbuild -p -P "$dir/repro.gpr") >"$dir/build.log" 2>&1
+            rc=$?
+            set -e
+            echo "GNAT_REPRO_SCALAR_ENVELOPE_RC=$rc"
+            if grep -q "GNAT BUG DETECTED" "$dir/build.log"; then
+              echo "GNAT_REPRO_SCALAR_ENVELOPE_ICE=YES"
+            else
+              echo "GNAT_REPRO_SCALAR_ENVELOPE_ICE=NO"
+            fi
+            if [[ "$rc" -ne 0 ]]; then
+              grep -E "GNAT BUG DETECTED|Error detected at|error:" "$dir/build.log" | head -80 || true
+            fi
+          }
+
+          run_scalar_envelope_case
+
+
 
 
 
