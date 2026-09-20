@@ -26,6 +26,16 @@ jobs:
             branch: work/root-a654-body-proc-probe
           - label: helper
             branch: work/root-a654-body-helper-probe
+          - label: helper_formal
+            branch: work/root-a654-pair-helper-formal
+          - label: helper_proc
+            branch: work/root-a654-pair-helper-proc
+          - label: formal_proc
+            branch: work/root-a654-pair-formal-proc
+          - label: helper_public
+            branch: work/root-a654-pair-helper-public
+          - label: public_formal
+            branch: work/root-a654-pair-public-formal
     steps:
       - name: Checkout exact private probe
         shell: bash
