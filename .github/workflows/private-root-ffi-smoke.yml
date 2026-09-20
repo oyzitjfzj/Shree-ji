@@ -1,0 +1,88 @@
+name: Private Root FFI smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ROOT_FFI_SMOKE"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-root-ffi-smoke
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/root-formal-clean-candidate
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_ROOT_FFI_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run strict Root FFI check
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+
+          ALR_WS="$RUNNER_TEMP/alire-root-ffi-smoke"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_root_ffi_smoke >/dev/null
+          )
+
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec alr exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod 0755 "$GPRBUILD_WRAPPER"
+
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/root-ffi-smoke.log"
+          set +e
+          RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" \
+            cargo +1.98.1 check --locked --features root-ffi --all-targets >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_ROOT_FFI_CHECK_RC=$rc"
+          echo "LAS_ROOT_FFI_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_ROOT_FFI_LOG_LINES=$(wc -l < "$log" | tr -d ' ')"
+          exit "$rc"
