@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/private-encrypted-root-abi-pinpoint.yml"
       - "RUN_ROOT_ABI_PINPOINT"
 
 permissions:
