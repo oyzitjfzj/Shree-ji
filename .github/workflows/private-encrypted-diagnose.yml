@@ -38,7 +38,7 @@ jobs:
           checkout_log="$RUNNER_TEMP/checkout.log"
           set +e
           git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            fetch -q --depth=1 origin refs/heads/work/root-formal-clean-candidate >"$checkout_log" 2>&1
+            fetch -q --depth=1 origin refs/heads/work/root-formal-explicit-ghost-probe >"$checkout_log" 2>&1
           rc=$?
           set -e
           test "$rc" -eq 0
