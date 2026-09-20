@@ -141,6 +141,14 @@ jobs:
           RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" \
             cargo +1.98.1 check --locked --features root-ffi --all-targets >"$bundle/root-ffi-check.log" 2>&1
           root_ffi_rc=$?
+
+          RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" \
+            cargo +1.98.1 check --locked --all-features --all-targets >"$bundle/check-all-features.log" 2>&1
+          check_all_rc=$?
+
+          RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" \
+            cargo +1.98.1 test --locked --all-features --all-targets -- --test-threads=1 >"$bundle/tests-all-features.log" 2>&1
+          tests_all_rc=$?
           (
             cd "$ALR_WS"
             alr exec -- gnatprove \
@@ -222,6 +230,8 @@ jobs:
           set -e
 
           printf '%s\n' "$root_ffi_rc" > "$bundle/root-ffi-check.rc"
+          printf '%s\n' "$check_all_rc" > "$bundle/check-all-features.rc"
+          printf '%s\n' "$tests_all_rc" > "$bundle/tests-all-features.rc"
           printf '%s\n' "$spark_rc" > "$bundle/spark.rc"
           printf '%s\n' "$abi_rc" > "$bundle/abi-build.rc"
           printf '%s\n' "$abi_o0_rc" > "$bundle/abi-o0.rc"
@@ -239,6 +249,8 @@ jobs:
           echo "LAS_DIAG_CLIPPY_ROOT_FFI_RC=$clippy_root_ffi_rc"
           echo "LAS_DIAG_CLIPPY_ALL_RC=$clippy_all_rc"
           echo "LAS_DIAG_ROOT_FFI_RC=$root_ffi_rc"
+          echo "LAS_DIAG_CHECK_ALL_FEATURES_RC=$check_all_rc"
+          echo "LAS_DIAG_TESTS_ALL_FEATURES_RC=$tests_all_rc"
           echo "LAS_DIAG_SPARK_RC=$spark_rc"
           echo "LAS_DIAG_ABI_RC=$abi_rc"
           echo "LAS_DIAG_ABI_O0_RC=$abi_o0_rc"
