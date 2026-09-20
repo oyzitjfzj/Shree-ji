@@ -1,1 +1,1 @@
-rerun strict Root Ada warning cleanup after aggregate closure fix 2026-09-20
+verify minimal Root warning cleanup with original grant logic 2026-09-20
