@@ -824,13 +824,13 @@ jobs:
                   (After.Count >= Before.Count);
              end Model;'
               contract="$(cat <<'EOF_CONTRACT'
-with Global => null,
+          with Global => null,
                     Post => Model.Transition
                       (Model.Snapshot (State)'Old,
                        Model.Snapshot (State),
                        Item, Output, Result)
-EOF_CONTRACT
-)"
+          EOF_CONTRACT
+          )"
             fi
             cat > "$dir/repro.ads" <<EOF
           generic
