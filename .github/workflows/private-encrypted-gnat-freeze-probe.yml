@@ -71,13 +71,17 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
           p = Path("src/root_authority/root_authority.ads")
           text = p.read_text(encoding="utf-8")
-          old = """   type Grant_Handle is record
-              Domain : Domain_Epoch := 0;
-              Slot   : Natural := 0;
-           end record
-             with Type_Invariant => Grant_Handle.Slot <= Max_Grants;"""
+          pattern = re.compile(
+              r"""   type Grant_Handle is record\n"""
+              r"""      Domain : Domain_Epoch := 0;\n"""
+              r"""      Slot   : Natural := 0;\n"""
+              r"""   end record\n"""
+              r"""     with Type_Invariant => Grant_Handle\.Slot <= Max_Grants;"""
+          )
           new = """   subtype Handle_Slot_Reference is Natural
              with Dynamic_Predicate => Handle_Slot_Reference <= Max_Grants;
 
@@ -85,9 +89,10 @@ jobs:
               Domain : Domain_Epoch := 0;
               Slot   : Handle_Slot_Reference := 0;
            end record;"""
-          if old not in text:
-              raise SystemExit("current Grant_Handle shape not found exactly")
-          p.write_text(text.replace(old, new, 1), encoding="utf-8")
+          text2, count = pattern.subn(new, text, count=1)
+          if count != 1:
+              raise SystemExit(f"expected one current Grant_Handle shape, found {count}")
+          p.write_text(text2, encoding="utf-8")
           PY
 
           ffi_dir="$RUNNER_TEMP/root-authority-predicate-abi"
