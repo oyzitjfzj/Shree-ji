@@ -106,33 +106,33 @@ jobs:
           tar -C "$bundle" -czf "$RUNNER_TEMP/current-gnat-private.tgz" .
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
------BEGIN CERTIFICATE-----
-MIIEUTCCArmgAwIBAgIUU3ClVxXjVTF/Hu74SNlGJz3t/XowDQYJKoZIhvcNAQEL
-BQAwODE2MDQGA1UEAwwtTEFTIGVwaGVtZXJhbCBHTkFUIGRpYWdub3N0aWMgY3Vy
-cmVudCBzZXNzaW9uMB4XDTI2MDkyMDE0MTU1MloXDTI2MDkyMjE0MTU1MlowODE2
-MDQGA1UEAwwtTEFTIGVwaGVtZXJhbCBHTkFUIGRpYWdub3N0aWMgY3VycmVudCBz
-ZXNzaW9uMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAotMi1BJneO7Y
-6idLT0yTYqQ1dFvJ6ubi0Nq1Tjje0qd91HAi2tugtGP5UekqQFRNrFUZYdlzR+aa
-ELqAPZrB5h+Gwy3iuD5qnVDhPfcvPARy4YqeabHSj5IzrcBRqppUS6CHsUC2k7Eq
-s4jPpkwtuA77oK+Zn97IRdtOP5aNOqnCXuAI4bl56xQH9c3ck/0rRQmGZ0WEhLSs
-8w/sHZCCPuHp/xqhblslgwIjAiJtKxiGewITPox7LHmot6kT88katzq6O1KH3Ywd
-wC5jrsxwvjEnM/mnhjVd7JmygDpOFiY+we8GeprGutNkFaDdAoBXIxULvrq9B1xR
-qxJ3cqBQD52lgqM/MfJkkCG7LCfTdvCavUn31zTsd4TkqfyZYNnOfkATTW6MLVTf
-EvG72bdC3JWYQaZtGfEY2EOWaeaO4Z5JNdMAML+pezLvJ0o7Cwi6s6fjE1nMg4Ih
-x8A+vxPcahK/4tqbEgnxppSwYgBKXMHv88Y0qwO/95tbmCLJDNBvAgMBAAGjUzBR
-MB0GA1UdDgQWBBS3StNKzqbTaBmX+mkx8kERh+Hm9zAfBgNVHSMEGDAWgBS3StNK
-zqbTaBmX+mkx8kERh+Hm9zAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUA
-A4IBgQA1Y+frD6vsnw8YSx7vw5DqobIeTSkGe6rXWjD/mKvWa8Co8G1BogWUcSws
-BXXVF9vwbB8QhBylVZaYyEWpOz1jpDscWfIjA29ex69rP9GCCoa99te+yCljV1Fx
-mVjrXjREpSgf5LYDttxTiWg6wvfOiZTH6ANxm3UokepAB0ohThvzMkDmwRWYSuos
-iDxxYiny0mgfUMbDzz7IGIqaoabaGMREUlG2bhWSHa1tsoIVmjabpyZZZG0Bb9Rm
-sp0iD9fERNL2AqG1jG7eCxcFnWI1byP6D9xvJds/Y5eScZvKwMhWWblUex5FlKph
-JGXxtFRh1Dyyo+3xY8ggMp6xM22A8fkw33Nw80PN+PRpW18yFBC8CXXeCOX/atNS
-30vpBbt3FkUAq/plhHdN76nambhGnRd7WvhzzxNmSjkGxdWfJceciLYZ1KFgbanT
-ZfzbIWcnWSgcrjLpRDwdDYY3hLiEsIkVOya9/D5+vxl38bmgFmrEeiW0LxZUUYNM
-g3TN3hw=
------END CERTIFICATE-----
-EOF_CERT
+          -----BEGIN CERTIFICATE-----
+          MIIEUTCCArmgAwIBAgIUU3ClVxXjVTF/Hu74SNlGJz3t/XowDQYJKoZIhvcNAQEL
+          BQAwODE2MDQGA1UEAwwtTEFTIGVwaGVtZXJhbCBHTkFUIGRpYWdub3N0aWMgY3Vy
+          cmVudCBzZXNzaW9uMB4XDTI2MDkyMDE0MTU1MloXDTI2MDkyMjE0MTU1MlowODE2
+          MDQGA1UEAwwtTEFTIGVwaGVtZXJhbCBHTkFUIGRpYWdub3N0aWMgY3VycmVudCBz
+          ZXNzaW9uMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAotMi1BJneO7Y
+          6idLT0yTYqQ1dFvJ6ubi0Nq1Tjje0qd91HAi2tugtGP5UekqQFRNrFUZYdlzR+aa
+          ELqAPZrB5h+Gwy3iuD5qnVDhPfcvPARy4YqeabHSj5IzrcBRqppUS6CHsUC2k7Eq
+          s4jPpkwtuA77oK+Zn97IRdtOP5aNOqnCXuAI4bl56xQH9c3ck/0rRQmGZ0WEhLSs
+          8w/sHZCCPuHp/xqhblslgwIjAiJtKxiGewITPox7LHmot6kT88katzq6O1KH3Ywd
+          wC5jrsxwvjEnM/mnhjVd7JmygDpOFiY+we8GeprGutNkFaDdAoBXIxULvrq9B1xR
+          qxJ3cqBQD52lgqM/MfJkkCG7LCfTdvCavUn31zTsd4TkqfyZYNnOfkATTW6MLVTf
+          EvG72bdC3JWYQaZtGfEY2EOWaeaO4Z5JNdMAML+pezLvJ0o7Cwi6s6fjE1nMg4Ih
+          x8A+vxPcahK/4tqbEgnxppSwYgBKXMHv88Y0qwO/95tbmCLJDNBvAgMBAAGjUzBR
+          MB0GA1UdDgQWBBS3StNKzqbTaBmX+mkx8kERh+Hm9zAfBgNVHSMEGDAWgBS3StNK
+          zqbTaBmX+mkx8kERh+Hm9zAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUA
+          A4IBgQA1Y+frD6vsnw8YSx7vw5DqobIeTSkGe6rXWjD/mKvWa8Co8G1BogWUcSws
+          BXXVF9vwbB8QhBylVZaYyEWpOz1jpDscWfIjA29ex69rP9GCCoa99te+yCljV1Fx
+          mVjrXjREpSgf5LYDttxTiWg6wvfOiZTH6ANxm3UokepAB0ohThvzMkDmwRWYSuos
+          iDxxYiny0mgfUMbDzz7IGIqaoabaGMREUlG2bhWSHa1tsoIVmjabpyZZZG0Bb9Rm
+          sp0iD9fERNL2AqG1jG7eCxcFnWI1byP6D9xvJds/Y5eScZvKwMhWWblUex5FlKph
+          JGXxtFRh1Dyyo+3xY8ggMp6xM22A8fkw33Nw80PN+PRpW18yFBC8CXXeCOX/atNS
+          30vpBbt3FkUAq/plhHdN76nambhGnRd7WvhzzxNmSjkGxdWfJceciLYZ1KFgbanT
+          ZfzbIWcnWSgcrjLpRDwdDYY3hLiEsIkVOya9/D5+vxl38bmgFmrEeiW0LxZUUYNM
+          g3TN3hw=
+          -----END CERTIFICATE-----
+          EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
           test "$cert_fp" = "6F:54:C3:57:20:FE:0E:28:6E:45:65:F1:2C:1D:2D:22:7A:F0:50:E7:35:49:CB:9B:2B:54:BE:AA:83:07:DD:FF"
           echo "LAS_CURRENT_GNAT_CERT_OK=YES"
