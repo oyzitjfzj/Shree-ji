@@ -37,11 +37,12 @@ jobs:
           git checkout -q --detach FETCH_HEAD
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           echo "LAS_ROOT_FFI_SNAPSHOT_PROOF=$proof"
           unset PRIVATE_TOKEN auth
 
-      - name: Run strict Root FFI check
+      - name: Run strict Root FFI check and encrypt diagnostic
         shell: bash
         run: |
           set -euo pipefail
@@ -76,13 +77,64 @@ jobs:
           chmod 0755 "$GPRBUILD_WRAPPER"
 
           cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/root-ffi-smoke.log"
+          bundle="$RUNNER_TEMP/root-ffi-private"
+          mkdir -p "$bundle"
+          log="$bundle/root-ffi-smoke.log"
           set +e
           RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" \
             cargo +1.98.1 check --locked --features root-ffi --all-targets >"$log" 2>&1
           rc=$?
           set -e
+          printf '%s\n' "$rc" > "$bundle/root-ffi-smoke.rc"
+          cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
           echo "LAS_ROOT_FFI_CHECK_RC=$rc"
           echo "LAS_ROOT_FFI_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_ROOT_FFI_LOG_LINES=$(wc -l < "$log" | tr -d ' ')"
-          exit "$rc"
+
+          tar -C "$bundle" -czf "$RUNNER_TEMP/root-ffi-private.tgz" .
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIEQzCCAqugAwIBAgIUFtWfM/szVx2nqPTMYYFjIaFRHJEwDQYJKoZIhvcNAQEL
+          BQAwMTEvMC0GA1UEAwwmTEFTIGVwaGVtZXJhbCBSb290IEZGSSBjdXJyZW50IHNl
+          c3Npb24wHhcNMjYwOTIwMTYyNzM1WhcNMjYwOTIyMTYyNzM1WjAxMS8wLQYDVQQD
+          DCZMQVMgZXBoZW1lcmFsIFJvb3QgRkZJIGN1cnJlbnQgc2Vzc2lvbjCCAaIwDQYJ
+          KoZIhvcNAQEBBQADggGPADCCAYoCggGBAM8fwFECyG73LwGdV4bcZEXK4KuMQdIa
+          B7x9IpGm4tVrDdoGo+Lou/NYIEuHVoQZo/+lPNT3ir/DLFDUEHrnNp6Ie+9sDwV6
+          H/UBf48CvVAIoMIaL818dTLA48CCNetre7y5bNUtCB2X87ajBot2ThP6qUjK19k1
+          T0i+EWWTjqseI1jkZcxE/nf6CSABim+d3FTE2s0r1v+kl7ZevD6fanz93f+IGqYs
+          mVwjyyJK8Qh627evW5I84lrjOgOh6ItLuxCyXI7qiMsnuubj1nzmtmOVWwj8De4b
+          SfcITAIRZZAG3n9lzpKli+UwGuoz22avWEbpeoHOF0PbkUSLIrGv7HGV+zD5vspL
+          eECwnzQ2s2yxo23m/KeyRktAU49acFmzKxGhD8tJROrgtlJdWPqk183yRvItSnh3
+          i8dKBRY6wkxFo3EU+2PgwWTKVKvo8Xp2d8jXaJIievBVy1tq7DodBBbldEZDZn8X
+          e8mG8LHui5SORhFmW9ET8JoKeRz6yp/akQIDAQABo1MwUTAdBgNVHQ4EFgQUU6Zf
+          /i67aCtofASWeGSk91vool4wHwYDVR0jBBgwFoAUU6Zf/i67aCtofASWeGSk91vo
+          ol4wDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAYEAs3YnG3tMI7Di
+          uKY4fg0U2ohfux1SgJtv6euor770jimMJoaXj13g80ko9Khc74qfCyMzV2xnl+8m
+          A5VDQzH2xQifyCLBp3We0PGOTvJ7K6sxTc9+/4aGxA6Nt6FWqIOKyJRlmJrUW0ZM
+          4B//EP6KoDZxWVbGU1Z5IYi3WvYC9gBWSEEmidQ4KAI5mNmLwfHoXr5OA+kEeQpL
+          LI+AOLRltvH89OdSykBIpo+oeGNZU2tcAZtgHUkn4QhCEZLifZKaPs0MsSGt5gVN
+          vNyZ5D0Y2YLTPTo0/S3czAvv/3SC3xNCWFWsrDMRHgXZNBkRi0bHD5cwJsipPK/c
+          OpX20N3H3GveaMMEiXcIve8DAxSJFU1KAphXRWHTgdkQIqCtH9zg/77f6LK/s6CK
+          Nh8biMquPH8ND2sF3yFkgRSdIoG3W5mYVG5tvqnVUaYtYjjbAugVOupUhU54wllA
+          h08F/vLALuqqnaO4GJIwpSzPF/frO1kxVXZFozsCowr/4II/f8P9
+          -----END CERTIFICATE-----
+          EOF_CERT
+          cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$cert_fp" = "E2:99:5B:46:A5:51:BA:FD:B5:60:7C:6A:B9:C7:21:A7:FF:C6:C1:E7:AA:72:86:E6:DB:5D:E8:BA:7B:AA:AA:15"
+          echo "LAS_ROOT_FFI_CERT_OK=YES"
+          openssl cms -encrypt -binary -aes-256-cbc \
+            -outform DER \
+            -in "$RUNNER_TEMP/root-ffi-private.tgz" \
+            -out "$RUNNER_TEMP/root-ffi-private.cms" \
+            "$RUNNER_TEMP/recipient-cert.pem"
+          rm -rf "$bundle" "$RUNNER_TEMP/root-ffi-private.tgz" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_ROOT_FFI_CIPHERTEXT_READY=YES"
+
+      - name: Upload ciphertext only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-root-ffi-smoke
+          path: ${{ runner.temp }}/root-ffi-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
