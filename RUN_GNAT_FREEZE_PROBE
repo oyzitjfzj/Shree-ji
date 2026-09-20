@@ -1,1 +1,1 @@
-run YAML-safe fail-closed Root handle projection probe on work head 6f515810bc580a4e401921d5b5cf127eefc754b8
+verify current private work head 8cb0343d999072bee5bc2e3d6ec74f36a46eaf2b directly: ABI + SPARK
