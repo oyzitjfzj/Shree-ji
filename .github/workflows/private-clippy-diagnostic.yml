@@ -122,7 +122,7 @@ jobs:
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/clippy-private.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
-                    -----BEGIN CERTIFICATE-----
+          -----BEGIN CERTIFICATE-----
           MIIERzCCAq+gAwIBAgIUJY/9up0W2kVdwEtSRU+yQeU/HPwwDQYJKoZIhvcNAQEL
           BQAwMzExMC8GA1UEAwwoTEFTIGVwaGVtZXJhbCBjdXJyZW50IGRpYWdub3N0aWMg
           c2Vzc2lvbjAeFw0yNjA5MjAxNzQxMDlaFw0yNjA5MjIxNzQxMDlaMDMxMTAvBgNV
