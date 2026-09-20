@@ -1,0 +1,114 @@
+name: Root SPARK exact probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ROOT_SPARK_ONLY"
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private probe
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/root-formal-explicit-ghost-probe
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_SPARK_ONLY_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run exact Root SPARK gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+
+          ALR_WS="$RUNNER_TEMP/alire-root-spark-only"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_root_spark_only >/dev/null
+            alr with gnatprove=16.1.0 >/dev/null
+          )
+
+          PROOF_DIR="$RUNNER_TEMP/root-authority-proof"
+          mkdir -p "$PROOF_DIR/obj"
+          cat > "$PROOF_DIR/root_authority_proof_instances.ads" <<'EOF_PROOF'
+          pragma SPARK_Mode (On);
+          with Root_Authority;
+
+          package Root_Authority_Proof_Instances is
+             package Capacity_1   is new Root_Authority (Max_Grants => 1);
+             package Capacity_2   is new Root_Authority (Max_Grants => 2);
+             package Capacity_16  is new Root_Authority (Max_Grants => 16);
+             package Capacity_256 is new Root_Authority (Max_Grants => 256);
+          end Root_Authority_Proof_Instances;
+          EOF_PROOF
+
+          cat > "$PROOF_DIR/root_authority_proof.gpr" <<EOF_GPR
+          project Root_Authority_Proof is
+             for Source_Dirs use
+               ("$GITHUB_WORKSPACE/target/src/root_authority", "$PROOF_DIR");
+             for Object_Dir use "$PROOF_DIR/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022");
+             end Compiler;
+          end Root_Authority_Proof;
+          EOF_GPR
+
+          set +e
+          (
+            cd "$ALR_WS"
+            alr exec -- gnatprove \
+              -P"$PROOF_DIR/root_authority_proof.gpr" \
+              -U \
+              --mode=all \
+              --level=4 \
+              --proof=progressive:all \
+              --checks-as-errors=on \
+              --proof-warnings=on \
+              --report=statistics \
+              --warnings=error \
+              --pedantic \
+              -j2
+          ) >"$RUNNER_TEMP/spark.log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_SPARK_ONLY_RC=$rc"
+          if grep -q "GNAT BUG DETECTED" "$RUNNER_TEMP/spark.log"; then
+            echo "LAS_SPARK_ONLY_ICE=YES"
+          else
+            echo "LAS_SPARK_ONLY_ICE=NO"
+          fi
+          echo "LAS_SPARK_ONLY_LOG_SHA256=$(sha256sum "$RUNNER_TEMP/spark.log" | awk '{print $1}')"
