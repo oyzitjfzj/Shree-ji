@@ -172,6 +172,153 @@ jobs:
              No_Handle : constant Handle := (Domain => 0, Slot => 0);
           end Repro;'
 
+          run_synth_case effect_nested 'with Interfaces;
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             subtype U64 is Interfaces.Unsigned_64;
+             subtype U32 is Interfaces.Unsigned_32;
+             type Domain_Id is new U64;
+             type Resource_Id is new U64;
+             type Operation_Id is new U32;
+             type Epoch_Id is new U64;
+             type Word_Index is range 0 .. 3;
+             type Digest is array (Word_Index) of U64;
+             Zero_Digest : constant Digest := (others => 0);
+             type Effect is record
+                Resource : Resource_Id := 0;
+                Operation : Operation_Id := 0;
+                Request : Digest := Zero_Digest;
+                Epoch : Epoch_Id := 0;
+             end record;
+             Null_Effect : constant Effect := (Resource => 0, Operation => 0, Request => Zero_Digest, Epoch => 0);
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Token is limited private;
+          private
+             type Handle is record
+                Domain : Domain_Id := 0;
+                Slot : Natural := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+             type Token is limited record
+                Valid : Boolean := False;
+                Domain : Domain_Id := 0;
+                Item : Handle := No_Handle;
+                Frozen : Effect := Null_Effect;
+             end record;
+          end Repro;'
+
+          run_synth_case machine_effect 'with Interfaces;
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             subtype U64 is Interfaces.Unsigned_64;
+             subtype U32 is Interfaces.Unsigned_32;
+             type Domain_Id is new U64;
+             type Principal_Id is new U64;
+             type Resource_Id is new U64;
+             type Operation_Id is new U32;
+             type Epoch_Id is new U64;
+             type Budget is new U32;
+             type Word_Index is range 0 .. 3;
+             type Digest is array (Word_Index) of U64;
+             Zero_Digest : constant Digest := (others => 0);
+             type Effect is record
+                Resource : Resource_Id := 0;
+                Operation : Operation_Id := 0;
+                Request : Digest := Zero_Digest;
+                Epoch : Epoch_Id := 0;
+             end record;
+             Null_Effect : constant Effect := (Resource => 0, Operation => 0, Request => Zero_Digest, Epoch => 0);
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Machine is limited private;
+          private
+             subtype Slot_Index is Positive range 1 .. Max_Items;
+             subtype Slot_Ref is Natural range 0 .. Max_Items;
+             type Handle is record
+                Domain : Domain_Id := 0;
+                Slot : Natural := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+             type Item is record
+                Parent : Slot_Ref := 0;
+                Subject : Principal_Id := 0;
+                Frozen : Effect := Null_Effect;
+                Remaining : Budget := 0;
+             end record;
+             type Items is array (Slot_Index) of Item;
+             type Machine is limited record
+                Ready : Boolean := False;
+                Domain : Domain_Id := 0;
+                Count : Natural range 0 .. Max_Items := 0;
+                Data : Items;
+             end record;
+          end Repro;'
+
+          run_synth_case runtime_graph 'with Interfaces;
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             subtype U64 is Interfaces.Unsigned_64;
+             subtype U32 is Interfaces.Unsigned_32;
+             type Domain_Id is new U64;
+             type Principal_Id is new U64;
+             type Resource_Id is new U64;
+             type Operation_Id is new U32;
+             type Epoch_Id is new U64;
+             type Budget is new U32;
+             type Sequence is new U64;
+             type Word_Index is range 0 .. 3;
+             type Digest is array (Word_Index) of U64;
+             Zero_Digest : constant Digest := (others => 0);
+             type Effect is record
+                Resource : Resource_Id := 0;
+                Operation : Operation_Id := 0;
+                Request : Digest := Zero_Digest;
+                Epoch : Epoch_Id := 0;
+             end record;
+             Null_Effect : constant Effect := (Resource => 0, Operation => 0, Request => Zero_Digest, Epoch => 0);
+             type Requirement is (Base, Strong);
+             type Handle is private;
+             No_Handle : constant Handle;
+             type Token is limited private;
+             type Machine is limited private;
+          private
+             subtype Slot_Index is Positive range 1 .. Max_Items;
+             subtype Slot_Ref is Natural range 0 .. Max_Items;
+             type Handle is record
+                Domain : Domain_Id := 0;
+                Slot : Natural := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+             type Token is limited record
+                Valid : Boolean := False;
+                Domain : Domain_Id := 0;
+                Seq : Sequence := 0;
+                Item : Handle := No_Handle;
+                Frozen : Effect := Null_Effect;
+                Need : Requirement := Base;
+             end record;
+             type Item_Record is record
+                Parent : Slot_Ref := 0;
+                Subject : Principal_Id := 0;
+                Frozen : Effect := Null_Effect;
+                Need : Requirement := Base;
+                Remaining : Budget := 0;
+             end record;
+             type Item_Array is array (Slot_Index) of Item_Record;
+             type Machine is limited record
+                Ready : Boolean := False;
+                Domain : Domain_Id := 0;
+                Count : Natural range 0 .. Max_Items := 0;
+                Seq : Sequence := 0;
+                Data : Item_Array;
+             end record;
+          end Repro;'
+
+
           run_synth_body_case() {
             local name="$1"
             local spec="$2"
