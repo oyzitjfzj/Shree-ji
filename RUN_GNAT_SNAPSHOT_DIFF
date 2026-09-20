@@ -1,1 +1,1 @@
-test Root parent reference generic bound against GNAT freeze ICE
+test ghost Machine_Model issued-count field against GNAT freeze ICE
