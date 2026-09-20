@@ -823,11 +823,14 @@ jobs:
                    Result : Boolean) return Boolean is
                   (After.Count >= Before.Count);
              end Model;'
-              contract='with Global => null,
+              contract="$(cat <<'EOF_CONTRACT'
+with Global => null,
                     Post => Model.Transition
-                      (Model.Snapshot (State)'''Old,
+                      (Model.Snapshot (State)'Old,
                        Model.Snapshot (State),
-                       Item, Output, Result)'
+                       Item, Output, Result)
+EOF_CONTRACT
+)"
             fi
             cat > "$dir/repro.ads" <<EOF
           generic
