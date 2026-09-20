@@ -72,6 +72,39 @@ jobs:
           bundle="$RUNNER_TEMP/abi-pinpoint-bundle"
           ffi_dir="$RUNNER_TEMP/root-authority-abi-pinpoint"
           mkdir -p "$bundle" "$ffi_dir"
+
+          core_probe="$RUNNER_TEMP/root-core-only-probe"
+          mkdir -p "$core_probe/obj"
+          cat > "$core_probe/root_authority_core_probe.ads" <<'EOF_CORE'
+          with Root_Authority;
+          package Root_Authority_Core_Probe is
+             package Core is new Root_Authority (Max_Grants => 256);
+          end Root_Authority_Core_Probe;
+          EOF_CORE
+          cat > "$core_probe/core_probe.gpr" <<EOF_GPR
+          project Core_Probe is
+             for Source_Dirs use ("$GITHUB_WORKSPACE/target/src/root_authority", "$core_probe");
+             for Object_Dir use "$core_probe/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022");
+             end Compiler;
+          end Core_Probe;
+          EOF_GPR
+          set +e
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -p -P"$core_probe/core_probe.gpr"
+          ) >"$bundle/core-only.log" 2>&1
+          core_rc=$?
+          set -e
+          echo "LAS_CORE_ONLY_RC=$core_rc"
+          if grep -q "GNAT BUG DETECTED" "$bundle/core-only.log"; then
+            echo "LAS_CORE_ONLY_ICE=YES"
+          else
+            echo "LAS_CORE_ONLY_ICE=NO"
+          fi
+          echo "LAS_CORE_ONLY_LOG_SHA256=$(sha256sum "$bundle/core-only.log" | awk '{print $1}')"
+
           set +e
           (
             cd "$ALR_WS"
