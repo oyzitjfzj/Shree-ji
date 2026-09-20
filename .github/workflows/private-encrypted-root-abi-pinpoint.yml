@@ -36,7 +36,7 @@ jobs:
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           checkout_log="$RUNNER_TEMP/checkout.log"
           set +e
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core >"$checkout_log" 2>&1
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/verify/root-layered-ice-probe-20260920 >"$checkout_log" 2>&1
           rc=$?
           set -e
           test "$rc" -eq 0
