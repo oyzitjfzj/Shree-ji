@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
-          rustup component add --toolchain 1.98.1 clippy >/dev/null
+          rustup component add --toolchain 1.98.1 clippy rustfmt >/dev/null
 
           ALR_ZIP="$RUNNER_TEMP/alr.zip"
           ALR_PREFIX="$RUNNER_TEMP/alr"
@@ -83,16 +83,37 @@ jobs:
           root_ffi_rc=$?
           GPRBUILD="$GPRBUILD_WRAPPER" cargo +1.98.1 clippy --locked --all-features --all-targets -- -D warnings >"$bundle/all-features.log" 2>&1
           all_features_rc=$?
+
+          cargo +1.98.1 fmt --all -- --check >"$bundle/fmt-check.log" 2>&1
+          fmt_check_rc=$?
+          cargo +1.98.1 fmt --all >"$bundle/fmt-apply.log" 2>&1
+          fmt_apply_rc=$?
+          git diff --binary -- '*.rs' >"$bundle/rustfmt.diff"
+          git diff --name-only -- '*.rs' >"$bundle/rustfmt-paths.txt"
+
+          RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" cargo +1.98.1 check --locked --all-features --all-targets >"$bundle/check-all-features.log" 2>&1
+          check_all_rc=$?
+          RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" cargo +1.98.1 test --locked --all-features --all-targets -- --test-threads=1 >"$bundle/tests-all-features.log" 2>&1
+          tests_all_rc=$?
           set -e
           printf '%s\n' "$default_rc" > "$bundle/default.rc"
           printf '%s\n' "$linux_rc" > "$bundle/linux.rc"
           printf '%s\n' "$root_ffi_rc" > "$bundle/root-ffi.rc"
           printf '%s\n' "$all_features_rc" > "$bundle/all-features.rc"
+          printf '%s\n' "$fmt_check_rc" > "$bundle/fmt-check.rc"
+          printf '%s\n' "$fmt_apply_rc" > "$bundle/fmt-apply.rc"
+          printf '%s\n' "$check_all_rc" > "$bundle/check-all-features.rc"
+          printf '%s\n' "$tests_all_rc" > "$bundle/tests-all-features.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
           echo "LAS_CLIPPY_DEFAULT_RC=$default_rc"
           echo "LAS_CLIPPY_LINUX_RC=$linux_rc"
           echo "LAS_CLIPPY_ROOT_FFI_RC=$root_ffi_rc"
           echo "LAS_CLIPPY_ALL_FEATURES_RC=$all_features_rc"
+          echo "LAS_FAST_FMT_CHECK_RC=$fmt_check_rc"
+          echo "LAS_FAST_FMT_APPLY_RC=$fmt_apply_rc"
+          echo "LAS_FAST_FMT_CHANGED_COUNT=$(wc -l <"$bundle/rustfmt-paths.txt" | tr -d ' ')"
+          echo "LAS_FAST_CHECK_ALL_FEATURES_RC=$check_all_rc"
+          echo "LAS_FAST_TESTS_ALL_FEATURES_RC=$tests_all_rc"
           echo "LAS_CLIPPY_DEFAULT_SHA256=$(sha256sum "$bundle/default.log" | awk '{print $1}')"
           echo "LAS_CLIPPY_LINUX_SHA256=$(sha256sum "$bundle/linux.log" | awk '{print $1}')"
           echo "LAS_CLIPPY_ROOT_FFI_SHA256=$(sha256sum "$bundle/root-ffi.log" | awk '{print $1}')"
