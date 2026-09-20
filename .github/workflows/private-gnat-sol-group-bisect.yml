@@ -24,6 +24,8 @@ jobs:
             branch: work/root-a654-body-query-probe
           - label: proc
             branch: work/root-a654-body-proc-probe
+          - label: helper
+            branch: work/root-a654-body-helper-probe
     steps:
       - name: Checkout exact private probe
         shell: bash
