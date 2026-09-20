@@ -782,6 +782,25 @@ jobs:
             echo "LAS_CORE_ONLY_ICE=NO"
           fi
           echo "LAS_CORE_ONLY_LOG_SHA256=$(sha256sum "$bundle/core-only.log" | awk '{print $1}')"
+
+          # Encrypted-only compiler-expansion diagnostic.  Nothing from this
+          # log is printed publicly; only its hash is exposed.
+          set +e
+          (
+            cd "$core_probe"
+            "$ALR_WS"/alire.toml >/dev/null 2>&1
+          )
+          set -e
+          set +e
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -f -p -P"$core_probe/core_probe.gpr" \
+              -cargs:Ada -gnatG -gnatd.n
+          ) >"$bundle/core-debug.log" 2>&1
+          core_debug_rc=$?
+          set -e
+          echo "LAS_CORE_DEBUG_RC=$core_debug_rc"
+          echo "LAS_CORE_DEBUG_LOG_SHA256=$(sha256sum "$bundle/core-debug.log" | awk '{print $1}')"
           core_locations="$(grep -Eo '[A-Za-z0-9_-]*root_authority[A-Za-z0-9_-]*\.(ads|adb):[0-9]+(:[0-9]+)?' "$bundle/core-only.log" | awk '!seen[$0]++' | paste -sd, - || true)"
           if [[ -n "$core_locations" ]]; then
             echo "LAS_CORE_ONLY_LOCATIONS=$core_locations"
