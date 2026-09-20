@@ -90,6 +90,7 @@ jobs:
           fmt_apply_rc=$?
           git diff --binary -- '*.rs' >"$bundle/rustfmt.diff"
           git diff --name-only -- '*.rs' >"$bundle/rustfmt-paths.txt"
+          tar -cf "$bundle/formatted-files.tar" -T "$bundle/rustfmt-paths.txt"
 
           RUSTFLAGS="-Dwarnings" GPRBUILD="$GPRBUILD_WRAPPER" cargo +1.98.1 check --locked --all-features --all-targets >"$bundle/check-all-features.log" 2>&1
           check_all_rc=$?
