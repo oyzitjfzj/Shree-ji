@@ -1,0 +1,133 @@
+name: Encrypted Root ABI pinpoint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-encrypted-root-abi-pinpoint.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: encrypted-root-abi-pinpoint
+  cancel-in-progress: false
+
+jobs:
+  pinpoint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout current private work snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          checkout_log="$RUNNER_TEMP/checkout.log"
+          set +e
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core >"$checkout_log" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -eq 0
+          git checkout -q --detach FETCH_HEAD >"$checkout_log" 2>&1
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Build ABI and encrypt exact diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$ALR_ZIP"             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+
+          ALR_WS="$RUNNER_TEMP/alire-abi-pinpoint"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_abi_pinpoint >/dev/null
+          )
+
+          bundle="$RUNNER_TEMP/abi-pinpoint-bundle"
+          ffi_dir="$RUNNER_TEMP/root-authority-abi-pinpoint"
+          mkdir -p "$bundle" "$ffi_dir"
+          set +e
+          (
+            cd "$ALR_WS"
+            alr exec -- gprbuild -p               -P"$GITHUB_WORKSPACE/target/src/root_authority/root_authority_ffi.gpr"               -XROOT_FFI_BUILD_DIR="$ffi_dir"
+          ) >"$bundle/abi.log" 2>&1
+          abi_rc=$?
+          set -e
+          printf '%s\n' "$abi_rc" > "$bundle/abi.rc"
+          cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
+          echo "LAS_ABI_PINPOINT_RC=$abi_rc"
+          if grep -q "GNAT BUG DETECTED" "$bundle/abi.log"; then
+            echo "LAS_ABI_PINPOINT_ICE=YES"
+          else
+            echo "LAS_ABI_PINPOINT_ICE=NO"
+          fi
+
+          tar -C "$bundle" -czf "$RUNNER_TEMP/abi-pinpoint.tgz" .
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIEYTCCAsmgAwIBAgIUV6Vm/i5plHfEjXm4TQ+ZoJMi88UwDQYJKoZIhvcNAQEL
+          BQAwQDE+MDwGA1UEAww1TEFTIGVwaGVtZXJhbCBkaWFnbm9zdGljIHJlY2lwaWVu
+          dCAyMDI2LTA5LTIwIHJlZnJlc2gwHhcNMjYwOTIwMDA1NjEzWhcNMjYwOTIyMDA1
+          NjEzWjBAMT4wPAYDVQQDDDVMQVMgZXBoZW1lcmFsIGRpYWdub3N0aWMgcmVjaXBp
+          ZW50IDIwMjYtMDktMjAgcmVmcmVzaDCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCC
+          AYoCggGBANR7j+GAM2f+PsvymYVSmg0F6/A820PVJUu7gG8Z3U7tVOiEe0+/qYRr
+          qU6YoYrsNtfD3fqRDMgaU1hC3Eu5xP/4XIdsijqWV9FFWbEH0ryHgU3wI5dCaypG
+          Y45h76G5F1vSgGmfc4zZGJMNwHyfJ5cWZvKQ8ueOaX0TseFz25URxvRQZFh+9SIr
+          s9O9n1RQnPQkY/yP/oAQKyFyUeEnUaFxEczGyFcTLBTR3eizK9pnewCTORuaMIFL
+          8na8uM8XQv+xefQdz5qkbHoVjlptjGzMHDOX14NN83AnzFgEu4b/mD7ksqacEIaL
+          WIlD+vX+nC/t1AmC65kwC87M8KwOJhOlG6JAIWGYqsQzfNLhTqi2mBG7tazg+pZr
+          fxfyrVpd1fKmAE9GPWPYgqD9+tVDEKi3WPqAkuORWd9DkJPlNydUaILHY55aFe4x
+          +b932vDT/+jw6TAuZ3YZSCXcAgUOH39gAvIRsnIDuLLqNYUSfZyRFFbtEDKNms3s
+          KyceYEqtDwIDAQABo1MwUTAdBgNVHQ4EFgQU7bo/JzZUtmSLG6yxHyADOb8Y2ZYw
+          HwYDVR0jBBgwFoAU7bo/JzZUtmSLG6yxHyADOb8Y2ZYwDwYDVR0TAQH/BAUwAwEB
+          /zANBgkqhkiG9w0BAQsFAAOCAYEAnSW1gyizzI5L61m7FD+2CgAxn3H31yeBLG/J
+          O9Ya0gTEcy9qro3sdNJgx+yJy7c7BpKG5m68NkcQ+PHXLsI0+dCBFZHQIFEl6Z++
+          C0RzBlmfq5jIHuxrFxGqz4Xj0zaXyHltxz/rCdIQ0p2wqaeso4+ZOEWZ20JqEOAV
+          Yo5fuk0qvJkhbIRHU/AfvVfWeQuSZyhpM3tHdh9kIduIFVF0NFqxRZMhEuFRHoTS
+          1wL3Wm5Q7Dia6PGbRks8A1J9rC5ywvRLmjlpVXwKS0VbQl50dV4fJqtIqGpKjxmt
+          0rRTDAcHucUDXTDe2+mowRgGbYovjUHi92iDOvLVw8eUUOdnNsYU91BB9y+TTZH7
+          Uo6bL9eUnHlhZ1MJlplIUgMwLzA4xcXuyQy6hNcl57E9ajNYcopQLjAfP7zUwYrE
+          4QPBqs3khXHOj4CbiXba9RS9eeZW/lAXQHJh9VhuWoHFhmu59GRPTydwFB5XD88s
+          Qu8XPWUVTVuVMuK8xrK7Za/WIWzV
+          -----END CERTIFICATE-----
+          EOF_CERT
+          cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$cert_fp" = "32:C4:61:D9:B9:83:3A:16:CE:BB:DB:C1:1C:F3:8D:E9:D4:3E:30:E5:5C:18:E9:7B:FC:DA:35:CA:82:47:F5:9C"
+          echo "LAS_ABI_PINPOINT_CERT_OK=YES"
+          openssl cms -encrypt -binary -aes-256-cbc             -outform DER             -in "$RUNNER_TEMP/abi-pinpoint.tgz"             -out "$RUNNER_TEMP/abi-pinpoint.cms"             "$RUNNER_TEMP/recipient-cert.pem"
+          rm -rf "$bundle" "$RUNNER_TEMP/abi-pinpoint.tgz" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_ABI_PINPOINT_CIPHERTEXT_READY=YES"
+
+      - name: Upload ciphertext only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-root-abi-pinpoint
+          path: ${{ runner.temp }}/abi-pinpoint.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
