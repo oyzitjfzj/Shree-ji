@@ -76,16 +76,18 @@ jobs:
           ads = Path("src/root_authority/root_authority.ads")
           text = ads.read_text(encoding="utf-8")
           type_pattern = re.compile(
-              r"""   type Grant_Handle is record\n"""
-              r"""\s+Domain : Domain_Epoch := 0;\n"""
-              r"""\s+Slot   : Natural := 0;\n"""
-              r"""\s+end record\n"""
-              r"""\s+with Type_Invariant => Grant_Handle\.Slot <= Max_Grants;"""
+              r"   type Grant_Handle is record\n"
+              r"\s+Domain : Domain_Epoch := 0;\n"
+              r"\s+Slot   : Natural := 0;\n"
+              r"\s+end record\n"
+              r"\s+with Type_Invariant => Grant_Handle\.Slot <= Max_Grants;"
           )
-          type_new = """   type Grant_Handle is record
-      Domain : Domain_Epoch := 0;
-      Slot   : Natural := 0;
-   end record;"""
+          type_new = "\n".join([
+              "   type Grant_Handle is record",
+              "      Domain : Domain_Epoch := 0;",
+              "      Slot   : Natural := 0;",
+              "   end record;",
+          ])
           text2, count = type_pattern.subn(type_new, text, count=1)
           if count != 1:
               raise SystemExit(f"expected one current Grant_Handle shape, found {count}")
@@ -94,26 +96,26 @@ jobs:
           adb = Path("src/root_authority/root_authority.adb")
           body = adb.read_text(encoding="utf-8")
           valid_pattern = re.compile(
-              r"""(and then Grant\.Slot /= 0\n)(\s+and then Grant\.Slot <= Machine\.Issued_Count)"""
+              r"(and then Grant\.Slot /= 0\n)(\s+and then Grant\.Slot <= Machine\.Issued_Count)"
           )
-          body2, count = valid_pattern.subn(
-              r"""\1         and then Grant.Slot <= Max_Grants
-\2""",
-              body,
-              count=1,
-          )
+          def add_bound(match):
+              return (
+                  match.group(1)
+                  + "         and then Grant.Slot <= Max_Grants\n"
+                  + match.group(2)
+              )
+          body2, count = valid_pattern.subn(add_bound, body, count=1)
           if count != 1:
               raise SystemExit(f"expected one Handle_Is_Valid slot guard, found {count}")
 
           slot_pattern = re.compile(
-              r"""function Handle_Slot \(Grant : Grant_Handle\) return Natural is\n\s*\(Grant\.Slot\);"""
+              r"function Handle_Slot \(Grant : Grant_Handle\) return Natural is\n\s*\(Grant\.Slot\);"
           )
-          body3, count = slot_pattern.subn(
-              """function Handle_Slot (Grant : Grant_Handle) return Natural is
-        (if Grant.Slot <= Max_Grants then Grant.Slot else 0);""",
-              body2,
-              count=1,
-          )
+          slot_new = "\n".join([
+              "function Handle_Slot (Grant : Grant_Handle) return Natural is",
+              "        (if Grant.Slot <= Max_Grants then Grant.Slot else 0);",
+          ])
+          body3, count = slot_pattern.subn(slot_new, body2, count=1)
           if count != 1:
               raise SystemExit(f"expected one Handle_Slot body, found {count}")
           adb.write_text(body3, encoding="utf-8")
