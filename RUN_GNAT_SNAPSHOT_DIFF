@@ -1,1 +1,1 @@
-test fixed physical Root storage against GNAT freeze ICE
+test Root parent reference generic bound against GNAT freeze ICE
