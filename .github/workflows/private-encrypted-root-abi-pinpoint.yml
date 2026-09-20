@@ -52,6 +52,18 @@ jobs:
         run: |
           set -euo pipefail
           cd target
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/root_authority/root_authority.ads")
+          text = p.read_text(encoding="utf-8")
+          old = "   type Slot_Reference is new Natural range 0 .. Max_Grants;"
+          new = "   subtype Slot_Reference is Natural range 0 .. Max_Grants;"
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one Slot_Reference declaration, found {text.count(old)}")
+          p.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
           ALR_ZIP="$RUNNER_TEMP/alr.zip"
           ALR_PREFIX="$RUNNER_TEMP/alr"
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$ALR_ZIP"             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
