@@ -36,7 +36,7 @@ jobs:
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           checkout_log="$RUNNER_TEMP/checkout.log"
           set +e
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/verify/root-slot-subtype-probe-20260920 >"$checkout_log" 2>&1
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core >"$checkout_log" 2>&1
           rc=$?
           set -e
           test "$rc" -eq 0
@@ -86,6 +86,20 @@ jobs:
             echo "LAS_ABI_PINPOINT_ICE=YES"
           else
             echo "LAS_ABI_PINPOINT_ICE=NO"
+          fi
+          echo "LAS_ABI_LOG_SHA256=$(sha256sum "$bundle/abi.log" | awk '{print $1}')"
+          ice_exception="$(grep -Eo 'raised [A-Z][A-Z0-9_]*' "$bundle/abi.log" | tail -n1 | awk '{print $2}' || true)"
+          if [[ -n "$ice_exception" ]]; then
+            echo "LAS_ABI_ICE_EXCEPTION=$ice_exception"
+          else
+            echo "LAS_ABI_ICE_EXCEPTION=NONE"
+          fi
+          ice_internal="$(grep -Eo '[A-Za-z][A-Za-z0-9_/-]*\.(adb|ads):[0-9]+(:[0-9]+)?' "$bundle/abi.log" | tail -n1 || true)"
+          if [[ -n "$ice_internal" ]]; then
+            ice_internal="$(basename "$ice_internal")"
+            echo "LAS_ABI_ICE_INTERNAL=$ice_internal"
+          else
+            echo "LAS_ABI_ICE_INTERNAL=NONE"
           fi
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/abi-pinpoint.tgz" .
