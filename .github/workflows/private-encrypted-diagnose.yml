@@ -265,7 +265,7 @@ jobs:
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
-                    -----BEGIN CERTIFICATE-----
+          -----BEGIN CERTIFICATE-----
           MIIEVzCCAr+gAwIBAgIUc1tmE1gvvHyivtkYn3aS6qXl14gwDQYJKoZIhvcNAQEL
           BQAwOzE5MDcGA1UEAwwwTEFTIGVwaGVtZXJhbCByb290ZmZpIGRpYWdub3N0aWMg
           Y3VycmVudCBzZXNzaW9uMB4XDTI2MDkyMDE2MTgwOFoXDTI2MDkyMjE2MTgwOFow
