@@ -1,1 +1,1 @@
-probe predefined Unsigned_128 Root handle representation
+diagnostic visible-u128 differential probe
