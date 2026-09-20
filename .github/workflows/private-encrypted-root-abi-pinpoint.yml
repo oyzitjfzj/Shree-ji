@@ -214,7 +214,7 @@ jobs:
              package Model with Ghost is
                 function Slot_Of (Value : Handle) return Natural
                   with Global => null,
-                       Post => Slot_Of'Result <= Max_Items;
+                       Post => Slot_Of'\''Result <= Max_Items;
              end Model;
           private
              type Handle is record
@@ -237,7 +237,7 @@ jobs:
              package Model with Ghost is
                 function Slot_Of (Value : Handle) return Natural
                   with Global => null,
-                       Post => Slot_Of'Result <= Max_Items;
+                       Post => Slot_Of'\''Result <= Max_Items;
              end Model;
           private
              type Handle is record
@@ -278,7 +278,7 @@ jobs:
              package Model with Ghost is
                 function Slot_Of (Value : Handle) return Natural
                   with Global => null,
-                       Post => Slot_Of'Result <= Max_Items;
+                       Post => Slot_Of'\''Result <= Max_Items;
              end Model;
           private
              type Handle is record
