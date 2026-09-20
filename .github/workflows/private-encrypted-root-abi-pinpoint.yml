@@ -79,18 +79,18 @@ jobs:
             mkdir -p "$dir/obj"
             printf '%s\n' "$body" > "$dir/repro.ads"
             cat > "$dir/instance.ads" <<'EOF_INSTANCE'
-with Repro;
-package Instance is new Repro (Max_Items => 256);
-EOF_INSTANCE
+          with Repro;
+          package Instance is new Repro (Max_Items => 256);
+          EOF_INSTANCE
             cat > "$dir/repro.gpr" <<EOF_GPR
-project Repro_Project is
-   for Source_Dirs use ("$dir");
-   for Object_Dir use "$dir/obj";
-   package Compiler is
-      for Default_Switches ("Ada") use ("-gnat2022");
-   end Compiler;
-end Repro_Project;
-EOF_GPR
+          project Repro_Project is
+             for Source_Dirs use ("$dir");
+             for Object_Dir use "$dir/obj";
+             package Compiler is
+                for Default_Switches ("Ada") use ("-gnat2022");
+             end Compiler;
+          end Repro_Project;
+          EOF_GPR
             set +e
             (cd "$ALR_WS" && alr exec -- gprbuild -p -P"$dir/repro.gpr") >"$dir/build.log" 2>&1
             local rc=$?
@@ -106,71 +106,71 @@ EOF_GPR
           }
 
           run_synth_case domain_plain 'with Interfaces;
-generic
-   Max_Items : Positive;
-package Repro is
-   subtype U64 is Interfaces.Unsigned_64;
-   type Domain_Epoch is new U64;
-   type Handle is private;
-private
-   type Handle is record
-      Domain : Domain_Epoch := 0;
-      Slot   : Natural := 0;
-   end record;
-end Repro;'
+          generic
+             Max_Items : Positive;
+          package Repro is
+             subtype U64 is Interfaces.Unsigned_64;
+             type Domain_Epoch is new U64;
+             type Handle is private;
+          private
+             type Handle is record
+                Domain : Domain_Epoch := 0;
+                Slot   : Natural := 0;
+             end record;
+          end Repro;'
 
           run_synth_case domain_deferred 'with Interfaces;
-generic
-   Max_Items : Positive;
-package Repro is
-   subtype U64 is Interfaces.Unsigned_64;
-   type Domain_Epoch is new U64;
-   type Handle is private;
-   No_Handle : constant Handle;
-private
-   type Handle is record
-      Domain : Domain_Epoch := 0;
-      Slot   : Natural := 0;
-   end record;
-   No_Handle : constant Handle := (Domain => 0, Slot => 0);
-end Repro;'
+          generic
+             Max_Items : Positive;
+          package Repro is
+             subtype U64 is Interfaces.Unsigned_64;
+             type Domain_Epoch is new U64;
+             type Handle is private;
+             No_Handle : constant Handle;
+          private
+             type Handle is record
+                Domain : Domain_Epoch := 0;
+                Slot   : Natural := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+          end Repro;'
 
           run_synth_case domain_ghost 'with Interfaces;
-generic
-   Max_Items : Positive;
-package Repro with SPARK_Mode, Always_Terminates is
-   subtype U64 is Interfaces.Unsigned_64;
-   type Domain_Epoch is new U64;
-   type Handle is private;
-   No_Handle : constant Handle;
-   package Model with Ghost is
-      function Domain_Of (Value : Handle) return Domain_Epoch with Global => null;
-      function Slot_Of (Value : Handle) return Natural with Global => null;
-   end Model;
-private
-   type Handle is record
-      Domain : Domain_Epoch := 0;
-      Slot   : Natural := 0;
-   end record;
-   No_Handle : constant Handle := (Domain => 0, Slot => 0);
-end Repro;'
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             subtype U64 is Interfaces.Unsigned_64;
+             type Domain_Epoch is new U64;
+             type Handle is private;
+             No_Handle : constant Handle;
+             package Model with Ghost is
+                function Domain_Of (Value : Handle) return Domain_Epoch with Global => null;
+                function Slot_Of (Value : Handle) return Natural with Global => null;
+             end Model;
+          private
+             type Handle is record
+                Domain : Domain_Epoch := 0;
+                Slot   : Natural := 0;
+             end record;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+          end Repro;'
 
           run_synth_case domain_invariant 'with Interfaces;
-generic
-   Max_Items : Positive;
-package Repro with SPARK_Mode, Always_Terminates is
-   subtype U64 is Interfaces.Unsigned_64;
-   type Domain_Epoch is new U64;
-   type Handle is private;
-   No_Handle : constant Handle;
-private
-   type Handle is record
-      Domain : Domain_Epoch := 0;
-      Slot   : Natural := 0;
-   end record
-     with Type_Invariant => Handle.Slot <= Max_Items;
-   No_Handle : constant Handle := (Domain => 0, Slot => 0);
-end Repro;'
+          generic
+             Max_Items : Positive;
+          package Repro with SPARK_Mode, Always_Terminates is
+             subtype U64 is Interfaces.Unsigned_64;
+             type Domain_Epoch is new U64;
+             type Handle is private;
+             No_Handle : constant Handle;
+          private
+             type Handle is record
+                Domain : Domain_Epoch := 0;
+                Slot   : Natural := 0;
+             end record
+               with Type_Invariant => Handle.Slot <= Max_Items;
+             No_Handle : constant Handle := (Domain => 0, Slot => 0);
+          end Repro;'
 
           bundle="$RUNNER_TEMP/abi-pinpoint-bundle"
           ffi_dir="$RUNNER_TEMP/root-authority-abi-pinpoint"
