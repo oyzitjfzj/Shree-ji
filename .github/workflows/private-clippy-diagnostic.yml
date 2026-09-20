@@ -68,33 +68,33 @@ jobs:
           tar -C "$bundle" -czf "$RUNNER_TEMP/clippy-private.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          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
+          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
           -----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "E2:99:5B:46:A5:51:BA:FD:B5:60:7C:6A:B9:C7:21:A7:FF:C6:C1:E7:AA:72:86:E6:DB:5D:E8:BA:7B:AA:AA:15"
+          test "$cert_fp" = "FE:D7:1E:2C:54:1A:49:5A:EC:0C:27:29:4C:60:0E:89:15:A3:FA:1B:70:A2:C2:B7:D2:C6:AF:D3:E5:17:97:64"
           echo "LAS_CLIPPY_CERT_OK=YES"
           openssl cms -encrypt -binary -aes-256-cbc \
             -outform DER -in "$RUNNER_TEMP/clippy-private.tgz" \
