@@ -52,6 +52,33 @@ jobs:
         run: |
           set -euo pipefail
           cd target
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path("src/root_authority/root_authority.ads")
+          text = p.read_text(encoding="utf-8")
+          pattern = re.compile(
+              r"""   type Grant_Handle is record\n"""
+              r"""      Domain : Domain_Epoch := 0;\n"""
+              r"""      Slot   : Natural := 0;\n"""
+              r"""   end record\n"""
+              r"""     with Type_Invariant => Grant_Handle\.Slot <= Max_Grants;"""
+          )
+          new = """   subtype Handle_Slot_Reference is Natural
+             with Dynamic_Predicate => Handle_Slot_Reference <= Max_Grants;
+
+           type Grant_Handle is record
+              Domain : Domain_Epoch := 0;
+              Slot   : Handle_Slot_Reference := 0;
+           end record;"""
+          text2, count = pattern.subn(new, text, count=1)
+          if count != 1:
+              raise SystemExit(f"expected one current Grant_Handle shape, found {count}")
+          p.write_text(text2, encoding="utf-8")
+          PY
+
           ALR_ZIP="$RUNNER_TEMP/alr.zip"
           ALR_PREFIX="$RUNNER_TEMP/alr"
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$ALR_ZIP"             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
