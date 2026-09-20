@@ -1,4 +1,4 @@
-name: Encrypted GNAT bounded-predicate probe
+name: Encrypted GNAT fail-closed-projection probe
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
           echo "LAS_PRIVATE_SNAPSHOT_PROOF=$proof"
           unset PRIVATE_TOKEN auth
 
-      - name: Probe fixed-layout bounded predicate with ABI and SPARK
+      - name: Probe fixed-layout fail-closed projection with ABI and SPARK
         shell: bash
         run: |
           set -euo pipefail
@@ -73,8 +73,8 @@ jobs:
           from pathlib import Path
           import re
 
-          p = Path("src/root_authority/root_authority.ads")
-          text = p.read_text(encoding="utf-8")
+          ads = Path("src/root_authority/root_authority.ads")
+          text = ads.read_text(encoding="utf-8")
           pattern = re.compile(
               r"""   type Grant_Handle is record\n"""
               r"""      Domain : Domain_Epoch := 0;\n"""
@@ -82,17 +82,40 @@ jobs:
               r"""   end record\n"""
               r"""     with Type_Invariant => Grant_Handle\.Slot <= Max_Grants;"""
           )
-          new = """   subtype Handle_Slot_Reference is Natural
-             with Dynamic_Predicate => Handle_Slot_Reference <= Max_Grants;
-
-           type Grant_Handle is record
+          new = """   type Grant_Handle is record
               Domain : Domain_Epoch := 0;
-              Slot   : Handle_Slot_Reference := 0;
+              Slot   : Natural := 0;
            end record;"""
           text2, count = pattern.subn(new, text, count=1)
           if count != 1:
               raise SystemExit(f"expected one current Grant_Handle shape, found {count}")
-          p.write_text(text2, encoding="utf-8")
+          ads.write_text(text2, encoding="utf-8")
+
+          adb = Path("src/root_authority/root_authority.adb")
+          body = adb.read_text(encoding="utf-8")
+          old_valid = """       return Machine.Initialized
+                 and then Grant.Domain = Machine.Domain_Id
+                 and then Grant.Slot /= 0
+                 and then Grant.Slot <= Machine.Issued_Count
+                 and then Machine.Grants (Slot_Index (Grant.Slot)).Issued;"""
+          new_valid = """       return Machine.Initialized
+                 and then Grant.Domain = Machine.Domain_Id
+                 and then Grant.Slot /= 0
+                 and then Grant.Slot <= Max_Grants
+                 and then Grant.Slot <= Machine.Issued_Count
+                 and then Machine.Grants (Slot_Index (Grant.Slot)).Issued;"""
+          if old_valid not in body:
+              raise SystemExit("Handle_Is_Valid shape not found")
+          body = body.replace(old_valid, new_valid, 1)
+
+          old_slot = """      function Handle_Slot (Grant : Grant_Handle) return Natural is
+                (Grant.Slot);"""
+          new_slot = """      function Handle_Slot (Grant : Grant_Handle) return Natural is
+                (if Grant.Slot <= Max_Grants then Grant.Slot else 0);"""
+          if old_slot not in body:
+              raise SystemExit("Handle_Slot shape not found")
+          body = body.replace(old_slot, new_slot, 1)
+          adb.write_text(body, encoding="utf-8")
           PY
 
           ffi_dir="$RUNNER_TEMP/root-authority-predicate-abi"
@@ -144,17 +167,17 @@ jobs:
           printf '%s\n' "$abi_rc" > "$bundle/abi.rc"
           printf '%s\n' "$spark_rc" > "$bundle/spark.rc"
           cp "$RUNNER_TEMP/private_snapshot_sha" "$bundle/snapshot-sha.txt"
-          echo "LAS_PREDICATE_ABI_RC=$abi_rc"
-          echo "LAS_PREDICATE_SPARK_RC=$spark_rc"
+          echo "LAS_PROJECTION_ABI_RC=$abi_rc"
+          echo "LAS_PROJECTION_SPARK_RC=$spark_rc"
           if grep -q "GNAT BUG DETECTED" "$bundle/abi.log"; then
-            echo "LAS_PREDICATE_ABI_ICE=YES"
+            echo "LAS_PROJECTION_ABI_ICE=YES"
           else
-            echo "LAS_PREDICATE_ABI_ICE=NO"
+            echo "LAS_PROJECTION_ABI_ICE=NO"
           fi
           if grep -q "GNAT BUG DETECTED" "$bundle/spark.log"; then
-            echo "LAS_PREDICATE_SPARK_ICE=YES"
+            echo "LAS_PROJECTION_SPARK_ICE=YES"
           else
-            echo "LAS_PREDICATE_SPARK_ICE=NO"
+            echo "LAS_PROJECTION_SPARK_ICE=NO"
           fi
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/private-diagnostic.tgz" .
@@ -194,7 +217,7 @@ jobs:
             -out "$RUNNER_TEMP/encrypted.cms" \
             "$RUNNER_TEMP/recipient-cert.pem"
           rm -rf "$bundle" "$RUNNER_TEMP/private-diagnostic.tgz" "$RUNNER_TEMP/recipient-cert.pem"
-          echo "LAS_PREDICATE_PROBE_CIPHERTEXT_READY=YES"
+          echo "LAS_PROJECTION_PROBE_CIPHERTEXT_READY=YES"
 
       - name: Upload ciphertext only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
