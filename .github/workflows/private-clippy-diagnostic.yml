@@ -33,7 +33,7 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/rust-closure-e36-probe
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
           git checkout -q --detach FETCH_HEAD
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
@@ -123,33 +123,33 @@ jobs:
           tar -C "$bundle" -czf "$RUNNER_TEMP/clippy-private.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIERzCCAq+gAwIBAgIUJY/9up0W2kVdwEtSRU+yQeU/HPwwDQYJKoZIhvcNAQEL
-          BQAwMzExMC8GA1UEAwwoTEFTIGVwaGVtZXJhbCBjdXJyZW50IGRpYWdub3N0aWMg
-          c2Vzc2lvbjAeFw0yNjA5MjAxNzQxMDlaFw0yNjA5MjIxNzQxMDlaMDMxMTAvBgNV
-          BAMMKExBUyBlcGhlbWVyYWwgY3VycmVudCBkaWFnbm9zdGljIHNlc3Npb24wggGi
-          MA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQCqWLpkwgxrbnhCdBtvdSvaHoEJ
-          PBGJqFRgWUl8aCbpCrc1A+xyByenKAQez43DeUdheQAFPwobHC/LWSPMjKEgvA/I
-          +l7CaT1McQmBLa5bxzGngWVTbFo8+h6I/Dsq3E6fa9EK0gIgwT7F2y9xW/skWES4
-          89h2DtRknUhzw352LoMvNPD93/PMx1xBNM/+DYjqbmEmHHORPm7GMtPV2bopf/ss
-          yrRNWf+1XKMjWLO9SdY1DfqeKWdbgCzSTP3RilGtunMxV0f6xMT7hMvwkHrGVJxA
-          r+pTcne2EBvsqW8PyoMY5gxCNUSPhidyET7ptmJEHcMuX0641KnjkxWE/x819izh
-          YIia46tgJ/p0EGHipbRkcHcE4Q1Kd9hDTLpJFZDQu6zAqiQd+coTtvUxFgNxVRhU
-          0En6olsyAckYkdi6MiUl8zwq5wQwJZa0YQK39DoKEIw9SsIRmaaJKnYkf3AQIqaj
-          jVpGbOtsj4y7OhO/l9wcZZHu/aJVSXulmEW2WZ0CAwEAAaNTMFEwHQYDVR0OBBYE
-          FMd9O7ZvdfQUTYZro6s1xSCXbFfEMB8GA1UdIwQYMBaAFMd9O7ZvdfQUTYZro6s1
-          xSCXbFfEMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBAEDzIvkb
-          zh59InjaWSdJXAq6nAi5rePZHEbqQQK8MX5nq7NPX1kLEgz6UO8khbblBu4FnwIP
-          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
+          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
           -----END CERTIFICATE-----
           EOF_CERT
           cert_fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$cert_fp" = "F6:EC:87:29:4F:7D:D9:6A:B2:B0:7F:A2:9F:4F:76:82:48:B6:68:7C:94:82:42:51:3F:80:84:85:5B:F9:74:36"
+          test "$cert_fp" = "70:8A:5B:17:74:0F:B6:EA:52:E8:6C:86:4F:30:FB:D8:6B:1F:D3:2C:AD:41:E4:05:01:BC:F4:30:1D:77:67:6D"
           echo "LAS_CLIPPY_CERT_OK=YES"
           openssl cms -encrypt -binary -aes-256-cbc \
             -outform DER -in "$RUNNER_TEMP/clippy-private.tgz" \
