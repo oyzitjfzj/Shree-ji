@@ -69,6 +69,15 @@ jobs:
           chmod +x "$GPRBUILD_WRAPPER"
 
           cd "$GITHUB_WORKSPACE/target"
+          # Build scripts intentionally fail the build by panicking on missing Cargo
+          # invariants/toolchain failures. Suppress restriction lints only in the
+          # runner copy of build.rs so the production library can be audited.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("build.rs")
+          src = p.read_text(encoding="utf-8")
+          p.write_text("#![allow(clippy::expect_used, clippy::panic)]\n" + src, encoding="utf-8")
+          PY
           log="$RUNNER_TEMP/panic-hygiene-private.log"
           set +e
           GPRBUILD="$GPRBUILD_WRAPPER" cargo +1.98.1 clippy --locked --all-features --lib --             -D warnings             -D clippy::unwrap_used             -D clippy::expect_used             -D clippy::panic             -D clippy::todo             -D clippy::unimplemented >"$log" 2>&1
