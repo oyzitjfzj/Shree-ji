@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ea6eb2444c6431c8d6c5e1ea4b3518331431332e4090cb560f45d8032151710e
 
 jobs:
   audit:
@@ -86,33 +86,33 @@ jobs:
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          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
+          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
+          S9fA0WvpAgBYVV1MEq/MwCTsXUtEjhzxsb3f
           -----END CERTIFICATE-----
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "CE:31:79:4D:14:09:57:E0:51:1C:01:04:39:DD:3D:1F:40:E3:1E:F3:2D:BB:26:84:2B:04:7B:F2:AA:0B:A5:D3"
+          test "$fp" = "6C:A4:00:21:2D:D5:D9:51:69:3B:AE:01:73:B5:95:5A:C3:77:CB:20:5B:2B:0E:3A:35:74:C8:FA:27:44:D8:43"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$log" -out "$RUNNER_TEMP/panic-hygiene-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
           echo "LAS_PANIC_HYGIENE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_PANIC_HYGIENE_RC=$rc"
