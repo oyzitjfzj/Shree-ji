@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-tlc-targeted-root-active-8c24f97e
+  group: current-tlc-targeted-latent-precedence-a69b39ab
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8c24f97eb67a0023920c02195e0117a3ce657709cc8614bc8a5862a16fee5c01
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a69b39ab6ac5c2afe29bc680d81875cdcbaa4d8032f37ba3d49414395a3a2aba
 
 jobs:
   tlc:
@@ -23,7 +23,8 @@ jobs:
       max-parallel: 8
       matrix:
         cfg:
-          - spec/root_authority/RootSupervisorActiveServiceFaultInterleavings.cfg
+          - spec/defence_evolution/HistoricalIncidentMaterial.cfg
+          - spec/predictive_guardian_network/GuardianOrchestration.cfg
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
