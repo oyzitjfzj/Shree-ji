@@ -139,7 +139,7 @@ jobs:
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
           test "$fp" = "6C:A4:00:21:2D:D5:D9:51:69:3B:AE:01:73:B5:95:5A:C3:77:CB:20:5B:2B:0E:3A:35:74:C8:FA:27:44:D8:43"
-openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/private-tlc.cms" "$RUNNER_TEMP/recipient-cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/private-tlc.cms" "$RUNNER_TEMP/recipient-cert.pem"
           echo "LAS_TLC_INDEX=$TARGET_INDEX"
           echo "LAS_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           if [[ "$rc" -eq 0 ]]; then
