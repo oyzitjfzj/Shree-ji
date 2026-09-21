@@ -1,0 +1,21 @@
+name: Cancel current indexed verification during diagnosis
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "CANCEL_CURRENT_INDEXED"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-indexed-canonical-verification-ea6eb244
+  cancel-in-progress: true
+
+jobs:
+  retire:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Retire known-red exact-revision run
+        run: echo "Retiring exact-revision indexed verification after a fresh TLC failure; no verification gate is waived."
