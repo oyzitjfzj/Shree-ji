@@ -1,4 +1,4 @@
-name: Private indexed TLC auto-worker diagnostic
+name: Private indexed exact TLC diagnostic
 
 on:
   push:
@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-auto
+  group: private-indexed-tlc-exact-ec6b2b5c
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 602d22ffbbb839f8fdce6bf9977890e82daf32e6b9edaff5c34059276bc2e80e
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
   EXPECTED_TLC_PROFILE_COUNT: "129"
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [2, 27, 42, 82]
+        index: [27]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
@@ -77,10 +77,7 @@ jobs:
               src, re.S)
           if not fn_match:
               raise SystemExit("canonical TLC runner not found")
-          fn = fn_match.group(1).replace("local args=(-workers 2 -fp 0)", "local args=(-workers auto -fp 0)")
-          if fn == fn_match.group(1):
-              raise SystemExit("canonical worker argument not found")
-          Path(sys.argv[3]).write_text(fn + "\n", encoding="utf-8")
+          Path(sys.argv[3]).write_text(fn_match.group(1) + "\n", encoding="utf-8")
           PY
 
           TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
@@ -115,33 +112,33 @@ jobs:
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIENTCCAp2gAwIBAgIUTxjZ6dgnzMSaOWcHmUuhU3M8DtswDQYJKoZIhvcNAQEL
-          BQAwKjEoMCYGA1UEAwwfTEFTIGN1cnJlbnQgcHJpdmF0ZSBkaWFnbm9zdGljczAe
-          Fw0yNjA5MjExNzU0NDVaFw0yNjA5MjMxNzU0NDVaMCoxKDAmBgNVBAMMH0xBUyBj
-          dXJyZW50IHByaXZhdGUgZGlhZ25vc3RpY3MwggGiMA0GCSqGSIb3DQEBAQUAA4IB
-          jwAwggGKAoIBgQCIFarZrwbU0I/gSNllo73XRATNLnSFJORPjWkbfGVGScbbdSIS
-          EqL3awEMv8TjoIXbjseZcpPSWfaJbKTI9QUk3ca/kIVluZniaB/XAJOSTLpj69ng
-          2xouaENYEk1dQEQvaqw5kcpI4MHtUsXWOjKT3dwji5HfknKh3PkCT0xvjPY5k4b/
-          9z2WI6++vRiyzooDA4sDXnpspIxNsLUq8dKVuV8I0CaiqV8BT92+ohoM8quRwExz
-          xy1DRVTW5V5l8XiyIJRp7ZmwSkwHnrqiR8INWtkEcEPsmhyohAf7B3VeR0JDJFYu
-          QThWT4PXPnar7Ud66zKqtioh5X+9OSEyxe+9n6vuw38kff9NoUzSn6l3cWF6wVUK
-          juXL4sIdDMeaHZpy1oIAizg+MbEClVdC/0t8dJWEb/F2+l1Xz4e6cqBIxZvafDr9
-          U7nYcegn92hW8AyJP8UhxRlmBjPAk6+bCdmeYqtw8gXVE/0A42sGhX1B6DIWQCe8
-          Ggb9vANwyHUN+scCAwEAAaNTMFEwHQYDVR0OBBYEFAcr5rp2GSqSdFFYVrGi3aWr
-          LAwJMB8GA1UdIwQYMBaAFAcr5rp2GSqSdFFYVrGi3aWrLAwJMA8GA1UdEwEB/wQF
-          MAMBAf8wDQYJKoZIhvcNAQELBQADggGBAHNIQONVGuTw0OprhazwLIhBsf3B3daT
-          ie252YTkOC0GF39HqSt9kCM0Yqe4By9Ec7r/JNMUMk0VLLX/VFBRf5wixfnw8G2D
-          G3VQuZYHiuEHovQzi7xz9AAVLe5Vfjq7DT15s6Hrum0QagvNfqOMC81n1fBj62wt
-          twaqGGJCva+s5KDxivGuFwkonLGU8YtkQ1POqYGb2xwRpFcokJguaDKlpD7TiYEr
-          D4PxzpCSV/I7pzQe/3YBoSS7dSJl3K8TwnqiI0kx05cVIes4p9AVwQKTjv53ldYd
-          F8oAusFj1w03lkenlffNBZy7K2PiEf1RtbmMLqb+2BPgbJdCdHyE4o+lCuZjX7kJ
-          DyshKIWZzMki1VKkvyEgJ70Dpy4NS9/N7y1smTRHVDktrMLhXcordZRCQDdT9Aoj
-          0bFUgrE+7qNWip99AERWeXQYJqNKGt38BhWgXu+uWm/2RJvmPLRS2oGUdA614wzE
-          1rKRgj0bUdlUzrQdPESy3a2S8Z7J1S+kmg==
+          MIIEMTCCApmgAwIBAgIUb+axIJTp0EaDKsLEp65D57c53+QwDQYJKoZIhvcNAQEL
+          BQAwKDEmMCQGA1UEAwwdTEFTIGN1cnJlbnQgZXhhY3QgYWxlcnQgYXVkaXQwHhcN
+          MjYwOTIxMjEzOTQzWhcNMjYwOTIzMjEzOTQzWjAoMSYwJAYDVQQDDB1MQVMgY3Vy
+          cmVudCBleGFjdCBhbGVydCBhdWRpdDCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCC
+          AYoCggGBAOEkoJDxfIPQ1jAEulqVHNQRcVumdiuEq7H0hd8Jluq1jeaqAR4jB3ru
+          VlB7gnnf/Vgw0+1zzW8TI4fS2PKcFqY1jmzK0qvTmpmKF6c4y5yzqMqoqdQin/qf
+          Nz1mHByGFOFRhlaKMhnrtJ5gNDAxXPROQHZDk47kId1cRmvDyxsQ/OttZWMrheLE
+          CIDF3QN7sZx04cKKv+VDQm89P5oz4KKx+0hSdIXuJPZKAeCeqTC41UWiNd7Wayng
+          cEXlenFZI+5FC1rVLkMUU9zPeVGLn3xbmxn4iplCyLeMr0HcBw6dzPbVbELFA3Gk
+          KuDpbwRhCkxadSIxcC6MtR6Yk05SXmlS8BmFmJ/AhwLPQ8SRSuD8yLExUb2Mi6ni
+          /ZM6drlFeStYilMR4IsBecwUBNxnX2vfqT41xLj4KZbT5Clt+cPr8mT5/ER3uuxT
+          74wm3g7KSBpP6q8MsyS5MLsXmdIsfqo2CRXgYC3HCZFdfNbNU9VcQlZJjA65pW1i
+          9PZS1hU1AQIDAQABo1MwUTAdBgNVHQ4EFgQUgmN42CIigr6Mv2gmCzdTCk3HnCUw
+          HwYDVR0jBBgwFoAUgmN42CIigr6Mv2gmCzdTCk3HnCUwDwYDVR0TAQH/BAUwAwEB
+          /zANBgkqhkiG9w0BAQsFAAOCAYEAiJb/eksE3udM2VoQZyLOoItXGvwiNpV8468S
+          PPWsv6Et7230sF70TTksHy4sAoMyrwOV1gFeSKD3IPlnBUt+ggA0q2PMWYWQ3hYd
+          BXjkbrfOPHiVEDb5x2ubljS5KDIDKJbwEH9TIZIIdQdHii7CpNzabv3A6A0vk9PZ
+          oV/7ojWgyPtiJt84txLrzVuDQijXBuxb2Ylt8X5qjYl5xUErHat/mJ1ldJRwNOMB
+          E8XnNJ6CDJvd8PdxMfiScGmVBpQtxQE1/T552u1MQ5uMU/6QKxmuHSyW1qAlbbPK
+          MRs6K1QzY/YaAWxfuvBqlRIefHFPC2jOkbtPEYtyFjSlIF4jezGPsl6gMrILh+kJ
+          4vGx7zo29o0QTmAPPrxbxLG1Y1H6YQmAOVRLuwkwFSn2VPWApFI5oAvVM2qtBwge
+          nfW64tk/D6/BFdggCxISziw/oAMWHYmx5F1MAszpxOZRggQKNJyK5l//2OaTiEKP
+          FMpQdECSlw/zhs0apnPlLS+qJlPU
           -----END CERTIFICATE-----
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "D9:15:49:3A:BC:17:B5:74:0D:79:37:D2:0B:2A:97:35:5F:AD:CE:55:19:A1:26:F0:E5:E1:B7:02:55:3A:3D:E0"
+          test "$fp" = "12:58:C7:EC:B1:8C:FF:FA:00:F9:DC:22:84:0C:DF:7B:EF:7E:3B:0B:D4:CA:E2:78:70:CF:6E:83:B6:3F:78:D9"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/private-tlc.cms" "$RUNNER_TEMP/recipient-cert.pem"
           echo "LAS_TLC_INDEX=$TARGET_INDEX"
           echo "LAS_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
