@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-sharded-verify-ec6b2b5c
+  group: current-sharded-verify-ec8549d8
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec8549d81919146ca4a6c590ae0acad8597bc424ce183c3f0db9e752c4597525
   EXPECTED_VERIFIER_BLOB: 9a5d693b83a47f9f9aef1f8a266049e8fd8e0c65
   EXPECTED_TLC_PROFILE_COUNT: "129"
   TLC_SHARD_COUNT: "32"
