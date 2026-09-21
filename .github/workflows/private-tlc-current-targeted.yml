@@ -1,4 +1,4 @@
-name: Current TLC targeted diagnostics
+name: Private indexed TLC diagnostic
 
 on:
   push:
@@ -10,21 +10,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-tlc-targeted-latent-precedence-a69b39ab
+  group: private-indexed-tlc-diagnostic
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a69b39ab6ac5c2afe29bc680d81875cdcbaa4d8032f37ba3d49414395a3a2aba
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 602d22ffbbb839f8fdce6bf9977890e82daf32e6b9edaff5c34059276bc2e80e
+  EXPECTED_TLC_PROFILE_COUNT: "129"
 
 jobs:
   tlc:
     strategy:
       fail-fast: false
-      max-parallel: 8
       matrix:
-        cfg:
-          - spec/defence_evolution/HistoricalIncidentMaterial.cfg
-          - spec/predictive_guardian_network/GuardianOrchestration.cfg
+        index: [0]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
@@ -49,148 +47,113 @@ jobs:
           echo "::add-mask::$actual"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
-          echo "LAS_CURRENT_TLC_SNAPSHOT_PROOF=$proof"
+          echo "LAS_TLC_SNAPSHOT_PROOF=$proof"
           unset PRIVATE_TOKEN auth
 
-      - name: Run one canonical TLC profile
+      - name: Run canonical TLC profile by opaque index
         shell: bash
         env:
-          CFG: ${{ matrix.cfg }}
+          TARGET_INDEX: ${{ matrix.index }}
         run: |
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/target"
           cd "$ROOT"
-          test -f "$CFG"
-
           TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar" >/dev/null 2>&1
           echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $TLA_JAR" | sha1sum --check --strict >/dev/null
 
-          python3 - "$ROOT" "$CFG" > "$RUNNER_TEMP/mapped.tsv" <<'PY'
-          import pathlib, sys
-          root = pathlib.Path(sys.argv[1])
-          cfg = root / sys.argv[2]
-          directory = cfg.parent
-          stem = cfg.stem
-          exact_model = directory / f"{stem}Model.tla"
-          exact_base = directory / f"{stem}.tla"
-          if exact_model.exists():
-              tla = exact_model
-          elif exact_base.exists():
-              tla = exact_base
-          else:
-              candidates = sorted(
-                  (p for p in directory.glob("*.tla") if stem.startswith(p.stem)),
-                  key=lambda p: len(p.stem), reverse=True)
-              if not candidates:
-                  raise SystemExit("cannot map cfg to TLA module")
-              if len(candidates) > 1 and len(candidates[0].stem) == len(candidates[1].stem):
-                  raise SystemExit("ambiguous TLA mapping")
-              base = candidates[0]
-              wrapper = directory / f"{base.stem}Model.tla"
-              tla = wrapper if wrapper.exists() else base
-
-          deadlock_prefixes = (
-              "spec/composition/AuthorityEffectBoundary",
-              "spec/effect_fabric/EffectBoundaryState",
-              "spec/effect_fabric/EffectGatewayCheck",
-              "spec/intent_trajectory_world_model/IntentTrajectoryCausalRetry",
-              "spec/intent_trajectory_world_model/IntentTrajectoryEnvelope",
-              "spec/intent_trajectory_world_model/IntentTrajectoryModel",
-              "spec/predictive_guardian_network/GuardianEpochLifecycle",
-              "spec/predictive_guardian_network/GuardianEpochPolicyBinding",
-              "spec/predictive_guardian_network/GuardianFusion",
-              "spec/predictive_guardian_network/GuardianHistoryRetention",
-              "spec/predictive_guardian_network/GuardianRecoveryAnchorBinding",
-              "spec/predictive_guardian_network/GuardianRecoveryAnchor",
-              "spec/predictive_guardian_network/GuardianWitnessRetention",
-              "spec/reality_nervous_system/DataFlowEvidence",
-              "spec/reality_nervous_system/PreActionShadow",
-              "spec/reality_nervous_system/RealityEvidence",
-              "spec/reality_nervous_system/WorldState",
-              "spec/root_authority/RootAuthority",
-              "spec/root_authority/RootControlExecutor",
-              "spec/root_authority/RootSupervisorBoundary",
-              "spec/root_authority/RootSupervisorSessionFence",
-              "spec/root_authority/RootSupervisorSessionLedger",
-              "spec/root_authority/RootSupervisorRequestTransaction",
-              "spec/root_authority/RootSupervisorChannelBinding",
-              "spec/root_authority/RootSupervisorGuardedRequestComposition",
-              "spec/root_authority/RootSupervisorChannelGrantIsolation",
-              "spec/root_authority/RootSupervisorCrashRecovery",
-              "spec/root_authority/RootSupervisorControlTransaction",
-              "spec/root_authority/RootSupervisorGrantDelegationComposition",
-          )
-          rel_cfg = cfg.relative_to(root).as_posix()
-          deadlock = "1" if any(rel_cfg.startswith(p) for p in deadlock_prefixes) else "0"
-          print(rel_cfg, tla.relative_to(root).as_posix(), deadlock, sep="\t")
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" "$RUNNER_TEMP/run-fn.sh" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          map_match = re.search(
+              r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',
+              src, re.S)
+          if not map_match:
+              raise SystemExit("canonical TLC map generator not found")
+          Path(sys.argv[2]).write_text(map_match.group(1) + "\n", encoding="utf-8")
+          fn_match = re.search(
+              r'(run_tlc_profile\(\) \{.*?\n\})\n\nwhile IFS=\$\'\\t\' read -r cfg tla deadlock expectation; do',
+              src, re.S)
+          if not fn_match:
+              raise SystemExit("canonical TLC runner not found")
+          Path(sys.argv[3]).write_text(fn_match.group(1) + "\n", encoding="utf-8")
           PY
 
-          IFS=$'\t' read -r rel_cfg rel_tla deadlock < "$RUNNER_TEMP/mapped.tsv"
-          cfg_dir="$(dirname "$rel_cfg")"
-          cfg_base="$(basename "$rel_cfg")"
-          tla_base="$(basename "$rel_tla")"
-          log="$RUNNER_TEMP/private-tlc.log"
+          TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$TLC_MAP"
+          count="$(wc -l < "$TLC_MAP" | tr -d ' ')"
+          test "$count" = "$EXPECTED_TLC_PROFILE_COUNT"
+          test "$TARGET_INDEX" -ge 0
+          test "$TARGET_INDEX" -lt "$count"
+          line="$(sed -n "$((TARGET_INDEX + 1))p" "$TLC_MAP")"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<< "$line"
+          test -n "$cfg"
+          test -n "$tla"
 
+          log="$RUNNER_TEMP/private-tlc.log"
           set +e
           (
-            set -o pipefail
-            cd "$cfg_dir"
-            java -cp "$TLA_JAR" tla2sany.SANY "$tla_base" &&
-            if [[ "$deadlock" == "1" ]]; then
-              java -XX:+UseParallelGC -jar "$TLA_JAR" -workers 2 -fp 0 -deadlock -config "$cfg_base" "$tla_base"
-            else
-              java -XX:+UseParallelGC -jar "$TLA_JAR" -workers 2 -fp 0 -config "$cfg_base" "$tla_base"
-            fi
+            set -euo pipefail
+            ROOT="$ROOT"
+            TMP="$RUNNER_TEMP/tlc-private"
+            TLA_JAR="$TLA_JAR"
+            PASS=0
+            FAIL=0
+            FAILED=()
+            mkdir -p "$TMP"
+            source "$RUNNER_TEMP/run-fn.sh"
+            run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
+            test "$FAIL" -eq 0
+            test -z "$(git status --porcelain --untracked-files=no)"
           ) >"$log" 2>&1
           rc=$?
           set -e
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIELTCCApWgAwIBAgIUNuOiX8HXqJP1IrWg69h+0gZFeyswDQYJKoZIhvcNAQEL
-          BQAwJjEkMCIGA1UEAwwbTEFTIGN1cnJlbnQgVExDIGRpYWdub3N0aWNzMB4XDTI2
-          MDkyMTE3MDQwM1oXDTI2MDkyMzE3MDQwM1owJjEkMCIGA1UEAwwbTEFTIGN1cnJl
-          bnQgVExDIGRpYWdub3N0aWNzMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKC
-          AYEA4LsloW2HpN7t7DQFrZAhOO1RriyNg/3b239jfIjzhF3tN84nRs7LBcTjsQq5
-          39l+ECCJHCXLbfqSfBHoBSEAMM5crD30+TGGCS0Q9yr0EDIDqSojj+HX0hesmaS3
-          Mwwzh6rH1nPRjKsX/uSchLSaZdd8njHVT5PEF3S+TQcYDOBcNuEIGXFJOWCO1A1S
-          BurWcfTqsLK1psVr8IQwYGlJ4bKVkK3ZRV+pHN31a2BLGfYZauE9iJRMMGEYc9bB
-          /mS0Fi2w3pcSr0RUk2kPG8uzrdwEtUaeQDytL2LKjCYXl/625jJLikDezbfc4Os1
-          4AKUz2VfvnzyZmV0osE7SatSL2cIvD11fZDskGX6tLzReuzNfw48xZF9h/vMPGCt
-          kW1rsKYQ1AIMUZhnNCAFrrriijr1SAa6fKenCmUUfLrw/b/ZD0PWwqzoysV6L4aj
-          QkPJlq6T3kZuO209gkF4MMn5qCWGZQXiay89KluSoprEiM8WEJjq9KGi387acppw
-          oJvpAgMBAAGjUzBRMB0GA1UdDgQWBBSZonT5IYHSRN/V6CBe2E2f2I9RyDAfBgNV
-          HSMEGDAWgBSZonT5IYHSRN/V6CBe2E2f2I9RyDAPBgNVHRMBAf8EBTADAQH/MA0G
-          CSqGSIb3DQEBCwUAA4IBgQCefNKzrQdtDPVL+L7jOcVMMIqvb80i+u4pyCjBkCl7
-          cbFeWBoeoJFWpWWKTeg7qqJwG5S61qO9iqqdUVXaNwTtEbhiQBzEqNjOMyr9m2Dz
-          kPcXp8yjActgtYiqKItMq4d1/jiIfwwXiW1Pd+sRNoKyQSPVML6Ba3y5ygnWBupc
-          IQ0YLoSzyAMOgOPUF09qPeyei6jxfU+9Z2cCY8clk+gK0RyCEehqCLn5bcS5bRan
-          fM03ZeSFifMMD+IrrgCjQNraYg6SrpfNu6TuKAOMwL0EatRtEkzWajXAY0P+Vuo4
-          pRzU2B7qNfYiZroGL2EvN10WzxPSLLrHN8zOokAG5Nvn9sJiwBtvHwXk7+IfmESN
-          7kY4wfEbOMVpiYGCE+KomQ4i0NVrzixSFsgCnBbr11kz9VK9Ka0D8QAO6JIA3I06
-          dGuukzzKcASTCXC+kOjFP0N+KrRkxwoZfc8R05f9I0ZsJjzqNh6D5zw5uF2mI/iy
-          zbLMNp6Mbp/HtIts37O9Xj0=
+          MIIENTCCAp2gAwIBAgIUTxjZ6dgnzMSaOWcHmUuhU3M8DtswDQYJKoZIhvcNAQEL
+          BQAwKjEoMCYGA1UEAwwfTEFTIGN1cnJlbnQgcHJpdmF0ZSBkaWFnbm9zdGljczAe
+          Fw0yNjA5MjExNzU0NDVaFw0yNjA5MjMxNzU0NDVaMCoxKDAmBgNVBAMMH0xBUyBj
+          dXJyZW50IHByaXZhdGUgZGlhZ25vc3RpY3MwggGiMA0GCSqGSIb3DQEBAQUAA4IB
+          jwAwggGKAoIBgQCIFarZrwbU0I/gSNllo73XRATNLnSFJORPjWkbfGVGScbbdSIS
+          EqL3awEMv8TjoIXbjseZcpPSWfaJbKTI9QUk3ca/kIVluZniaB/XAJOSTLpj69ng
+          2xouaENYEk1dQEQvaqw5kcpI4MHtUsXWOjKT3dwji5HfknKh3PkCT0xvjPY5k4b/
+          9z2WI6++vRiyzooDA4sDXnpspIxNsLUq8dKVuV8I0CaiqV8BT92+ohoM8quRwExz
+          xy1DRVTW5V5l8XiyIJRp7ZmwSkwHnrqiR8INWtkEcEPsmhyohAf7B3VeR0JDJFYu
+          QThWT4PXPnar7Ud66zKqtioh5X+9OSEyxe+9n6vuw38kff9NoUzSn6l3cWF6wVUK
+          juXL4sIdDMeaHZpy1oIAizg+MbEClVdC/0t8dJWEb/F2+l1Xz4e6cqBIxZvafDr9
+          U7nYcegn92hW8AyJP8UhxRlmBjPAk6+bCdmeYqtw8gXVE/0A42sGhX1B6DIWQCe8
+          Ggb9vANwyHUN+scCAwEAAaNTMFEwHQYDVR0OBBYEFAcr5rp2GSqSdFFYVrGi3aWr
+          LAwJMB8GA1UdIwQYMBaAFAcr5rp2GSqSdFFYVrGi3aWrLAwJMA8GA1UdEwEB/wQF
+          MAMBAf8wDQYJKoZIhvcNAQELBQADggGBAHNIQONVGuTw0OprhazwLIhBsf3B3daT
+          ie252YTkOC0GF39HqSt9kCM0Yqe4By9Ec7r/JNMUMk0VLLX/VFBRf5wixfnw8G2D
+          G3VQuZYHiuEHovQzi7xz9AAVLe5Vfjq7DT15s6Hrum0QagvNfqOMC81n1fBj62wt
+          twaqGGJCva+s5KDxivGuFwkonLGU8YtkQ1POqYGb2xwRpFcokJguaDKlpD7TiYEr
+          D4PxzpCSV/I7pzQe/3YBoSS7dSJl3K8TwnqiI0kx05cVIes4p9AVwQKTjv53ldYd
+          F8oAusFj1w03lkenlffNBZy7K2PiEf1RtbmMLqb+2BPgbJdCdHyE4o+lCuZjX7kJ
+          DyshKIWZzMki1VKkvyEgJ70Dpy4NS9/N7y1smTRHVDktrMLhXcordZRCQDdT9Aoj
+          0bFUgrE+7qNWip99AERWeXQYJqNKGt38BhWgXu+uWm/2RJvmPLRS2oGUdA614wzE
+          1rKRgj0bUdlUzrQdPESy3a2S8Z7J1S+kmg==
           -----END CERTIFICATE-----
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "51:9E:6B:93:FB:0E:B6:5C:39:F2:B8:6A:F8:07:2B:A9:C8:A6:E7:9B:EA:C2:A8:C3:35:47:93:F5:6D:8E:03:D2"
+          test "$fp" = "D9:15:49:3A:BC:17:B5:74:0D:79:37:D2:0B:2A:97:35:5F:AD:CE:55:19:A1:26:F0:E5:E1:B7:02:55:3A:3D:E0"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/private-tlc.cms" "$RUNNER_TEMP/recipient-cert.pem"
-
-          echo "LAS_CURRENT_TLC_CFG_SHA256=$(printf '%s' "$CFG" | sha256sum | awk '{print $1}')"
-          echo "LAS_CURRENT_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_TLC_INDEX=$TARGET_INDEX"
+          echo "LAS_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           if [[ "$rc" -eq 0 ]]; then
-            echo "LAS_CURRENT_TLC_RESULT=PASS"
+            echo "LAS_TLC_RESULT=PASS"
             exit 0
           fi
-          echo "LAS_CURRENT_TLC_RESULT=FAIL"
+          echo "LAS_TLC_RESULT=FAIL"
           exit 1
 
       - name: Upload encrypted TLC diagnostic
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: current-tlc-${{ strategy.job-index }}
+          name: encrypted-tlc-index-${{ matrix.index }}
           path: ${{ runner.temp }}/private-tlc.cms
           if-no-files-found: error
           retention-days: 1
