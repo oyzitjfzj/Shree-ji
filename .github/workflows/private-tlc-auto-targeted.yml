@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-exact-ec6b2b5c
+  group: private-indexed-tlc-shard12-ec6b2b5c
   cancel-in-progress: false
 
 env:
