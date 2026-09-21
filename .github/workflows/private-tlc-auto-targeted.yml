@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [27]
+        index: [12, 44, 76, 108]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
