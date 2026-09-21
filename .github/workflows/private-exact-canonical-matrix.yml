@@ -1,0 +1,287 @@
+name: Exact private canonical matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_EXACT_CANONICAL_MATRIX"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exact-private-canonical-matrix
+  cancel-in-progress: false
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 602d22ffbbb839f8fdce6bf9977890e82daf32e6b9edaff5c34059276bc2e80e
+  EXPECTED_TLC_PROFILE_COUNT: "129"
+
+jobs:
+  pre_tlc:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private active head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q -B verify-target "$actual"
+          echo "LAS_EXACT_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run canonical pre-TLC gates privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          staged="$RUNNER_TEMP/verify-pre-tlc.sh"
+          python3 - tools/verify_codespaces_all.sh "$staged" <<'PY'
+          from pathlib import Path
+          import sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          needle = 'TLC_MAP="$TMP/tlc-map.tsv"'
+          if src.count(needle) != 1:
+              raise SystemExit("canonical TLC boundary not unique")
+          insertion = r'''
+          record "tracked tree unchanged after pre-TLC verification" bash -c '
+            test -z "$(git status --porcelain --untracked-files=no)"
+          '
+          echo "LAS_PRE_TLC_STAGE_RESULT=PASS"
+          exit 0
+
+          '''
+          Path(sys.argv[2]).write_text(src.replace(needle, insertion + needle, 1), encoding="utf-8")
+          PY
+          chmod 0700 "$staged"
+          log="$RUNNER_TEMP/pre-tlc-private.log"
+          set +e
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target bash "$staged" >"$log" 2>&1
+          rc=$?
+          set -e
+
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIENTCCAp2gAwIBAgIUeDJkBWD93ddt1NU573PSdSCy5wkwDQYJKoZIhvcNAQEL
+          BQAwKjEoMCYGA1UEAwwfTEFTIGN1cnJlbnQgcHJlLVRMQyBkaWFnbm9zdGljczAe
+          Fw0yNjA5MjExODM1MDBaFw0yNjA5MjMxODM1MDBaMCoxKDAmBgNVBAMMH0xBUyBj
+          dXJyZW50IHByZS1UTEMgZGlhZ25vc3RpY3MwggGiMA0GCSqGSIb3DQEBAQUAA4IB
+          jwAwggGKAoIBgQCqng9yz93nbpnzxEwXCWWlvswauGJCXxsrxZpE5bjNMhcknoH2
+          igTwF365w6RZR9z/+GVL+G2G359nZGr/pvV+o4Y7MgO4e3ObOPSU1H+cZauTFYHl
+          +REKUR7UEmluhbzNWtqxFtp8KkS85XG9bn0JrCbBEriBb5GNcJh2vFy1ThwoP9X0
+          sixgt8/auS6344BTz1y2Ip0jEM75aBIR0AnnyOoCXiRP9o7snB6+jPekxXUsLWzR
+          +aoTAwFTVq+s/7auOYaKMf2QtUVEW7P53hbIwVOLeAB6uDZmvaNBHttOnLOTwt6f
+          MssWK2fSFQKClT5sJZ6TyGwVkCOOTpJlZzEs97iy7lrk7qrsEcfrSdkd2q3WM+dw
+          MD1BekidfkwnNwFonTALowUYwH4ie/3jhR8Ky0FC6t89mkkSexWlxfyxoSKD7vU3
+          HWkyVqOPs5qCn/0K7yTTjOdX1VH6zBUnnwcSJVTBBNfrt1Ws0zkkADLTY10NLSZc
+          HLTAHb/gF1eyO4kCAwEAAaNTMFEwHQYDVR0OBBYEFNGhdQp+iBnQuGvrZJgaB0Q/
+          pLD6MB8GA1UdIwQYMBaAFNGhdQp+iBnQuGvrZJgaB0Q/pLD6MA8GA1UdEwEB/wQF
+          MAMBAf8wDQYJKoZIhvcNAQELBQADggGBAJIeqEw8reAEx/vppYRMPUSPKGGI2FuA
+          O1kEfQ9735URijRUXcfVoOnB7LxMpYKtSgpsX4Kjf6TCpcrjBO7C/qxziN8F7kZe
+          g5m0pSHtimjWb2c0MzIy5wcUqn6jPqRq3D7RCPcSoZ7/O80HdgpkY6xSW2Y3dXU5
+          xoBH/xRNZXpydI9ra68CWBsIKejO55+Esu8R3NTgT3UNdPzhgg01uapkrwHD2FOg
+          iIVNewurjFzhZAMsgHkk8BAkJV7HIV06ej8YTY2Rtot69szu3GkMQSE9DSqGXDsG
+          pPwQUcpm3IUfnDEsOqPGE/Tih7DUQy38rqozLMwGhqseSzYMksWAq+yu9XHDw+3K
+          BKEr4QmwfpRc/oMywsrhiJC95JwFTra/X3TmT7Ras6lk1qY5Uk97/AfNGzqwdT0J
+          UgXVfUJCkv0jdF0O4LOBwXSuG4hkHsqJ53QUfxtr3I3IWLpewHxXx6GZ4nJIXzzS
+          3ZwVRRTxVsrG9wa3pMGMkmfZxW8rAkpmLw==
+          -----END CERTIFICATE-----
+          EOF_CERT
+          fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "6D:7B:12:97:CA:56:0A:F6:DB:C1:F2:03:9B:62:FF:A0:80:6D:28:3F:24:DA:EF:A1:78:73:73:04:83:E3:05:76"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/pre-tlc-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_PRE_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_PRE_TLC_STAGE_RESULT=PASS$' "$log"; then
+            echo "LAS_PRE_TLC_STAGE_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_PRE_TLC_STAGE_RESULT=FAIL"
+          exit 1
+
+      - name: Upload encrypted pre-TLC evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exact-pre-tlc
+          path: ${{ runner.temp }}/pre-tlc-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  tlc:
+    needs: pre_tlc
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private active head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_TLC_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run one canonical TLC profile privately
+        shell: bash
+        env:
+          TARGET_INDEX: ${{ matrix.index }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar" >/dev/null 2>&1
+          echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $TLA_JAR" | sha1sum --check --strict >/dev/null
+
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" "$RUNNER_TEMP/run-fn.sh" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          map_match = re.search(
+              r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',
+              src, re.S)
+          if not map_match:
+              raise SystemExit("canonical TLC map generator not found")
+          Path(sys.argv[2]).write_text(map_match.group(1) + "\n", encoding="utf-8")
+          fn_match = re.search(
+              r'(run_tlc_profile\(\) \{.*?\n\})\n\nwhile IFS=\$\'\\t\' read -r cfg tla deadlock expectation; do',
+              src, re.S)
+          if not fn_match:
+              raise SystemExit("canonical TLC runner not found")
+          Path(sys.argv[3]).write_text(fn_match.group(1) + "\n", encoding="utf-8")
+          PY
+
+          TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$TLC_MAP"
+          count="$(wc -l < "$TLC_MAP" | tr -d ' ')"
+          test "$count" = "$EXPECTED_TLC_PROFILE_COUNT"
+          test "$TARGET_INDEX" -ge 0
+          test "$TARGET_INDEX" -lt "$count"
+          line="$(sed -n "$((TARGET_INDEX + 1))p" "$TLC_MAP")"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<< "$line"
+          test -n "$cfg"
+          test -n "$tla"
+
+          log="$RUNNER_TEMP/private-tlc.log"
+          set +e
+          (
+            set -euo pipefail
+            ROOT="$ROOT"
+            TMP="$RUNNER_TEMP/tlc-private"
+            TLA_JAR="$TLA_JAR"
+            PASS=0
+            FAIL=0
+            FAILED=()
+            mkdir -p "$TMP"
+            source "$RUNNER_TEMP/run-fn.sh"
+            run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
+            test "$FAIL" -eq 0
+            test -z "$(git status --porcelain --untracked-files=no)"
+          ) >"$log" 2>&1
+          rc=$?
+          set -e
+
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIENTCCAp2gAwIBAgIUeDJkBWD93ddt1NU573PSdSCy5wkwDQYJKoZIhvcNAQEL
+          BQAwKjEoMCYGA1UEAwwfTEFTIGN1cnJlbnQgcHJlLVRMQyBkaWFnbm9zdGljczAe
+          Fw0yNjA5MjExODM1MDBaFw0yNjA5MjMxODM1MDBaMCoxKDAmBgNVBAMMH0xBUyBj
+          dXJyZW50IHByZS1UTEMgZGlhZ25vc3RpY3MwggGiMA0GCSqGSIb3DQEBAQUAA4IB
+          jwAwggGKAoIBgQCqng9yz93nbpnzxEwXCWWlvswauGJCXxsrxZpE5bjNMhcknoH2
+          igTwF365w6RZR9z/+GVL+G2G359nZGr/pvV+o4Y7MgO4e3ObOPSU1H+cZauTFYHl
+          +REKUR7UEmluhbzNWtqxFtp8KkS85XG9bn0JrCbBEriBb5GNcJh2vFy1ThwoP9X0
+          sixgt8/auS6344BTz1y2Ip0jEM75aBIR0AnnyOoCXiRP9o7snB6+jPekxXUsLWzR
+          +aoTAwFTVq+s/7auOYaKMf2QtUVEW7P53hbIwVOLeAB6uDZmvaNBHttOnLOTwt6f
+          MssWK2fSFQKClT5sJZ6TyGwVkCOOTpJlZzEs97iy7lrk7qrsEcfrSdkd2q3WM+dw
+          MD1BekidfkwnNwFonTALowUYwH4ie/3jhR8Ky0FC6t89mkkSexWlxfyxoSKD7vU3
+          HWkyVqOPs5qCn/0K7yTTjOdX1VH6zBUnnwcSJVTBBNfrt1Ws0zkkADLTY10NLSZc
+          HLTAHb/gF1eyO4kCAwEAAaNTMFEwHQYDVR0OBBYEFNGhdQp+iBnQuGvrZJgaB0Q/
+          pLD6MB8GA1UdIwQYMBaAFNGhdQp+iBnQuGvrZJgaB0Q/pLD6MA8GA1UdEwEB/wQF
+          MAMBAf8wDQYJKoZIhvcNAQELBQADggGBAJIeqEw8reAEx/vppYRMPUSPKGGI2FuA
+          O1kEfQ9735URijRUXcfVoOnB7LxMpYKtSgpsX4Kjf6TCpcrjBO7C/qxziN8F7kZe
+          g5m0pSHtimjWb2c0MzIy5wcUqn6jPqRq3D7RCPcSoZ7/O80HdgpkY6xSW2Y3dXU5
+          xoBH/xRNZXpydI9ra68CWBsIKejO55+Esu8R3NTgT3UNdPzhgg01uapkrwHD2FOg
+          iIVNewurjFzhZAMsgHkk8BAkJV7HIV06ej8YTY2Rtot69szu3GkMQSE9DSqGXDsG
+          pPwQUcpm3IUfnDEsOqPGE/Tih7DUQy38rqozLMwGhqseSzYMksWAq+yu9XHDw+3K
+          BKEr4QmwfpRc/oMywsrhiJC95JwFTra/X3TmT7Ras6lk1qY5Uk97/AfNGzqwdT0J
+          UgXVfUJCkv0jdF0O4LOBwXSuG4hkHsqJ53QUfxtr3I3IWLpewHxXx6GZ4nJIXzzS
+          3ZwVRRTxVsrG9wa3pMGMkmfZxW8rAkpmLw==
+          -----END CERTIFICATE-----
+          EOF_CERT
+          fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "6D:7B:12:97:CA:56:0A:F6:DB:C1:F2:03:9B:62:FF:A0:80:6D:28:3F:24:DA:EF:A1:78:73:73:04:83:E3:05:76"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/private-tlc.cms" "$RUNNER_TEMP/recipient-cert.pem"
+
+          echo "LAS_TLC_INDEX=$TARGET_INDEX"
+          echo "LAS_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_TLC_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_TLC_RESULT=FAIL"
+          exit 1
+
+      - name: Upload encrypted TLC evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exact-tlc-${{ matrix.index }}
+          path: ${{ runner.temp }}/private-tlc.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  aggregate:
+    if: always()
+    needs: [pre_tlc, tlc]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require exact complete matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "LAS_VERIFY_TLC_PROFILE_COUNT=$EXPECTED_TLC_PROFILE_COUNT"
+          if [[ "${{ needs.pre_tlc.result }}" != "success" || "${{ needs.tlc.result }}" != "success" ]]; then
+            echo "LAS_VERIFY_ALL_RESULT=FAIL"
+            exit 1
+          fi
+          echo "LAS_VERIFY_ALL_RESULT=PASS"
