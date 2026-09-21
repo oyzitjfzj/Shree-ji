@@ -86,33 +86,33 @@ jobs:
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIENTCCAp2gAwIBAgIUeDJkBWD93ddt1NU573PSdSCy5wkwDQYJKoZIhvcNAQEL
-          BQAwKjEoMCYGA1UEAwwfTEFTIGN1cnJlbnQgcHJlLVRMQyBkaWFnbm9zdGljczAe
-          Fw0yNjA5MjExODM1MDBaFw0yNjA5MjMxODM1MDBaMCoxKDAmBgNVBAMMH0xBUyBj
-          dXJyZW50IHByZS1UTEMgZGlhZ25vc3RpY3MwggGiMA0GCSqGSIb3DQEBAQUAA4IB
-          jwAwggGKAoIBgQCqng9yz93nbpnzxEwXCWWlvswauGJCXxsrxZpE5bjNMhcknoH2
-          igTwF365w6RZR9z/+GVL+G2G359nZGr/pvV+o4Y7MgO4e3ObOPSU1H+cZauTFYHl
-          +REKUR7UEmluhbzNWtqxFtp8KkS85XG9bn0JrCbBEriBb5GNcJh2vFy1ThwoP9X0
-          sixgt8/auS6344BTz1y2Ip0jEM75aBIR0AnnyOoCXiRP9o7snB6+jPekxXUsLWzR
-          +aoTAwFTVq+s/7auOYaKMf2QtUVEW7P53hbIwVOLeAB6uDZmvaNBHttOnLOTwt6f
-          MssWK2fSFQKClT5sJZ6TyGwVkCOOTpJlZzEs97iy7lrk7qrsEcfrSdkd2q3WM+dw
-          MD1BekidfkwnNwFonTALowUYwH4ie/3jhR8Ky0FC6t89mkkSexWlxfyxoSKD7vU3
-          HWkyVqOPs5qCn/0K7yTTjOdX1VH6zBUnnwcSJVTBBNfrt1Ws0zkkADLTY10NLSZc
-          HLTAHb/gF1eyO4kCAwEAAaNTMFEwHQYDVR0OBBYEFNGhdQp+iBnQuGvrZJgaB0Q/
-          pLD6MB8GA1UdIwQYMBaAFNGhdQp+iBnQuGvrZJgaB0Q/pLD6MA8GA1UdEwEB/wQF
-          MAMBAf8wDQYJKoZIhvcNAQELBQADggGBAJIeqEw8reAEx/vppYRMPUSPKGGI2FuA
-          O1kEfQ9735URijRUXcfVoOnB7LxMpYKtSgpsX4Kjf6TCpcrjBO7C/qxziN8F7kZe
-          g5m0pSHtimjWb2c0MzIy5wcUqn6jPqRq3D7RCPcSoZ7/O80HdgpkY6xSW2Y3dXU5
-          xoBH/xRNZXpydI9ra68CWBsIKejO55+Esu8R3NTgT3UNdPzhgg01uapkrwHD2FOg
-          iIVNewurjFzhZAMsgHkk8BAkJV7HIV06ej8YTY2Rtot69szu3GkMQSE9DSqGXDsG
-          pPwQUcpm3IUfnDEsOqPGE/Tih7DUQy38rqozLMwGhqseSzYMksWAq+yu9XHDw+3K
-          BKEr4QmwfpRc/oMywsrhiJC95JwFTra/X3TmT7Ras6lk1qY5Uk97/AfNGzqwdT0J
-          UgXVfUJCkv0jdF0O4LOBwXSuG4hkHsqJ53QUfxtr3I3IWLpewHxXx6GZ4nJIXzzS
-          3ZwVRRTxVsrG9wa3pMGMkmfZxW8rAkpmLw==
+          MIIEQTCCAqmgAwIBAgIUCklbYvzL88BGimEcsotDIvFWI5IwDQYJKoZIhvcNAQEL
+          BQAwMDEuMCwGA1UEAwwlTEFTIGN1cnJlbnQgcGFuaWMgaHlnaWVuZSBkaWFnbm9z
+          dGljczAeFw0yNjA5MjExOTQxNDRaFw0yNjA5MjMxOTQxNDRaMDAxLjAsBgNVBAMM
+          JUxBUyBjdXJyZW50IHBhbmljIGh5Z2llbmUgZGlhZ25vc3RpY3MwggGiMA0GCSqG
+          SIb3DQEBAQUAA4IBjwAwggGKAoIBgQCsFp14AADRm285ZYGKwEFQIUfiiWyjkPxa
+          G2YZ5E0PkWfRduq5qXJK+O96Vbea6rd2xnn4kEiSvNoMOOrU3Vq0nUGy0Wbj52En
+          quzxNDluLSlr2uknYCXFWp+jSsSUiUdBINZ+dvAKXZOOQXTYSJIHknfhnJTcyMoF
+          ycgksxoVuEC74tuR+AD8PZcxoH9RVzDyYNe68QkMZUsFvfADbSybt+tsK8za7gmH
+          bqTpm+yJqq5hIOGljqjeqL93pByYIJ5oUehBuMuOmOmUJNkZme4XFnUeM7N/hYT+
+          pBMJvDWVnSClTezxPVx1TbxsTqK+4C0rBjG5d/VibfxkXWLXilBswfsLETZoDhk2
+          WibZPvLLlgSMlw1WzfL5kXM0wRdU7NQUSm4h3IIOlm30epfOAsj7MWEtlp4E3xr2
+          BxjQjWIql/QIDDwQ2zt88ftUkXFbYG/2IQU2RbiO9yFCN0qbv4KtlKoFsacwMyff
+          crOnm2Cjj+bYLUmRkujOW64s8tLpcK0CAwEAAaNTMFEwHQYDVR0OBBYEFGsudfM8
+          3LWGvFZs5TK0h1ObDHW3MB8GA1UdIwQYMBaAFGsudfM83LWGvFZs5TK0h1ObDHW3
+          MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBAKhjGXLlQL5fbJXs
+          WDzooXu1cc4iEScXcqZhTIwXYgnVY2blBydk3hLGxPreHtk5aGXWcsL9B78+WKsz
+          s52Stgqe21XHt3zJ3YRdOJQaHfqt9sWEDuUq8NnHOfIatvrkMhywQ9ZJU7icNOwf
+          VowFaKAROBM36nQMLJ5UvTE69RriolC9scIZE9g1jrcZ/60xduGq9SFIwIvYyWA4
+          tQyJmnM/XXiJmxxcDMzsFDmtQILOo6oioRGGuDUEUdJ6/eQgoflFEDf0n85UKYbv
+          ZkT1ogt4/n6PnWG7VT4YPz6GrHPPJN3KA9V5bJPAnj5mNkG2aQt0uD+NjCLVhSLb
+          /5ZWT/TZVPzRyaaYiy4HhaYT+C2GPT+AG0kZ2TDPFTiVTkFl0xC3I2P6SNcZ4873
+          Og1KVwuMY4TixKMpc14pqeAXInVNRVSy1FD/jkE5SgS9oVjkdE+gzO2r6BvKQFcz
+          D79OTxNmk7U8yuBScPa6pkffG6V1rGFgYSjtH5+duFXMqiBdLw==
           -----END CERTIFICATE-----
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "6D:7B:12:97:CA:56:0A:F6:DB:C1:F2:03:9B:62:FF:A0:80:6D:28:3F:24:DA:EF:A1:78:73:73:04:83:E3:05:76"
+          test "$fp" = "30:58:66:B1:A9:D9:C3:D5:13:75:64:0A:ED:C4:FD:9D:10:54:C2:78:0A:F5:8C:31:88:32:C8:23:ED:41:3C:48"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$log" -out "$RUNNER_TEMP/panic-hygiene-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
           echo "LAS_PANIC_HYGIENE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_PANIC_HYGIENE_RC=$rc"
