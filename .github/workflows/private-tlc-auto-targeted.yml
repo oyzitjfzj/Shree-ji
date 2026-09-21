@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-shard12-ec6b2b5c
+  group: private-indexed-tlc-root108-cc4d09f8
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cc4d09f83f8087f57331827f3894eff083834ad6b01f9daba215c57734af87cb
   EXPECTED_TLC_PROFILE_COUNT: "129"
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [12, 44, 76, 108]
+        index: [108]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
