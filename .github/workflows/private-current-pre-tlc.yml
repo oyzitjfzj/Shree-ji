@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 602d22ffbbb839f8fdce6bf9977890e82daf32e6b9edaff5c34059276bc2e80e
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5649aeeb8ffcaa4bd01d99d24bb17ee3c229d0a665029db9ac0f793eec8071b3
 
 jobs:
   pre_tlc:
