@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec8549d81919146ca4a6c590ae0acad8597bc424ce183c3f0db9e752c4597525
 
 jobs:
   audit:
@@ -70,7 +70,7 @@ jobs:
           } >"$report" 2>&1
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
-                    -----BEGIN CERTIFICATE-----
+          -----BEGIN CERTIFICATE-----
           MIIEMTCCApmgAwIBAgIUb+axIJTp0EaDKsLEp65D57c53+QwDQYJKoZIhvcNAQEL
           BQAwKDEmMCQGA1UEAwwdTEFTIGN1cnJlbnQgZXhhY3QgYWxlcnQgYXVkaXQwHhcN
           MjYwOTIxMjEzOTQzWhcNMjYwOTIzMjEzOTQzWjAoMSYwJAYDVQQDDB1MQVMgY3Vy
