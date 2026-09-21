@@ -1,0 +1,125 @@
+name: Private production panic hygiene
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_PRODUCTION_PANIC_HYGIENE"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 602d22ffbbb839f8fdce6bf9977890e82daf32e6b9edaff5c34059276bc2e80e
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private active head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_PANIC_HYGIENE_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run production-only restriction lints privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 clippy >/dev/null
+
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$ALR_ZIP"             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          ALR_WS="$RUNNER_TEMP/alire-panic-hygiene"
+          mkdir -p "$ALR_WS"
+          (cd "$ALR_WS" && alr -n init --in-place --no-skel --lib las_panic_hygiene >/dev/null)
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec "$ALR_PREFIX/bin/alr" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$GPRBUILD_WRAPPER"
+
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/panic-hygiene-private.log"
+          set +e
+          GPRBUILD="$GPRBUILD_WRAPPER" cargo +1.98.1 clippy --locked --all-features --lib --             -D warnings             -D clippy::unwrap_used             -D clippy::expect_used             -D clippy::panic             -D clippy::todo             -D clippy::unimplemented >"$log" 2>&1
+          rc=$?
+          set -e
+
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIENTCCAp2gAwIBAgIUeDJkBWD93ddt1NU573PSdSCy5wkwDQYJKoZIhvcNAQEL
+          BQAwKjEoMCYGA1UEAwwfTEFTIGN1cnJlbnQgcHJlLVRMQyBkaWFnbm9zdGljczAe
+          Fw0yNjA5MjExODM1MDBaFw0yNjA5MjMxODM1MDBaMCoxKDAmBgNVBAMMH0xBUyBj
+          dXJyZW50IHByZS1UTEMgZGlhZ25vc3RpY3MwggGiMA0GCSqGSIb3DQEBAQUAA4IB
+          jwAwggGKAoIBgQCqng9yz93nbpnzxEwXCWWlvswauGJCXxsrxZpE5bjNMhcknoH2
+          igTwF365w6RZR9z/+GVL+G2G359nZGr/pvV+o4Y7MgO4e3ObOPSU1H+cZauTFYHl
+          +REKUR7UEmluhbzNWtqxFtp8KkS85XG9bn0JrCbBEriBb5GNcJh2vFy1ThwoP9X0
+          sixgt8/auS6344BTz1y2Ip0jEM75aBIR0AnnyOoCXiRP9o7snB6+jPekxXUsLWzR
+          +aoTAwFTVq+s/7auOYaKMf2QtUVEW7P53hbIwVOLeAB6uDZmvaNBHttOnLOTwt6f
+          MssWK2fSFQKClT5sJZ6TyGwVkCOOTpJlZzEs97iy7lrk7qrsEcfrSdkd2q3WM+dw
+          MD1BekidfkwnNwFonTALowUYwH4ie/3jhR8Ky0FC6t89mkkSexWlxfyxoSKD7vU3
+          HWkyVqOPs5qCn/0K7yTTjOdX1VH6zBUnnwcSJVTBBNfrt1Ws0zkkADLTY10NLSZc
+          HLTAHb/gF1eyO4kCAwEAAaNTMFEwHQYDVR0OBBYEFNGhdQp+iBnQuGvrZJgaB0Q/
+          pLD6MB8GA1UdIwQYMBaAFNGhdQp+iBnQuGvrZJgaB0Q/pLD6MA8GA1UdEwEB/wQF
+          MAMBAf8wDQYJKoZIhvcNAQELBQADggGBAJIeqEw8reAEx/vppYRMPUSPKGGI2FuA
+          O1kEfQ9735URijRUXcfVoOnB7LxMpYKtSgpsX4Kjf6TCpcrjBO7C/qxziN8F7kZe
+          g5m0pSHtimjWb2c0MzIy5wcUqn6jPqRq3D7RCPcSoZ7/O80HdgpkY6xSW2Y3dXU5
+          xoBH/xRNZXpydI9ra68CWBsIKejO55+Esu8R3NTgT3UNdPzhgg01uapkrwHD2FOg
+          iIVNewurjFzhZAMsgHkk8BAkJV7HIV06ej8YTY2Rtot69szu3GkMQSE9DSqGXDsG
+          pPwQUcpm3IUfnDEsOqPGE/Tih7DUQy38rqozLMwGhqseSzYMksWAq+yu9XHDw+3K
+          BKEr4QmwfpRc/oMywsrhiJC95JwFTra/X3TmT7Ras6lk1qY5Uk97/AfNGzqwdT0J
+          UgXVfUJCkv0jdF0O4LOBwXSuG4hkHsqJ53QUfxtr3I3IWLpewHxXx6GZ4nJIXzzS
+          3ZwVRRTxVsrG9wa3pMGMkmfZxW8rAkpmLw==
+          -----END CERTIFICATE-----
+          EOF_CERT
+          fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "6D:7B:12:97:CA:56:0A:F6:DB:C1:F2:03:9B:62:FF:A0:80:6D:28:3F:24:DA:EF:A1:78:73:73:04:83:E3:05:76"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$log" -out "$RUNNER_TEMP/panic-hygiene-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_PANIC_HYGIENE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_PANIC_HYGIENE_RC=$rc"
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_PANIC_HYGIENE_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_PANIC_HYGIENE_RESULT=FAIL"
+          exit 1
+
+      - name: Upload encrypted restriction-lint evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-production-panic-hygiene
+          path: ${{ runner.temp }}/panic-hygiene-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
