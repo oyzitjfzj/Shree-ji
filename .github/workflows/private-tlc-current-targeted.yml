@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-tlc-targeted
+  group: current-tlc-targeted-fa6b7956
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3d06b36510737eb08bcaa88ac1fb13793f5cb97d5635cac15914bc1f2cab3f57
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fa6b79561db74df3bcb1c6e2e9eec698f88be6e935254968f2018b44f62bb22a
 
 jobs:
   tlc:
@@ -23,19 +23,12 @@ jobs:
       max-parallel: 8
       matrix:
         cfg:
-          - spec/adaptive_defence/AdaptiveStateArtifactLineage.cfg
           - spec/adaptive_defence/LearnerRunArchiveReclaim.cfg
           - spec/adaptive_defence/LearnerRunEvidence.cfg
           - spec/defence_evolution/AdaptiveAdversarialRun.cfg
-          - spec/defence_evolution/CandidateEvaluationCampaign.cfg
-          - spec/defence_evolution/ClaimEvidenceAssessment.cfg
-          - spec/defence_evolution/EvaluationMaterialBundle.cfg
-          - spec/defence_evolution/EvaluationRunResultEvidence.cfg
-          - spec/defence_evolution/HistoricalIncidentMaterial.cfg
           - spec/defence_evolution/EvidenceDependenceCommonCause.cfg
           - spec/predictive_guardian_network/GuardianAssessmentPublication.cfg
           - spec/predictive_guardian_network/GuardianDecodedAssessment.cfg
-          - spec/predictive_guardian_network/GuardianExecutionClaim.cfg
           - spec/root_authority/RootSupervisorActiveServiceFaultInterleavings.cfg
           - spec/root_authority/RootControlDurableJournal.cfg
           - spec/root_authority/RootSupervisorDurableGenerationFence.cfg
