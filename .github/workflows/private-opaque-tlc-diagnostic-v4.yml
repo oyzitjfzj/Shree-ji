@@ -1,0 +1,166 @@
+name: Private opaque TLC diagnostic v4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_OPAQUE_TLC_DIAG_V4"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opaque-tlc-diag-v4-ec6b2b5c
+  cancel-in-progress: false
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  EXPECTED_VERIFIER_BLOB: 9a5d693b83a47f9f9aef1f8a266049e8fd8e0c65
+  EXPECTED_TLC_PROFILE_COUNT: "129"
+  RECIPIENT_CERT_FINGERPRINT: "CF:AC:F0:DE:0A:1B:83:5A:5F:81:25:CC:81:F1:F8:AE:E9:E8:5F:20:51:B5:4F:CE:66:06:E5:A5:DE:8B:0F:94"
+
+jobs:
+  tlc:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        index: [12, 44, 76, 108]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          unset PRIVATE_TOKEN auth
+          echo "LAS_OPAQUE_TLC_SNAPSHOT_PROOF=$proof"
+
+      - name: Run isolated TLC profile
+        shell: bash
+        env:
+          PROFILE_INDEX: ${{ matrix.index }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar" >/dev/null 2>&1
+          echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $TLA_JAR" | sha1sum --check --strict >/dev/null
+
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          m = re.search(r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{', src, re.S)
+          if not m:
+              raise SystemExit("canonical TLC map generator not found")
+          Path(sys.argv[2]).write_text(m.group(1) + "\n", encoding="utf-8")
+          PY
+
+          map="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$map"
+          test "$(wc -l < "$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
+          record="$(sed -n "$((PROFILE_INDEX + 1))p" "$map")"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<< "$record"
+          test -n "$cfg" && test -n "$tla"
+
+          cfg_dir="$(dirname "$cfg")"
+          cfg_base="$(basename "$cfg")"
+          tla_base="$(basename "$tla")"
+          log="$RUNNER_TEMP/tlc-private.log"
+          metadir="$RUNNER_TEMP/tlc-state"
+          mkdir -p "$metadir"
+          args=(-workers 2 -fp 0 -metadir "$metadir")
+          [[ "$deadlock" == "1" ]] && args+=(-deadlock)
+          args+=(-config "$cfg_base" "$tla_base")
+
+          set +e
+          (cd "$cfg_dir" && java -XX:+UseParallelGC -jar "$TLA_JAR" "${args[@]}") >"$log" 2>&1
+          rc=$?
+          set -e
+
+          ok=0
+          if [[ -n "$expectation" ]]; then
+            (( rc != 0 )) && grep -Eiq "$expectation" "$log" && ok=1
+          elif (( rc == 0 )); then
+            ok=1
+          fi
+
+          echo "LAS_OPAQUE_TLC_INDEX=$PROFILE_INDEX"
+          if (( ok )); then
+            echo "LAS_OPAQUE_TLC_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_OPAQUE_TLC_RESULT=FAIL"
+          exit 1
+
+      - name: Encrypt private diagnostic
+        if: always()
+        shell: bash
+        env:
+          PROFILE_INDEX: ${{ matrix.index }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/tlc-private.log"
+          test -f "$log" || printf '%s\n' "profile ended before TLC log creation" > "$log"
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIERTCCAq2gAwIBAgIUWdI4rWZcbMoR9JhMDu4ebAB6oaQwDQYJKoZIhvcNAQEL
+          BQAwMjEwMC4GA1UEAwwnTEFTIGNsb3N1cmUgdmVyaWZpY2F0aW9uIHY0IGRpYWdu
+          b3N0aWNzMB4XDTI2MDkyMTIxMzMwNloXDTI2MDkyMzIxMzMwNlowMjEwMC4GA1UE
+          AwwnTEFTIGNsb3N1cmUgdmVyaWZpY2F0aW9uIHY0IGRpYWdub3N0aWNzMIIBojAN
+          BgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEArSOHddigMT47/W+LH0k8c7xxLqlR
+          cTzZSf7qvld0juwAW0+3jsXI+qL6Af9iLQAY0gK6jEJ8jeEHmXPvSl7LwXGNAWkM
+          9bH3TGMJ4/dxspNbBwRty67klZxiOT04clB4CcobpVZkajbarXeOZnXqOHdIPjHY
+          kNitDt40odxLorrBddonE5HEepczmJ9fnRFpvpyIKqv+hCMaarRDy/avoY6Vlntl
+          GdgP1yQSMgOHTMqx1/5ZYco/r+D25k4ULSgaqO7k5RpQ+8DPQQPS7FfJySKs3jKr
+          jjl1yAucVX/niIAsyIHTGE1CE1//EF47pdbNyLNpksnwU6O6fgbIz8AnT2qluwa0
+          LdvF7klv93e3GUuIiyLazIa3HHfBNlcJf7yCO9f9ZBcGgHpFc/w2xh9guz50m+v9
+          tGLvdZ+Xzs03xLEiZivsklnSybrvWRwAcvY+iE4W78gnVbU8VM37etvfpyoER4kt
+          C+movrK5gxvxjq+9+6rQfCykJVFZI2cPqIiFAgMBAAGjUzBRMB0GA1UdDgQWBBS8
+          wysix2JO490hnaiOQumZ/orifDAfBgNVHSMEGDAWgBS8wysix2JO490hnaiOQumZ
+          /orifDAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQCn+AQRITix
+          1K9IA1HgUeVFx8DRSNu9ZO5otFsqYo5xGi8VPr6suvv19CfRH13O4R4o/VTk832n
+          FYKrHVWj2HyxyUsG/VyaIy1Un1MxKEuFfW6qhthSyMDFQ1OG6phAtod6KQPU5isB
+          JVZEUPeUU/tFY1CgNXK3DB5rjxWtEZvV+dy8ddKcx0BiBVof98w1mYy41z19+vrv
+          I2ApenAFgRSawDnz1x+tjBiJ7qD+R9U289eIdyI4Ct3bq5MPNn3BxCIlHVgT+5sQ
+          dbn5RjYYsdhIZQ/DiQw5a77oPgHYjuAMUWYUJXTEzZ/OUxjdH4WbcqtBCWCLCw7n
+          2YTm25A06WaPqPatF3WFZeOtU8AexETFNOL5ONnrg/zaqJ63WnRAxRRpK0ZIlyr2
+          sMIYwcxUFvi8gAzgkWLsdRxH/c3/QG4YArupPR5Nt13GQ/aC4JFBpnunUNDpRZYU
+          +KYShwolYOGu5h11NcD3vtY01NGOr5Vv2doH0qYNSvTl1q07MdLw5Qw=
+          -----END CERTIFICATE-----
+          EOF_CERT
+          fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "$RECIPIENT_CERT_FINGERPRINT"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/tlc-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_OPAQUE_TLC_INDEX=$PROFILE_INDEX"
+          echo "LAS_OPAQUE_TLC_EVIDENCE_SHA256=$(sha256sum "$RUNNER_TEMP/tlc-private.cms" | awk '{print $1}')"
+
+      - name: Upload encrypted diagnostic
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opaque-tlc-v4-${{ matrix.index }}
+          path: ${{ runner.temp }}/tlc-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
