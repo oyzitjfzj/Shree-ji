@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-root108-cc4d09f8
+  group: private-indexed-tlc-root108-ec8549d8
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cc4d09f83f8087f57331827f3894eff083834ad6b01f9daba215c57734af87cb
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec8549d81919146ca4a6c590ae0acad8597bc424ce183c3f0db9e752c4597525
   EXPECTED_TLC_PROFILE_COUNT: "129"
 
 jobs:
