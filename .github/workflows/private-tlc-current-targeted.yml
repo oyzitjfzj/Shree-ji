@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-tlc-targeted-fa6b7956
+  group: current-tlc-targeted-root-active-8c24f97e
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fa6b79561db74df3bcb1c6e2e9eec698f88be6e935254968f2018b44f62bb22a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8c24f97eb67a0023920c02195e0117a3ce657709cc8614bc8a5862a16fee5c01
 
 jobs:
   tlc:
@@ -23,15 +23,7 @@ jobs:
       max-parallel: 8
       matrix:
         cfg:
-          - spec/adaptive_defence/LearnerRunArchiveReclaim.cfg
-          - spec/adaptive_defence/LearnerRunEvidence.cfg
-          - spec/defence_evolution/AdaptiveAdversarialRun.cfg
-          - spec/defence_evolution/EvidenceDependenceCommonCause.cfg
-          - spec/predictive_guardian_network/GuardianAssessmentPublication.cfg
-          - spec/predictive_guardian_network/GuardianDecodedAssessment.cfg
           - spec/root_authority/RootSupervisorActiveServiceFaultInterleavings.cfg
-          - spec/root_authority/RootControlDurableJournal.cfg
-          - spec/root_authority/RootSupervisorDurableGenerationFence.cfg
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
