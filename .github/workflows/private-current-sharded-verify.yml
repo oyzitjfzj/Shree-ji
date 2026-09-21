@@ -1,0 +1,273 @@
+name: Current exact sharded canonical verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_SHARDED_VERIFY"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: current-sharded-verify-ec6b2b5c
+  cancel-in-progress: false
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  EXPECTED_VERIFIER_BLOB: 9a5d693b83a47f9f9aef1f8a266049e8fd8e0c65
+  EXPECTED_TLC_PROFILE_COUNT: "129"
+  TLC_SHARD_COUNT: "32"
+
+jobs:
+  pre_tlc:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private active head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          git checkout -q -B verify-target "$actual"
+          unset PRIVATE_TOKEN auth
+
+          echo "LAS_PRE_TLC_SNAPSHOT_PROOF=$proof"
+          echo "LAS_PRE_TLC_VERIFIER_BLOB=$EXPECTED_VERIFIER_BLOB"
+
+      - name: Run exact canonical pre-TLC stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          staged="$RUNNER_TEMP/verify-pre-tlc.sh"
+
+          python3 - tools/verify_codespaces_all.sh "$staged" <<'PY'
+          from pathlib import Path
+          import sys
+
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          needle = 'TLC_MAP="$TMP/tlc-map.tsv"'
+          if src.count(needle) != 1:
+              raise SystemExit("canonical TLC boundary not unique")
+
+          insertion = r'''
+          record "tracked tree unchanged after pre-TLC verification" bash -c '
+            test -z "$(git status --porcelain --untracked-files=no)"
+          '
+          echo "LAS_PRE_TLC_STAGE_RESULT=PASS"
+          exit 0
+
+          '''
+          Path(sys.argv[2]).write_text(
+              src.replace(needle, insertion + needle, 1),
+              encoding="utf-8",
+          )
+          PY
+
+          chmod 0700 "$staged"
+          private_log="$RUNNER_TEMP/pre-tlc-private.log"
+          set +e
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target bash "$staged" >"$private_log" 2>&1
+          rc=$?
+          set -e
+
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_PRE_TLC_STAGE_RESULT=PASS$' "$private_log"; then
+            echo "LAS_PRE_TLC_STAGE_RESULT=PASS"
+            exit 0
+          fi
+
+          echo "LAS_PRE_TLC_STAGE_RESULT=FAIL"
+          exit 1
+
+  tlc:
+    needs: pre_tlc
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private active head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          unset PRIVATE_TOKEN auth
+
+          echo "LAS_TLC_SHARD_SNAPSHOT_PROOF=$proof"
+
+      - name: Run canonical TLC shard
+        shell: bash
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar" \
+            >/dev/null 2>&1
+          echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $TLA_JAR" \
+            | sha1sum --check --strict >/dev/null
+
+          map_py="$RUNNER_TEMP/tlc-map.py"
+          func_sh="$RUNNER_TEMP/tlc-function.sh"
+
+          python3 - tools/verify_codespaces_all.sh "$map_py" "$func_sh" <<'PY'
+          from pathlib import Path
+          import sys
+
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+
+          map_header = 'python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'
+          map_end = '\nPY\n\nrun_tlc_profile() {'
+          if src.count(map_header) != 1 or src.count(map_end) != 1:
+              raise SystemExit("canonical TLC map extraction anchors are not unique")
+          map_start = src.index(map_header) + len(map_header)
+          map_stop = src.index(map_end, map_start)
+          Path(sys.argv[2]).write_text(src[map_start:map_stop] + "\n", encoding="utf-8")
+
+          func_header = 'run_tlc_profile() {\n'
+          loop_header = "while IFS=$'\\t' read -r cfg tla deadlock expectation; do\n"
+          if src.count(func_header) != 1 or src.count(loop_header) != 1:
+              raise SystemExit("canonical TLC function extraction anchors are not unique")
+          func_start = src.index(func_header)
+          func_stop = src.index(loop_header, func_start)
+          Path(sys.argv[3]).write_text(src[func_start:func_stop], encoding="utf-8")
+          PY
+
+          TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$map_py" "$ROOT" > "$TLC_MAP"
+          total="$(wc -l < "$TLC_MAP" | tr -d ' ')"
+          test "$total" = "$EXPECTED_TLC_PROFILE_COUNT"
+
+          TMP="$RUNNER_TEMP/tlc-shard-$SHARD_INDEX"
+          mkdir -p "$TMP"
+          PASS=0
+          FAIL=0
+          FAILED=()
+          source "$func_sh"
+
+          private_log="$RUNNER_TEMP/tlc-shard-$SHARD_INDEX.private.log"
+          : > "$private_log"
+
+          selected=0
+          index=0
+          while IFS=$'\t' read -r cfg tla deadlock expectation; do
+            [[ -n "$cfg" && -n "$tla" ]] || continue
+            if (( index % TLC_SHARD_COUNT == SHARD_INDEX )); then
+              selected=$((selected + 1))
+              run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation" \
+                >>"$private_log" 2>&1
+            fi
+            index=$((index + 1))
+          done < "$TLC_MAP"
+
+          expected_selected=$(( (EXPECTED_TLC_PROFILE_COUNT + TLC_SHARD_COUNT - 1 - SHARD_INDEX) / TLC_SHARD_COUNT ))
+          test "$selected" -eq "$expected_selected"
+          test "$index" -eq "$EXPECTED_TLC_PROFILE_COUNT"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+          echo "LAS_TLC_SHARD_INDEX=$SHARD_INDEX"
+          echo "LAS_TLC_SHARD_PROFILE_COUNT=$selected"
+          echo "LAS_TLC_SHARD_FAIL_COUNT=$FAIL"
+
+          if (( FAIL )); then
+            echo "LAS_TLC_SHARD_RESULT=FAIL"
+            exit 1
+          fi
+
+          echo "LAS_TLC_SHARD_RESULT=PASS"
+
+  report:
+    if: always()
+    needs: [pre_tlc, tlc]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Record non-sensitive aggregate result
+        shell: bash
+        env:
+          PRE_TLC_RESULT: ${{ needs.pre_tlc.result }}
+          TLC_RESULT: ${{ needs.tlc.result }}
+        run: |
+          set -euo pipefail
+
+          result=FAIL
+          if [[ "$PRE_TLC_RESULT" == "success" && "$TLC_RESULT" == "success" ]]; then
+            result=PASS
+          fi
+
+          cat > LAS_SHARDED_VERIFY_RESULT.json <<EOF
+          {
+            "schema": "las-public-sharded-verification-v1",
+            "private_snapshot_proof": "$EXPECTED_PRIVATE_SNAPSHOT_PROOF",
+            "canonical_verifier_blob": "$EXPECTED_VERIFIER_BLOB",
+            "pre_tlc_job": "$PRE_TLC_RESULT",
+            "tlc_matrix_job": "$TLC_RESULT",
+            "tlc_profile_count": $EXPECTED_TLC_PROFILE_COUNT,
+            "tlc_shard_count": $TLC_SHARD_COUNT,
+            "result": "$result"
+          }
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add LAS_SHARDED_VERIFY_RESULT.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record current sharded verification result"
+            git push origin HEAD:main
+          fi
+
+          echo "LAS_SHARDED_VERIFY_RESULT=$result"
+          [[ "$result" == "PASS" ]]
