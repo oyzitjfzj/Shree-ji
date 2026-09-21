@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-root108-ec8549d8
+  group: private-indexed-tlc-guardian-schema89-ec8549d8
   cancel-in-progress: false
 
 env:
@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [108]
+        index: [89]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
