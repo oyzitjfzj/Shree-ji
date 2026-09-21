@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5649aeeb8ffcaa4bd01d99d24bb17ee3c229d0a665029db9ac0f793eec8071b3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
 
 jobs:
   audit:
@@ -71,33 +71,33 @@ jobs:
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIEPzCCAqegAwIBAgIUPT0qPUiwTHFEESuOPcX2gevAHx8wDQYJKoZIhvcNAQEL
-          BQAwLzEtMCsGA1UEAwwkTEFTIGN1cnJlbnQgc291cmNlIGFsZXJ0IGRpYWdub3N0
-          aWNzMB4XDTI2MDkyMTIwMzM1NVoXDTI2MDkyMzIwMzM1NVowLzEtMCsGA1UEAwwk
-          TEFTIGN1cnJlbnQgc291cmNlIGFsZXJ0IGRpYWdub3N0aWNzMIIBojANBgkqhkiG
-          9w0BAQEFAAOCAY8AMIIBigKCAYEAoHjbiRixRY+QvrnOZMvyh5PmhdxArmMGcplR
-          B4qNA+H6NWL0GCzvwecwrH0tYqybMP+C5b8a/UOPTOkEO77Ylw5hzAGpfR2l5Jda
-          YLWh0ICXCutTeob1B13PAIkoMNxE9BAsRJ6ZlAaPQn6jT6B9zxas36I0ya9utwyV
-          81Bex4HmvRnjg1Ef8iB34mGDIeLic3jUMlBnmw/E7l1OmkNvhY2eJk975fae/5GH
-          gei0QCW0TR/t9yE0gWk64g/sW8BBjnmh9cH9qaNiOXkxW9qp4WO4af2DC3Ab9Jun
-          PlzoIlxLJg6anl7K7mJKuMOZtMqFF2oLLB7jB3k8BIeVoe+33EWayciCyRzX1VDB
-          0ngQXivwLIlQhvjboRfmInoXpJQ+/cb5287MJifX6OrUWUVJEv0lrHjc0Lo4u12/
-          W/5/fpFHhr0jwNBwlmv9OHpcAO3eglajkO/hshaw1IWn+wVN/v3NFxC16y+UtblY
-          Pgx4rLqQX5w3e5XJoYUU3y1/rWLPAgMBAAGjUzBRMB0GA1UdDgQWBBSni9T6WjU4
-          3pVAGKy3/i63QGvRzzAfBgNVHSMEGDAWgBSni9T6WjU43pVAGKy3/i63QGvRzzAP
-          BgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQBS6fil31zun5PC9ORa
-          CtDuWTXNEEmJ2TRaWexoTjv7yoNqc8NTy3ROn8XlPegH7yGgPd6WiuVIogFeQ3FS
-          W3D+BPypKz9HwxpGFfiW/mFHGMaoScos8kwmjFdKyUJ3Pelq8SCxWF7zqdpXcDpx
-          lL8XzzStXaKXYkNEwlko3q2DLl1xhOd8QyvtvM4J2rGcX8uc2w7XMFOFpGmk8hGs
-          UweZGjMWVB/hrvSqnAhjTu9AAQae6Vvhb7rklAAnzY17foguTvfZZN1grRF7KXdx
-          ZxM7mOOfnY4Sjsufqzoph7lqbJl5OMyb2WwKfxwfxvG5hHuBTrNChmxIok1K1CEc
-          qQY4r5+6eXRpzoGUgPOX513LGX3ie4fS1sytan2ZgUkj8fQA8P/5bVXrehPZHQSz
-          7YR1F310oKf0BHezjy0VhF69qgyDLc6ERyjxw+kEfThwyDcuCVdYqyRMKWOg/fpf
-          1LV1TE8GpO9n69BpZlm3zIJgd8fBuMnYHZe4Dh0hC95lE6k=
-          -----END CERTIFICATE-----
+MIIEMTCCApmgAwIBAgIUb+axIJTp0EaDKsLEp65D57c53+QwDQYJKoZIhvcNAQEL
+BQAwKDEmMCQGA1UEAwwdTEFTIGN1cnJlbnQgZXhhY3QgYWxlcnQgYXVkaXQwHhcN
+MjYwOTIxMjEzOTQzWhcNMjYwOTIzMjEzOTQzWjAoMSYwJAYDVQQDDB1MQVMgY3Vy
+cmVudCBleGFjdCBhbGVydCBhdWRpdDCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCC
+AYoCggGBAOEkoJDxfIPQ1jAEulqVHNQRcVumdiuEq7H0hd8Jluq1jeaqAR4jB3ru
+VlB7gnnf/Vgw0+1zzW8TI4fS2PKcFqY1jmzK0qvTmpmKF6c4y5yzqMqoqdQin/qf
+Nz1mHByGFOFRhlaKMhnrtJ5gNDAxXPROQHZDk47kId1cRmvDyxsQ/OttZWMrheLE
+CIDF3QN7sZx04cKKv+VDQm89P5oz4KKx+0hSdIXuJPZKAeCeqTC41UWiNd7Wayng
+cEXlenFZI+5FC1rVLkMUU9zPeVGLn3xbmxn4iplCyLeMr0HcBw6dzPbVbELFA3Gk
+KuDpbwRhCkxadSIxcC6MtR6Yk05SXmlS8BmFmJ/AhwLPQ8SRSuD8yLExUb2Mi6ni
+/ZM6drlFeStYilMR4IsBecwUBNxnX2vfqT41xLj4KZbT5Clt+cPr8mT5/ER3uuxT
+74wm3g7KSBpP6q8MsyS5MLsXmdIsfqo2CRXgYC3HCZFdfNbNU9VcQlZJjA65pW1i
+9PZS1hU1AQIDAQABo1MwUTAdBgNVHQ4EFgQUgmN42CIigr6Mv2gmCzdTCk3HnCUw
+HwYDVR0jBBgwFoAUgmN42CIigr6Mv2gmCzdTCk3HnCUwDwYDVR0TAQH/BAUwAwEB
+/zANBgkqhkiG9w0BAQsFAAOCAYEAiJb/eksE3udM2VoQZyLOoItXGvwiNpV8468S
+PPWsv6Et7230sF70TTksHy4sAoMyrwOV1gFeSKD3IPlnBUt+ggA0q2PMWYWQ3hYd
+BXjkbrfOPHiVEDb5x2ubljS5KDIDKJbwEH9TIZIIdQdHii7CpNzabv3A6A0vk9PZ
+oV/7ojWgyPtiJt84txLrzVuDQijXBuxb2Ylt8X5qjYl5xUErHat/mJ1ldJRwNOMB
+E8XnNJ6CDJvd8PdxMfiScGmVBpQtxQE1/T552u1MQ5uMU/6QKxmuHSyW1qAlbbPK
+MRs6K1QzY/YaAWxfuvBqlRIefHFPC2jOkbtPEYtyFjSlIF4jezGPsl6gMrILh+kJ
+4vGx7zo29o0QTmAPPrxbxLG1Y1H6YQmAOVRLuwkwFSn2VPWApFI5oAvVM2qtBwge
+nfW64tk/D6/BFdggCxISziw/oAMWHYmx5F1MAszpxOZRggQKNJyK5l//2OaTiEKP
+FMpQdECSlw/zhs0apnPlLS+qJlPU
+-----END CERTIFICATE-----
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "7E:B3:01:3C:1F:34:6C:4B:33:9C:9B:BD:9B:22:9E:84:D1:10:22:A9:9D:E6:F4:15:C9:8A:0E:06:41:64:37:0C"
+          test "$fp" = "12:58:C7:EC:B1:8C:FF:FA:00:F9:DC:22:84:0C:DF:7B:EF:7E:3B:0B:D4:CA:E2:78:70:CF:6E:83:B6:3F:78:D9"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$report" -out "$RUNNER_TEMP/source-alert-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
           echo "LAS_ALERT_REPORT_SHA256=$(sha256sum "$report" | awk '{print $1}')"
           echo "LAS_ALERT_AUDIT_READY=YES"
