@@ -1,0 +1,112 @@
+name: Private current source alert audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_SOURCE_ALERT_AUDIT"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 602d22ffbbb839f8fdce6bf9977890e82daf32e6b9edaff5c34059276bc2e80e
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private active head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_ALERT_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Build encrypted alert-mode report
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          report="$RUNNER_TEMP/source-alert-private.txt"
+          {
+            echo "HEAD=$(git rev-parse HEAD)"
+            echo "== tracked-tree =="
+            git status --short
+            echo "== diff-check =="
+            git diff --check
+            echo "== todo-unimplemented =="
+            git grep -nE 'todo!\(|unimplemented!\(' -- 'src/**/*.rs' ':!src/**/tests/**' || true
+            echo "== panic-unwrap-expect =="
+            git grep -nE 'panic!\(|\.unwrap\(\)|\.expect\(' -- 'src/**/*.rs' || true
+            echo "== unsafe =="
+            git grep -nE '\bunsafe\b' -- 'src/**/*.rs' || true
+            echo "== lint-suppressions =="
+            git grep -nE '#!?\[(allow|expect)\(' -- 'src/**/*.rs' || true
+            echo "== cfg-test =="
+            git grep -nE '#\[cfg\(test\)\]' -- 'src/**/*.rs' || true
+            echo "== deadlock-disabled =="
+            git grep -nF 'CHECK_DEADLOCK FALSE' -- 'spec/**/*.cfg' || true
+            echo "== secret-like literals =="
+            git grep -nEi '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})' -- . ':!.git' || true
+          } >"$report" 2>&1
+
+          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIENTCCAp2gAwIBAgIUeDJkBWD93ddt1NU573PSdSCy5wkwDQYJKoZIhvcNAQEL
+          BQAwKjEoMCYGA1UEAwwfTEFTIGN1cnJlbnQgcHJlLVRMQyBkaWFnbm9zdGljczAe
+          Fw0yNjA5MjExODM1MDBaFw0yNjA5MjMxODM1MDBaMCoxKDAmBgNVBAMMH0xBUyBj
+          dXJyZW50IHByZS1UTEMgZGlhZ25vc3RpY3MwggGiMA0GCSqGSIb3DQEBAQUAA4IB
+          jwAwggGKAoIBgQCqng9yz93nbpnzxEwXCWWlvswauGJCXxsrxZpE5bjNMhcknoH2
+          igTwF365w6RZR9z/+GVL+G2G359nZGr/pvV+o4Y7MgO4e3ObOPSU1H+cZauTFYHl
+          +REKUR7UEmluhbzNWtqxFtp8KkS85XG9bn0JrCbBEriBb5GNcJh2vFy1ThwoP9X0
+          sixgt8/auS6344BTz1y2Ip0jEM75aBIR0AnnyOoCXiRP9o7snB6+jPekxXUsLWzR
+          +aoTAwFTVq+s/7auOYaKMf2QtUVEW7P53hbIwVOLeAB6uDZmvaNBHttOnLOTwt6f
+          MssWK2fSFQKClT5sJZ6TyGwVkCOOTpJlZzEs97iy7lrk7qrsEcfrSdkd2q3WM+dw
+          MD1BekidfkwnNwFonTALowUYwH4ie/3jhR8Ky0FC6t89mkkSexWlxfyxoSKD7vU3
+          HWkyVqOPs5qCn/0K7yTTjOdX1VH6zBUnnwcSJVTBBNfrt1Ws0zkkADLTY10NLSZc
+          HLTAHb/gF1eyO4kCAwEAAaNTMFEwHQYDVR0OBBYEFNGhdQp+iBnQuGvrZJgaB0Q/
+          pLD6MB8GA1UdIwQYMBaAFNGhdQp+iBnQuGvrZJgaB0Q/pLD6MA8GA1UdEwEB/wQF
+          MAMBAf8wDQYJKoZIhvcNAQELBQADggGBAJIeqEw8reAEx/vppYRMPUSPKGGI2FuA
+          O1kEfQ9735URijRUXcfVoOnB7LxMpYKtSgpsX4Kjf6TCpcrjBO7C/qxziN8F7kZe
+          g5m0pSHtimjWb2c0MzIy5wcUqn6jPqRq3D7RCPcSoZ7/O80HdgpkY6xSW2Y3dXU5
+          xoBH/xRNZXpydI9ra68CWBsIKejO55+Esu8R3NTgT3UNdPzhgg01uapkrwHD2FOg
+          iIVNewurjFzhZAMsgHkk8BAkJV7HIV06ej8YTY2Rtot69szu3GkMQSE9DSqGXDsG
+          pPwQUcpm3IUfnDEsOqPGE/Tih7DUQy38rqozLMwGhqseSzYMksWAq+yu9XHDw+3K
+          BKEr4QmwfpRc/oMywsrhiJC95JwFTra/X3TmT7Ras6lk1qY5Uk97/AfNGzqwdT0J
+          UgXVfUJCkv0jdF0O4LOBwXSuG4hkHsqJ53QUfxtr3I3IWLpewHxXx6GZ4nJIXzzS
+          3ZwVRRTxVsrG9wa3pMGMkmfZxW8rAkpmLw==
+          -----END CERTIFICATE-----
+          EOF_CERT
+          fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "6D:7B:12:97:CA:56:0A:F6:DB:C1:F2:03:9B:62:FF:A0:80:6D:28:3F:24:DA:EF:A1:78:73:73:04:83:E3:05:76"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$report" -out "$RUNNER_TEMP/source-alert-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_ALERT_REPORT_SHA256=$(sha256sum "$report" | awk '{print $1}')"
+          echo "LAS_ALERT_AUDIT_READY=YES"
+
+      - name: Upload encrypted alert report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-current-source-alert
+          path: ${{ runner.temp }}/source-alert-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
