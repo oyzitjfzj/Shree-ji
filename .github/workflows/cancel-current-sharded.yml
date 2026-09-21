@@ -1,0 +1,21 @@
+name: Cancel doomed current sharded verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "CANCEL_CURRENT_SHARDED"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: current-sharded-verify-ec6b2b5c
+  cancel-in-progress: true
+
+jobs:
+  retire:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Retire doomed run
+        run: echo "Retiring failed exact-head sharded run after first TLC shard failure."
