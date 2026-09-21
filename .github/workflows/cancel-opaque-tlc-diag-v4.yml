@@ -1,0 +1,20 @@
+name: Cancel duplicate opaque TLC diagnostic v4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "CANCEL_OPAQUE_TLC_DIAG_V4"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opaque-tlc-diag-v4-ec6b2b5c
+  cancel-in-progress: true
+
+jobs:
+  retire:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Retiring redundant opaque diagnostic run."
