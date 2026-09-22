@@ -1,1 +1,1 @@
-regress TLC index 94 after inline cross-domain latching; proof 990c26cc
+regress TLC index 94 on atomic-next-state exact private head; proof 74bf99cb
