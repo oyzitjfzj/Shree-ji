@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-guardian-schema89-ea6eb244
+  group: private-indexed-tlc-candidate-case31-c734b2e4
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ea6eb2444c6431c8d6c5e1ea4b3518331431332e4090cb560f45d8032151710e
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: c734b2e415ad3dd7c78a828d5613e06df444bc0ee055cdc84b517c885276550a
   EXPECTED_TLC_PROFILE_COUNT: "129"
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [89]
+        index: [31]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
@@ -112,33 +112,33 @@ jobs:
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIENzCCAp+gAwIBAgIUMZoJyq5ThJ44Qra8QzQWKSdCI7kwDQYJKoZIhvcNAQEL
-          BQAwKzEpMCcGA1UEAwwgTEFTIGN1cnJlbnQgVExDIGV4YWN0IGRpYWdub3N0aWMw
-          HhcNMjYwOTIxMjIyMzMwWhcNMjYwOTIzMjIyMzMwWjArMSkwJwYDVQQDDCBMQVMg
-          Y3VycmVudCBUTEMgZXhhY3QgZGlhZ25vc3RpYzCCAaIwDQYJKoZIhvcNAQEBBQAD
-          ggGPADCCAYoCggGBANLDvNf2mVNjyxr0AHyKmAQ4e21Pbqb7ckHdATjHlE7DiOpR
-          Lb+thbXVVweHFBZPObQvXuTQRO5rld8C38wOop6WYUfFpvJOUlIntvE3+nAHk7iZ
-          zHUjjFFi6eaRtY3X6LiECDyQbX6caos7SY4O4TL+UUbRpVgQAXCDZwSmKECaYkHe
-          9tfATWULXnQAbNEUXDZnMK/jAMfWvuFT4F/luyOu9XgWXMOp7AmiJyabecPSNnaD
-          qkjXjXxW87jR8l3/8xTx12/maWifkuV47/JD7hNSrlYj9TIN1tnpLqWwOSGy1zSo
-          uaMZ3jDub1pv5lTa4dtOnghzFcj71dPG3rMxG6usZeOpaJ3GNJEIwge+iea8GlKS
-          t+YtddN2ZP4+lf/L6FwFVYji+mnTpyArcjJB/3xJKU8FU/EypQQPcl1ymy5URV6c
-          k9eMejHXCNNPdaTYgY3Qp8qNSZSKpwn+DfNOyMJJG98mbug2hBtqP2D+iiOtLeVp
-          rwTVo078annsxz9WTwIDAQABo1MwUTAdBgNVHQ4EFgQUJTWHDdH0Ey70im8dUCz0
-          8KrRsrMwHwYDVR0jBBgwFoAUJTWHDdH0Ey70im8dUCz08KrRsrMwDwYDVR0TAQH/
-          BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAYEAmtuHXlvVMAcSqXDqEUxijMsix0aJ
-          JvnLC1SuhAyOYUbhq/35oL2/UVgobJrJ6t8LHweBjRAsVIiuSr5dD9ViHJAPP0m1
-          6Gy2zCZpSjbGX88eynwgO0sOn3/glbjoPRjbAfU6XTPEv3y1JksKdF2xRVYCNndQ
-          2hPBWxUuj3GtsDivgwugE803xF9z9UnRrBIrvfD+LteueSWpHmpIhwqFDoTk1bj2
-          O2whlvhM6wKpRTS/sneLXQcH+IHbl/GZ21pxz3gtxy2JOHxPV4aXFdEGZCOTQ0au
-          MraGpbKsK9sr2bjGD1ICoDruBDf61WTf9QiriizkRXGGMLEKuNKxO+4UkiHoXMiU
-          kLQR3V2+Bx/18U1caaohfzruJsjpFiLbXNF+E8JgIfkmuqf9XqN8NVm9j7UzY4/G
-          8zlgCONxjVK9ZrcuQTsHNzN+F8SSg3ogxhdE0WTGTsB0zEAm0nEH9lUSF9n8sbv4
-          S9fA0WvpAgBYVV1MEq/MwCTsXUtEjhzxsb3f
+          MIIEQTCCAqmgAwIBAgIUZoUBO7HNsCOpSpoFPGLePCExZ04wDQYJKoZIhvcNAQEL
+          BQAwMDEuMCwGA1UEAwwlTEFTIFRMQzEzIGV4YWN0IGRpYWdub3N0aWMgMjAyNi0w
+          OS0yMjAeFw0yNjA5MjIxMjQyMjRaFw0yNjA5MjQxMjQyMjRaMDAxLjAsBgNVBAMM
+          JUxBUyBUTEMxMyBleGFjdCBkaWFnbm9zdGljIDIwMjYtMDktMjIwggGiMA0GCSqG
+          SIb3DQEBAQUAA4IBjwAwggGKAoIBgQCaBCBn7hrqWXJe8Kfdx5DzgefDf2q+Ol8w
+          OdJ2Pu20xJ8bWzcMcAtewsSLN71esvpQuoCir63+M6O+0rUEYmHGVDZ3oAUQgNgo
+          N1Icqh4jM7IBCE7vbvSg6FqIMizDxY4Xjz5CrWtuuDCD5kytu6y4glhn7RJ0NjWm
+          hCO8xhHo2X5o8jahEYpS1kcae5Rp3qSAm9B+ugA6C+3myADPGTwLzxbPI9erpP7s
+          i3i1ynPEKNZDRbeQEhzsVr59eM/rgVJQyClghBoOsPugXf/keQ9Mb5knMludaBhT
+          ifYa/pE4rwZMblEbAnO93hSOAV90xs6m/ywMcD/H5WvfWHNIr2C72444dX7ugN3p
+          VmUSuC+txMy81LA1q9j0kBaLxJ4zZQ+vQyltSMIwJHVQbBV3pCfRLkMPuOEoAQ03
+          8+2s4V56URsbZZlorfVxIAc+FmS2gWUT7MysafubAkQ0+bXsuZB9B5+N1o8J+RiT
+          a1eiNIJMiA9SZYYjxTO8ANEmYz35/b0CAwEAAaNTMFEwHQYDVR0OBBYEFJvv1BiY
+          Kt5z1I529Z24JS5BQd+lMB8GA1UdIwQYMBaAFJvv1BiYKt5z1I529Z24JS5BQd+l
+          MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBADiAYfsWPdStQed2
+          6jfXMRv7wZ8Z39snBVonLm9Qj5Xb0Om4Agb/Kks5YRWp6mIHPMg0A8j+u6eEcQu4
+          XKCtCuKhkFlcg+08xBTLOipCXGG6+od7ws53s5iR4ywLEEaoi7tJtSvP8wQ55bl9
+          xeoYRMv9rrBcPkgyeHSRY6Bu1UEKRWo6kb5V8VeXaDIAjIeUKp3IdZIFZSg8doB8
+          5hQOxWxSEmNPO9v7Sudc/Zs8t7HRxpYt5s4iXAEY2m9ZKA25kf5L+Gs1HDWFX6AE
+          TNitbM3Qz9tpIjKSqR6uEk92RtP38+4ytQXanMndW2vAZOsw+QPOrGA9Fr+HE4fF
+          15XUFjzm3WVDTWQZmRcTsKR906uDL8kpnUveQrdBmfVxS8yiJhp/i1pWYv9f7cxU
+          G3T54rsZKHjXsvqLXnlivvtE+mo6uS83a0Zc/KD1CqcB72SR6NnCGtIa3j2CsRtM
+          7xfdZYynff4xftAxJJWLXrOY4IymplPCMyi1WsfakjzilkNAeg==
           -----END CERTIFICATE-----
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "6C:A4:00:21:2D:D5:D9:51:69:3B:AE:01:73:B5:95:5A:C3:77:CB:20:5B:2B:0E:3A:35:74:C8:FA:27:44:D8:43"
+          test "$fp" = "3B:AB:A5:01:8C:B9:38:57:C5:FE:F3:0B:EC:21:C5:7A:6D:2A:FD:EB:63:24:9D:6F:CB:C0:EE:05:2E:B6:03:B7"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/private-tlc.cms" "$RUNNER_TEMP/recipient-cert.pem"
           echo "LAS_TLC_INDEX=$TARGET_INDEX"
           echo "LAS_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
