@@ -1,1 +1,1 @@
-exact new-verifier control profile 29; proof ba8c28bf; blob be67952a; 2026-09-22
+exact-head TLC94 GuardianWitnessRetention diagnostic; proof 1f0ff876; fresh ephemeral cert; canonical workers-auto lncheck-final
