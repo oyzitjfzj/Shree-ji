@@ -1,1 +1,1 @@
-exact frozen-head TLC shard indices 37..128; proof 571430c4; verifier aadd620d; TLC 1.7.4
+supersede shard; exact current-head encrypted TLC diagnostics indices 41 and 68; proof 571430c4
