@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: private-indexed-canonical-verification-571430c4-v2
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 571430c4a2a67d6a13180fd875e56ca90a868465f23b106f30fe70de3049e46a
@@ -103,7 +103,6 @@ jobs:
           compression-level: 0
 
   tlc:
-    needs: pre_tlc
     strategy:
       fail-fast: false
       max-parallel: 8
