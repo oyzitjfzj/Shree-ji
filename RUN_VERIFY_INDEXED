@@ -1,1 +1,1 @@
-parallel exact canonical verification frozen head eec33f3c; pre-TLC + all 129 TLC concurrently; proof 571430c4; verifier aadd620d; aggregate PASS required
+full indexed canonical verification repaired private head; proof 4ce57d8d; pre-TLC + all 129 profiles + aggregate PASS
