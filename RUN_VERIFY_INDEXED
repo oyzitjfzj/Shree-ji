@@ -1,1 +1,1 @@
-full indexed canonical verification final private work head; snapshot proof b19a2ba7; require pre-TLC + all 129 TLC profiles + aggregate PASS
+full indexed canonical verification frozen private head eec33f3c proof 571430c4 verifier aadd620d; require pre-TLC + all 129 TLC + aggregate PASS
