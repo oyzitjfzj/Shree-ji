@@ -1,1 +1,1 @@
-current exact-head TLC 1.7.4 throughput probe: index 2 baseline vs workers-auto-lncheck-final
+current exact-head profiles 30 41 optimized semantic-equivalent probe; TLC 1.7.4; workers-auto; lncheck-final; 2026-09-22
