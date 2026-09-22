@@ -1,1 +1,1 @@
-diagnose exact TLC index 94 on expanded-invariant private head; proof a38ff2c3
+regress TLC index 94 after inline cross-domain latching; proof 990c26cc
