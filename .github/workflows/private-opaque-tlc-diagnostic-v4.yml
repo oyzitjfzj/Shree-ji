@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-canonical-verification-571430c4
+  group: opaque-tlc-diag-v4-ec6b2b5c
   cancel-in-progress: true
 
 env:
