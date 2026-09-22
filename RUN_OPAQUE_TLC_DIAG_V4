@@ -1,1 +1,1 @@
-exact-head TLC94 GuardianWitnessRetention diagnostic; proof 1f0ff876; fresh ephemeral cert; canonical workers-auto lncheck-final
+exact-head TLC107+109 opaque diagnostics; proof 1f0ff876; same fresh ephemeral cert; canonical args
