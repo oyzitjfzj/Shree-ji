@@ -109,7 +109,7 @@ jobs:
           metrics="$(python3 - "$log" <<'PY'
           import re, sys
           text=open(sys.argv[1], encoding="utf-8", errors="replace").read()
-          matches=re.findall(r'([0-9,]+) states generated, ([0-9,]+) distinct states found, ([0-9,]+) states left on queue', text)
+          matches=re.findall(r'([0-9,]+) states generated(?: \\([^)]*\\))?, ([0-9,]+) distinct states found(?: \\([^)]*\\))?, ([0-9,]+) states left on queue', text)
           if matches:
               g,d,q=matches[-1]
               print(g.replace(",",""), d.replace(",",""), q.replace(",",""))
