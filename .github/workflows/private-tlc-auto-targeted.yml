@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-throughput-174-571430c4
+  group: private-indexed-tlc-diag-4168-571430c4
   cancel-in-progress: false
 
 env:
