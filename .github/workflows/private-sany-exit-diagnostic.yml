@@ -1,0 +1,93 @@
+name: Private SANY exit diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_SANY_EXIT_DIAG"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-sany-exit-diag-1f0ff876
+  cancel-in-progress: true
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1f0ff8762cb0a5a6acd64fef6be848c7fdb8dd982636074515fe27c7543584c8
+  EXPECTED_VERIFIER_BLOB: 9f4b3b02c936d5af877f0cfe7c1ebc46f4bb5774
+  EXPECTED_TLC_PROFILE_COUNT: "129"
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          unset PRIVATE_TOKEN auth
+          echo "LAS_SANY_DIAG_SNAPSHOT_PROOF=$proof"
+
+      - name: Measure SANY exit semantics on opaque failing profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          m = re.search(
+              r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',
+              src, re.S)
+          if not m:
+              raise SystemExit("canonical TLC map generator not found")
+          Path(sys.argv[2]).write_text(m.group(1) + "\n", encoding="utf-8")
+          PY
+
+          map="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$map"
+          test "$(wc -l < "$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
+          line="$(sed -n '95p' "$map")"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<< "$line"
+          test -n "$tla"
+
+          log="$RUNNER_TEMP/sany-private.log"
+          set +e
+          (cd "$(dirname "$tla")" && java -cp "$TLA_JAR" tla2sany.SANY "$(basename "$tla")") >"$log" 2>&1
+          rc=$?
+          set -e
+
+          semantic=0
+          if grep -Eq 'Semantic errors:|\*\*\* Errors:' "$log"; then semantic=1; fi
+          echo "LAS_SANY_DIAG_INDEX=94"
+          echo "LAS_SANY_EXIT_CODE=$rc"
+          echo "LAS_SANY_SEMANTIC_ERROR_PRESENT=$semantic"
+          test "$semantic" -eq 1
