@@ -1,0 +1,21 @@
+name: Supersede stale canonical verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_SUPERSEDE_STALE_571430C4"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-indexed-canonical-verification-571430c4-v2
+  cancel-in-progress: true
+
+jobs:
+  supersede:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Release stale verification capacity
+        run: echo "stale verification concurrency group superseded"
