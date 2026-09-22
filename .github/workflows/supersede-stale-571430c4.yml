@@ -1,4 +1,4 @@
-name: Supersede stale canonical verification
+name: Supersede stale verification workload
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-canonical-verification-571430c4-v2
+  group: opaque-tlc-diag-v4-00c0abcd-certpair
   cancel-in-progress: true
 
 jobs:
@@ -18,4 +18,4 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Release stale verification capacity
-        run: echo "stale verification concurrency group superseded"
+        run: echo "stale diagnostic concurrency group superseded"
