@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: opaque-tlc-diag-v4-1f0ff876-index94
+  group: opaque-tlc-diag-v4-1f0ff876-index107-109
   cancel-in-progress: true
 
 env:
@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        index: [94]
+        index: [107, 109]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private snapshot
