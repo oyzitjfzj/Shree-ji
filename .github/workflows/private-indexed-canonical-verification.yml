@@ -10,14 +10,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-canonical-verification-571430c4-v2
+  group: private-indexed-canonical-verification-00c0abcd-final
   cancel-in-progress: true
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4ce57d8da614ff1e60f229533bdaf145097db28a4549f4e937234edf6220e3a8
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 00c0abcdf40b025c3706a75a3848aa303cca009a99610eeed1c1c9beb84f0d08
   EXPECTED_TLC_PROFILE_COUNT: "129"
   EXPECTED_VERIFIER_BLOB: aadd620d1cb1efb1a5ee33d8468bbff047514360
-  DIAG_CERT_PEM_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVRVENDQXFtZ0F3SUJBZ0lVWm9VQk83SE5zQ09wU3BvRlBHTGVQQ0V4WjA0d0RRWUpLb1pJaHZjTkFRRUwKQlFBd01ERXVNQ3dHQTFVRUF3d2xURUZUSUZSTVF6RXpJR1Y0WVdOMElHUnBZV2R1YjNOMGFXTWdNakF5TmkwdwpPUzB5TWpBZUZ3MHlOakE1TWpJeE1qUXlNalJhRncweU5qQTVNalF4TWpReU1qUmFNREF4TGpBc0JnTlZCQU1NCkpVeEJVeUJVVEVNeE15QmxlR0ZqZENCa2FXRm5ibTl6ZEdsaklESXdNall0TURrdE1qSXdnZ0dpTUEwR0NTcUcKU0liM0RRRUJBUVVBQTRJQmp3QXdnZ0dLQW9JQmdRQ2FCQ0JuN2hycVdYSmU4S2ZkeDVEemdlZkRmMnErT2w4dwpPZEoyUHUyMHhKOGJXemNNY0F0ZXdzU0xONzFlc3ZwUXVvQ2lyNjMrTTZPKzByVUVZbUhHVkRaM29BVVFnTmdvCk4xSWNxaDRqTTdJQkNFN3ZidlNnNkZxSU1pekR4WTRYano1Q3JXdHV1RENENWt5dHU2eTRnbGhuN1JKME5qV20KaENPOHhoSG8yWDVvOGphaEVZcFMxa2NhZTVScDNxU0FtOUIrdWdBNkMrM215QURQR1R3THp4YlBJOWVycFA3cwppM2kxeW5QRUtOWkRSYmVRRWh6c1ZyNTllTS9yZ1ZKUXlDbGdoQm9Pc1B1Z1hmL2tlUTlNYjVrbk1sdWRhQmhUCmlmWWEvcEU0cndaTWJsRWJBbk85M2hTT0FWOTB4czZtL3l3TWNEL0g1V3ZmV0hOSXIyQzcyNDQ0ZFg3dWdOM3AKVm1VU3VDK3R4TXk4MUxBMXE5ajBrQmFMeEo0elpRK3ZReWx0U01Jd0pIVlFiQlYzcENmUkxrTVB1T0VvQVEwMwo4KzJzNFY1NlVSc2JaWmxvcmZWeElBYytGbVMyZ1dVVDdNeXNhZnViQWtRMCtiWHN1WkI5QjUrTjFvOEorUmlUCmExZWlOSUpNaUE5U1pZWWp4VE84QU5FbVl6MzUvYjBDQXdFQUFhTlRNRkV3SFFZRFZSME9CQllFRkp2djFCaVkKS3Q1ejFJNTI5WjI0SlM1QlFkK2xNQjhHQTFVZEl3UVlNQmFBRkp2djFCaVlLdDV6MUk1MjlaMjRKUzVCUWQrbApNQThHQTFVZEV3RUIvd1FGTUFNQkFmOHdEUVlKS29aSWh2Y05BUUVMQlFBRGdnR0JBRGlBWWZzV1BkU3RRZWQyCjZqZlhNUnY3d1o4WjM5c25CVm9uTG05UWo1WGIwT200QWdiL0trczVZUldwNm1JSFBNZzBBOGordTZlRWNRdTQKWEtDdEN1S2hrRmxjZyswOHhCVExPaXBDWEdHNitvZDd3czUzczVpUjR5d0xFRWFvaTd0SnRTdlA4d1E1NWJsOQp4ZW9ZUk12OXJyQmNQa2d5ZUhTUlk2QnUxVUVLUldvNmtiNVY4VmVYYURJQWpJZVVLcDNJZFpJRlpTZzhkb0I4CjVoUU94V3hTRW1OUE85djdTdWRjL1pzOHQ3SFJ4cFl0NXM0aVhBRVkybTlaS0EyNWtmNUwrR3MxSERXRlg2QUUKVE5pdGJNM1F6OXRwSWpLU3FSNnVFazkyUnRQMzgrNHl0UVhhbk1uZFcydkFaT3N3K1FQT3JHQTlGcitIRTRmRgoxNVhVRmp6bTNXVkRUV1FabVJjVHNLUjkwNnVETDhrcG5VdmVRcmRCbWZWeFM4eWlKaHAvaTFwV1l2OWY3Y3hVCkczVDU0cnNaS0hqWHN2cUxYbmxpdnZ0RSttbzZ1UzgzYTBaYy9LRDFDcWNCNzJTUjZObkNHdElhM2oyQ3NSdE0KN3hmZFpZeW5mZjR4ZnRBeEpKV0xYck9ZNEl5bXBsUENNeWkxV3NmYWtqemlsa05BZWc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  DIAG_CERT_PEM_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVSVENDQXEyZ0F3SUJBZ0lVVnN5ckdFNkw3SEJhaUNiZzNEaXVDWE5Ua0VNd0RRWUpLb1pJaHZjTkFRRUwKQlFBd01qRXdNQzRHQTFVRUF3d25URUZUSUdacGJtRnNJR1Y0WVdOMElIWmxjbWxtYVdOaGRHbHZiaUF5TURJMgpMVEE1TFRJeU1CNFhEVEkyTURreU1qRTFOVEF6TUZvWERUSTJNRGt5TkRFMU5UQXpNRm93TWpFd01DNEdBMVVFCkF3d25URUZUSUdacGJtRnNJR1Y0WVdOMElIWmxjbWxtYVdOaGRHbHZiaUF5TURJMkxUQTVMVEl5TUlJQm9qQU4KQmdrcWhraUc5dzBCQVFFRkFBT0NBWThBTUlJQmlnS0NBWUVBdTV3UDlMSmpIdW9nVk5TdmNORDBiWFZnNkFCdgoxTVYreTh5QmRoYzc0NHFvMDcxL3dqR1B5VTFLdVVta3hzeW53TFM0UUU5OVJDWDA0YUE4VjZKcDRZQU9sWFFMCjFjTUJkcVBPNWtmQXRTdnBrZFhXQVdtRm9hWVlOOEMzV1lMbTZrb3lGQVBOeE5RRml3cmlHVWhTN25jMm1rcFoKakZ3UWhNc2lWT2ZlbXVQaXdkY1FoSXRHQ21GMGp1aEpKaHhUYnVEUkpOcTZmWnZ4UlBBSTU4ZHZSdDAwckNVaQorU1BYMDJCeWtvdHBZSS96ZisvOGRSZ0FZZ3RnQU90Rmc3YjBubFJ6eWVIaktHc2tmeExkR21BMUFIR2pFNi9QCjVHUG4zc0pwTzJIbTlVZWJrN1NWSk5WMWdLNGFHOXZOMDIxQmVFY2VYa1pFbzU4bE1WaHhIb052QVp1OVd5SGQKWW5qcGxGeXpWUXltZDZwWVY5RXdEWk1HWHpPT05Hb3dodm5WQmxtYmozcWdlcmk5Q1pkUVdCY2tiZ0REZDE2VwpyZkZZcS9XaWVVemI2c1pXV3UwVFRsSEU1Q3R6VDNKemEwTHVJdDZkTWc0L2k5THhEUWxZOHV4OHl6S3dTU1htCjJQazBpVUdHM2RRU2w1MDd6NjJkK1VLWDVDS0hIQjZLMzFOTEFnTUJBQUdqVXpCUk1CMEdBMVVkRGdRV0JCUW4KbE5RUnozWDdCa3UzTW5hdWsvZDFmUTVtaWpBZkJnTlZIU01FR0RBV2dCUW5sTlFSejNYN0JrdTNNbmF1ay9kMQpmUTVtaWpBUEJnTlZIUk1CQWY4RUJUQURBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCZ1FCbHpQejRzWmM4Ckp5ZWZENk5CR0xNZ05aVDVaOVNKYzJ5WVJ4eTZCRVB3MjVSRW9vd1ZCUmJKeWwvQlJ3MXdCWHZvVCtMcVNwbXQKNUtlNXNWeTB6d3k0NTJCMXR2QmhyMXdXZjJpeXFhT1JMVFFud0NJd0RwRGtrM1d0TzFTa1ZaWmJNblAvL3JoQQpqdjlJNTJ2MVZxSDdrb0R3SXpMOFNieUgwL1A1ZTJFeVFhcjFrZDdRYkppTERJTTdXazZISDZCSnFqeWZUenpaCmhsRU1YYjVjaUo3RytHMU1MbS9qd0RxSVlXbnlTSm42ZU05b0F0dUNGMHk5NkIyRWhhUkthMDFSckptZGp3WUYKZWV0WGZmeHRYYXpoQXpLa2l0RWI2ejFZLzAxQTVxUVBkQytGUjZGWkJFMnBDQmYyaHpnaFVQZHU4M0libXFkNwo4d3VuaWxGejBjTGpneU00MklQbFVMS1I1L0F4QlZ3Nnh4cHRNL2NSVWJ0V3Y3cEtwQXhrR3QvV1g1QU1yWjVqCnptTExOQ0RhL1dOazNCRW5ud3ZNS01NY2psNkRXWDhTQlFjOFlpMGY0Uk1jRXQxdjJ4bHRlRUVRTlNqT3F5UkQKd010V0dRNTlYMVN1QWU0dy9IL3pJOHBVdjBWQXRqMkF3a2Q4ZWJmdzNES0krYmlXQktzL3pEND0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
 
 jobs:
   pre_tlc:
@@ -39,7 +39,16 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/work/assurance-core
+          fetched=0
+          for attempt in 1 2 3 4; do
+            if git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core; then
+              fetched=1
+              break
+            fi
+            echo "LAS_PRIVATE_FETCH_RETRY=$attempt"
+            sleep $((attempt * 5))
+          done
+          test "$fetched" -eq 1
           git checkout -q --detach FETCH_HEAD
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
@@ -82,7 +91,7 @@ jobs:
 
           printf '%s' "$DIAG_CERT_PEM_B64" | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "3B:AB:A5:01:8C:B9:38:57:C5:FE:F3:0B:EC:21:C5:7A:6D:2A:FD:EB:63:24:9D:6F:CB:C0:EE:05:2E:B6:03:B7"
+          test "$fp" = "55:16:6C:62:2D:06:4E:A7:CA:32:01:85:4B:11:7A:FA:35:39:4F:38:8C:1C:DD:BD:28:46:71:39:E8:2D:67:AC"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/pre-tlc-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
           echo "LAS_PRE_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           if [[ "$rc" -eq 0 ]] && grep -q '^LAS_PRE_TLC_STAGE_RESULT=PASS$' "$log"; then
@@ -105,7 +114,7 @@ jobs:
   tlc:
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 4
       matrix:
         index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128]
     runs-on: ubuntu-24.04
@@ -126,7 +135,16 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/work/assurance-core
+          fetched=0
+          for attempt in 1 2 3 4; do
+            if git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core; then
+              fetched=1
+              break
+            fi
+            echo "LAS_PRIVATE_FETCH_RETRY=$attempt"
+            sleep $((attempt * 5))
+          done
+          test "$fetched" -eq 1
           git checkout -q --detach FETCH_HEAD
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
@@ -179,7 +197,7 @@ jobs:
 
           printf '%s' "$DIAG_CERT_PEM_B64" | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "3B:AB:A5:01:8C:B9:38:57:C5:FE:F3:0B:EC:21:C5:7A:6D:2A:FD:EB:63:24:9D:6F:CB:C0:EE:05:2E:B6:03:B7"
+          test "$fp" = "55:16:6C:62:2D:06:4E:A7:CA:32:01:85:4B:11:7A:FA:35:39:4F:38:8C:1C:DD:BD:28:46:71:39:E8:2D:67:AC"
 
           log="$RUNNER_TEMP/private-tlc.log"
           : > "$log"
