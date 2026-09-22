@@ -1,1 +1,1 @@
-regress TLC indexes 94 107 109 123 on retained-state repaired exact head; proof 034e70b8
+diagnose exact TLC index 94 on expanded-invariant private head; proof a38ff2c3
