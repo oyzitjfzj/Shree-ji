@@ -1,1 +1,1 @@
-regress TLC indexes 94 107 109 123 on repaired exact private head; proof eeb6fe11
+regress TLC indexes 94 107 109 123 on counterexample-repaired exact head; proof 60cb14eb
