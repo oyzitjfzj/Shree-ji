@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-state-space-probe-c734b2e4
+  group: private-indexed-tlc-throughput-174-571430c4
   cancel-in-progress: false
 
 env:
@@ -77,7 +77,13 @@ jobs:
               src, re.S)
           if not fn_match:
               raise SystemExit("canonical TLC runner not found")
-          Path(sys.argv[3]).write_text(fn_match.group(1) + "\n", encoding="utf-8")
+          runner = fn_match.group(1)
+          old_args = "local args=(-workers 2 -fp 0)"
+          new_args = "local args=(-workers auto -fp 0 -lncheck final)"
+          if old_args not in runner:
+              raise SystemExit("canonical TLC worker args not found")
+          runner = runner.replace(old_args, new_args, 1)
+          Path(sys.argv[3]).write_text(runner + "\n", encoding="utf-8")
           PY
 
           TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
