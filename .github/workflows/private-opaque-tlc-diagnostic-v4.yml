@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: opaque-tlc-diag-v4-ec6b2b5c
+  group: opaque-tlc-diag-v4-571430c4
   cancel-in-progress: true
 
 env:
