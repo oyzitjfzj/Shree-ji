@@ -10,8 +10,10 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4ce57d8da614ff1e60f229533bdaf145097db28a4549f4e937234edf6220e3a8
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 00c0abcdf40b025c3706a75a3848aa303cca009a99610eeed1c1c9beb84f0d08
   EXPECTED_TLC_PROFILE_COUNT: "129"
+  DIAG_CERT_PEM_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVSekNDQXErZ0F3SUJBZ0lVQ3lndTJ5Uk4xeHQ1Vk84a09GS3FGaE5QaHZrd0RRWUpLb1pJaHZjTkFRRUwKQlFBd016RXhNQzhHQTFVRUF3d29URUZUSUZSTVF6TXdJSFJoY21kbGRHVmtJR1JwWVdkdWIzTjBhV01nTWpBeQpOaTB3T1MweU1qQWVGdzB5TmpBNU1qSXhOVEkzTWpSYUZ3MHlOakE1TWpReE5USTNNalJhTURNeE1UQXZCZ05WCkJBTU1LRXhCVXlCVVRFTXpNQ0IwWVhKblpYUmxaQ0JrYVdGbmJtOXpkR2xqSURJd01qWXRNRGt0TWpJd2dnR2kKTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCandBd2dnR0tBb0lCZ1FDWGpPV3prbiswd3RWazQzU2J2bmZNUXZ6UQpBbzMyYVRMRTE3b1k2Q0c5VzF1MjRsWElIYy9HdTdUZ0k1TDdxZjBHUDJ0MjViRndoN3dEbUR4SDRueFFzZ2JpCk83RkNTRU1DYStBK3hGZVRhcFVTSktEdXhIUFBqNWlFM0d5eXBLY2d0WGxCUHdwZHAxZ0M1TFBGQk1JUllUN1kKMjZ5RFk2WTc5S1k2bG1kZkVWUHQ3TWVqUmRnZjBrL2FUZlpDMmQ0N29aYW5GYzNyZUxLQmJndENaTEM1U2RzNApQamJGdERyand3UDBNY3FHRGYxNEtHRGhyb1VDL3RSNjRoNGRVcnRtYW94UG51ZklZNXpiM2xsRnppY0NDQlpoCk15RDJBazJZUzZldWtUaFlobldYYUI3V05Ndy9ZdENta3AzRWc2WUhPeVdOTnJGQXZUTi9jOVM2ZHp0L1R3R1kKWTJ6Z1ZWd1dyMElzVFliS3FhSS9LUVFmMmFLdzR0SmU0STF0cmR2TGp1UktWalNCN0tiRE82KzQwcVh0M1c2bQpoK2FDR1NJdGpLUEt1emRQOS93NFpUM1NXcnRkazREK0pFM2IrcFhQY2orSldHVXpVUExxSU9Fa0RGT1ArVzJNCnhJNXlOOWFJMUZUSjA3YTlCY0trVzFDczJoZFdwUHVwbEhFNlRUOENBd0VBQWFOVE1GRXdIUVlEVlIwT0JCWUUKRkI0ZWVVTVZJVDBJTnAvaEJwVnZ5d3NIRVdCQ01COEdBMVVkSXdRWU1CYUFGQjRlZVVNVklUMElOcC9oQnBWdgp5d3NIRVdCQ01BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFEZ2dHQkFCMW8rQzlFCk1SSW0zVkYxenNjWEFHZldzSVZGRzNmNWJsYlN0YmRoYmFwVzMrRlo1MVRYNVJ3UndMV2ZWeGlnekl1RTRTSTAKM2ovS0Y0MUUvSlppTWN1UEpnY3RWeWdGZG5obzJCUGw3RnNoUEJSbjRTUjViNkpHU2lMRytORzBTbjBULy9uRgo5OVpjNGl2V0dsajRQNzU5bTlobzZwTThOMGwzSmFIV2Z4a3VlU1VJUitWc0FxZzZZV1B6ZVlMWGJlNTZzRjVpCld1OVFEVUgyWFlJRXBjRUhuRWZmclNFNWlhQ3VyZnRNZVg1MHVvODZHbXM4eHFQVi9kY2wrTE9KWVZXa1BsVm4KanNnVmdIME1iam1NaDJvSzFPNHhUVFl5dEc5TTI4MTk0T0ZlRXdwckkwVlVlY2tNTkgzSWtYZm9aS3FVbXhJVApCSXh2dGozeXE2YitaVnhES09xb3lidWs4ZU9sWmczWGNEOTV4bm92ZlZ0ZGl5bXl3UGg4Yll5TXdHNHRFakcxCkwvVVRrb09pNWxJM05vbUNLUmR3WjZ1N0gydUMvMU5kSTdPRXJrOStHNVRUSmhqaE1OazYxZ3RNQ3c3bnpsWVMKRnAxY1B3RGNjUkkvZXl1anlYZjBzMzFtcUtJSXBzOXdkS3FHUFJBWDJkcmpycjhLR0JBZDRHVHZhdz09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  RECIPIENT_CERT_FINGERPRINT: "30:62:25:1D:BA:92:DE:9E:FE:BB:07:BC:95:C4:D3:4B:FB:F3:FD:31:57:09:01:C1:32:A6:A5:E5:2D:20:B1:39"
 
 jobs:
   probe:
@@ -19,8 +21,8 @@ jobs:
       fail-fast: false
       max-parallel: 8
       matrix:
-        index: [2]
-        mode: [baseline, optimized]
+        index: [30, 41]
+        mode: [optimized]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
@@ -98,7 +100,7 @@ jobs:
           set +e
           (
             cd "$cfg_dir"
-            timeout --signal=TERM --kill-after=15s 600s java "${java_args[@]}" -jar "$TLA_JAR" "${args[@]}"
+            timeout --signal=TERM --kill-after=15s 900s java "${java_args[@]}" -jar "$TLA_JAR" "${args[@]}"
           ) >"$log" 2>&1
           rc=$?
           set -e
@@ -122,35 +124,9 @@ jobs:
           echo "LAS_TLC_PROBE_QUEUE=$queued"
           echo "LAS_TLC_PROBE_RC=$rc"
 
-          cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
-          -----BEGIN CERTIFICATE-----
-          MIIEPzCCAqegAwIBAgIUPT0qPUiwTHFEESuOPcX2gevAHx8wDQYJKoZIhvcNAQEL
-          BQAwLzEtMCsGA1UEAwwkTEFTIGN1cnJlbnQgc291cmNlIGFsZXJ0IGRpYWdub3N0
-          aWNzMB4XDTI2MDkyMTIwMzM1NVoXDTI2MDkyMzIwMzM1NVowLzEtMCsGA1UEAwwk
-          TEFTIGN1cnJlbnQgc291cmNlIGFsZXJ0IGRpYWdub3N0aWNzMIIBojANBgkqhkiG
-          9w0BAQEFAAOCAY8AMIIBigKCAYEAoHjbiRixRY+QvrnOZMvyh5PmhdxArmMGcplR
-          B4qNA+H6NWL0GCzvwecwrH0tYqybMP+C5b8a/UOPTOkEO77Ylw5hzAGpfR2l5Jda
-          YLWh0ICXCutTeob1B13PAIkoMNxE9BAsRJ6ZlAaPQn6jT6B9zxas36I0ya9utwyV
-          81Bex4HmvRnjg1Ef8iB34mGDIeLic3jUMlBnmw/E7l1OmkNvhY2eJk975fae/5GH
-          gei0QCW0TR/t9yE0gWk64g/sW8BBjnmh9cH9qaNiOXkxW9qp4WO4af2DC3Ab9Jun
-          PlzoIlxLJg6anl7K7mJKuMOZtMqFF2oLLB7jB3k8BIeVoe+33EWayciCyRzX1VDB
-          0ngQXivwLIlQhvjboRfmInoXpJQ+/cb5287MJifX6OrUWUVJEv0lrHjc0Lo4u12/
-          W/5/fpFHhr0jwNBwlmv9OHpcAO3eglajkO/hshaw1IWn+wVN/v3NFxC16y+UtblY
-          Pgx4rLqQX5w3e5XJoYUU3y1/rWLPAgMBAAGjUzBRMB0GA1UdDgQWBBSni9T6WjU4
-          3pVAGKy3/i63QGvRzzAfBgNVHSMEGDAWgBSni9T6WjU43pVAGKy3/i63QGvRzzAP
-          BgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQBS6fil31zun5PC9ORa
-          CtDuWTXNEEmJ2TRaWexoTjv7yoNqc8NTy3ROn8XlPegH7yGgPd6WiuVIogFeQ3FS
-          W3D+BPypKz9HwxpGFfiW/mFHGMaoScos8kwmjFdKyUJ3Pelq8SCxWF7zqdpXcDpx
-          lL8XzzStXaKXYkNEwlko3q2DLl1xhOd8QyvtvM4J2rGcX8uc2w7XMFOFpGmk8hGs
-          UweZGjMWVB/hrvSqnAhjTu9AAQae6Vvhb7rklAAnzY17foguTvfZZN1grRF7KXdx
-          ZxM7mOOfnY4Sjsufqzoph7lqbJl5OMyb2WwKfxwfxvG5hHuBTrNChmxIok1K1CEc
-          qQY4r5+6eXRpzoGUgPOX513LGX3ie4fS1sytan2ZgUkj8fQA8P/5bVXrehPZHQSz
-          7YR1F310oKf0BHezjy0VhF69qgyDLc6ERyjxw+kEfThwyDcuCVdYqyRMKWOg/fpf
-          1LV1TE8GpO9n69BpZlm3zIJgd8fBuMnYHZe4Dh0hC95lE6k=
-          -----END CERTIFICATE-----
-          EOF_CERT
+          printf '%s' "$DIAG_CERT_PEM_B64" | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "7E:B3:01:3C:1F:34:6C:4B:33:9C:9B:BD:9B:22:9E:84:D1:10:22:A9:9D:E6:F4:15:C9:8A:0E:06:41:64:37:0C"
+          test "$fp" = "$RECIPIENT_CERT_FINGERPRINT"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/tlc-probe-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
           # rc 124/143 is expected for a time-boxed benchmark; 0 means the full profile even completed.
           if [[ "$rc" -eq 0 || "$rc" -eq 124 || "$rc" -eq 143 ]]; then
