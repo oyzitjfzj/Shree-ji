@@ -113,6 +113,7 @@ jobs:
           compression-level: 0
 
   tlc:
+    needs: pre_tlc
     strategy:
       fail-fast: false
       max-parallel: 4
