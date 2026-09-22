@@ -1,1 +1,1 @@
-supersede stale candidate-case31 diagnostic with exact index29 sentinel
+exact frozen-head TLC shard indices 37..128; proof 571430c4; verifier aadd620d; TLC 1.7.4
