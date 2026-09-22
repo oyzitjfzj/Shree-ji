@@ -1,1 +1,1 @@
-cancel stale ec6b2b5c targeted diagnostic with exact index29 sentinel
+cancel redundant current targeted diagnostic with exact index29 sentinel; leave group fail-fast superseding
