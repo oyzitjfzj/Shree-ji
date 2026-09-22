@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: opaque-tlc-diag-v4-00c0abcd-multi
+  group: opaque-tlc-shard-37-128-571430c4
   cancel-in-progress: true
 
 env:
