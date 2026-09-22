@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        index: [107, 109]
+        index: [107, 109, 123]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private snapshot
