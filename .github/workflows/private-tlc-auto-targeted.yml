@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [41, 68]
+        index: [13, 29, 30, 34, 41, 68]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
