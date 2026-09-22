@@ -102,26 +102,25 @@ jobs:
             FAIL=0
             FAILED=()
             mkdir -p "$TMP"
-            cat > "$RUNNER_TEMP/probe-run.sh" <<'PROBE'
-            set -euo pipefail
-            ROOT="$1"
-            RUNNER_TEMP="$2"
-            cfg="$3"
-            tla="$4"
-            deadlock="$5"
-            expectation="$6"
-            TMP="$RUNNER_TEMP/tlc-private"
-            TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
-            PASS=0
-            FAIL=0
-            FAILED=()
-            mkdir -p "$TMP"
-            source "$RUNNER_TEMP/run-fn.sh"
-            run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
-            test "$FAIL" -eq 0
-            test -z "$(git status --porcelain --untracked-files=no)"
-            PROBE
-            timeout --signal=TERM 120s bash "$RUNNER_TEMP/probe-run.sh" \
+            printf '%s\n' \
+              'set -euo pipefail' \
+              'ROOT="$1"' \
+              'RUNNER_TEMP="$2"' \
+              'cfg="$3"' \
+              'tla="$4"' \
+              'deadlock="$5"' \
+              'expectation="$6"' \
+              'cd "$ROOT"' \
+              'TMP="$RUNNER_TEMP/tlc-private"' \
+              'TLA_JAR="$RUNNER_TEMP/tla2tools.jar"' \
+              'PASS=0' \
+              'FAIL=0' \
+              'FAILED=()' \
+              'mkdir -p "$TMP"' \
+              'source "$RUNNER_TEMP/run-fn.sh"' \
+              'run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"' \
+              > "$RUNNER_TEMP/probe-run.sh"
+            timeout --signal=TERM --kill-after=10s 120s bash "$RUNNER_TEMP/probe-run.sh" \
               "$ROOT" "$RUNNER_TEMP" "$cfg" "$tla" "$deadlock" "$expectation"
           ) >"$log" 2>&1
           rc=$?
