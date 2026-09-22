@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: opaque-tlc-diag-v4-ec6b2b5c
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 571430c4a2a67d6a13180fd875e56ca90a868465f23b106f30fe70de3049e46a
