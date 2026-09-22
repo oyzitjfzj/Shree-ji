@@ -1,1 +1,1 @@
-superseding full canonical verification frozen head eec33f3c; canonical TLC 1.7.4; proof 571430c4; verifier blob aadd620d; require all 129 + aggregate PASS
+parallel exact canonical verification frozen head eec33f3c; pre-TLC + all 129 TLC concurrently; proof 571430c4; verifier aadd620d; aggregate PASS required
