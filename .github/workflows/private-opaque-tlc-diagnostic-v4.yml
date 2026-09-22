@@ -14,10 +14,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 64e4d54d7d7d794cdf554994239b2c7d0283762cf28a2e608043d5b6a8912222
   EXPECTED_VERIFIER_BLOB: 9a5d693b83a47f9f9aef1f8a266049e8fd8e0c65
   EXPECTED_TLC_PROFILE_COUNT: "129"
-  RECIPIENT_CERT_FINGERPRINT: "CF:AC:F0:DE:0A:1B:83:5A:5F:81:25:CC:81:F1:F8:AE:E9:E8:5F:20:51:B5:4F:CE:66:06:E5:A5:DE:8B:0F:94"
+  RECIPIENT_CERT_FINGERPRINT: "3B:AB:A5:01:8C:B9:38:57:C5:FE:F3:0B:EC:21:C5:7A:6D:2A:FD:EB:63:24:9D:6F:CB:C0:EE:05:2E:B6:03:B7"
 
 jobs:
   tlc:
@@ -25,7 +25,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        index: [12, 44, 76, 108]
+        index: [13]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private snapshot
@@ -124,30 +124,30 @@ jobs:
           test -f "$log" || printf '%s\n' "profile ended before TLC log creation" > "$log"
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIERTCCAq2gAwIBAgIUWdI4rWZcbMoR9JhMDu4ebAB6oaQwDQYJKoZIhvcNAQEL
-          BQAwMjEwMC4GA1UEAwwnTEFTIGNsb3N1cmUgdmVyaWZpY2F0aW9uIHY0IGRpYWdu
-          b3N0aWNzMB4XDTI2MDkyMTIxMzMwNloXDTI2MDkyMzIxMzMwNlowMjEwMC4GA1UE
-          AwwnTEFTIGNsb3N1cmUgdmVyaWZpY2F0aW9uIHY0IGRpYWdub3N0aWNzMIIBojAN
-          BgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEArSOHddigMT47/W+LH0k8c7xxLqlR
-          cTzZSf7qvld0juwAW0+3jsXI+qL6Af9iLQAY0gK6jEJ8jeEHmXPvSl7LwXGNAWkM
-          9bH3TGMJ4/dxspNbBwRty67klZxiOT04clB4CcobpVZkajbarXeOZnXqOHdIPjHY
-          kNitDt40odxLorrBddonE5HEepczmJ9fnRFpvpyIKqv+hCMaarRDy/avoY6Vlntl
-          GdgP1yQSMgOHTMqx1/5ZYco/r+D25k4ULSgaqO7k5RpQ+8DPQQPS7FfJySKs3jKr
-          jjl1yAucVX/niIAsyIHTGE1CE1//EF47pdbNyLNpksnwU6O6fgbIz8AnT2qluwa0
-          LdvF7klv93e3GUuIiyLazIa3HHfBNlcJf7yCO9f9ZBcGgHpFc/w2xh9guz50m+v9
-          tGLvdZ+Xzs03xLEiZivsklnSybrvWRwAcvY+iE4W78gnVbU8VM37etvfpyoER4kt
-          C+movrK5gxvxjq+9+6rQfCykJVFZI2cPqIiFAgMBAAGjUzBRMB0GA1UdDgQWBBS8
-          wysix2JO490hnaiOQumZ/orifDAfBgNVHSMEGDAWgBS8wysix2JO490hnaiOQumZ
-          /orifDAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQCn+AQRITix
-          1K9IA1HgUeVFx8DRSNu9ZO5otFsqYo5xGi8VPr6suvv19CfRH13O4R4o/VTk832n
-          FYKrHVWj2HyxyUsG/VyaIy1Un1MxKEuFfW6qhthSyMDFQ1OG6phAtod6KQPU5isB
-          JVZEUPeUU/tFY1CgNXK3DB5rjxWtEZvV+dy8ddKcx0BiBVof98w1mYy41z19+vrv
-          I2ApenAFgRSawDnz1x+tjBiJ7qD+R9U289eIdyI4Ct3bq5MPNn3BxCIlHVgT+5sQ
-          dbn5RjYYsdhIZQ/DiQw5a77oPgHYjuAMUWYUJXTEzZ/OUxjdH4WbcqtBCWCLCw7n
-          2YTm25A06WaPqPatF3WFZeOtU8AexETFNOL5ONnrg/zaqJ63WnRAxRRpK0ZIlyr2
-          sMIYwcxUFvi8gAzgkWLsdRxH/c3/QG4YArupPR5Nt13GQ/aC4JFBpnunUNDpRZYU
-          +KYShwolYOGu5h11NcD3vtY01NGOr5Vv2doH0qYNSvTl1q07MdLw5Qw=
-          -----END CERTIFICATE-----
+MIIEQTCCAqmgAwIBAgIUZoUBO7HNsCOpSpoFPGLePCExZ04wDQYJKoZIhvcNAQEL
+BQAwMDEuMCwGA1UEAwwlTEFTIFRMQzEzIGV4YWN0IGRpYWdub3N0aWMgMjAyNi0w
+OS0yMjAeFw0yNjA5MjIxMjQyMjRaFw0yNjA5MjQxMjQyMjRaMDAxLjAsBgNVBAMM
+JUxBUyBUTEMxMyBleGFjdCBkaWFnbm9zdGljIDIwMjYtMDktMjIwggGiMA0GCSqG
+SIb3DQEBAQUAA4IBjwAwggGKAoIBgQCaBCBn7hrqWXJe8Kfdx5DzgefDf2q+Ol8w
+OdJ2Pu20xJ8bWzcMcAtewsSLN71esvpQuoCir63+M6O+0rUEYmHGVDZ3oAUQgNgo
+N1Icqh4jM7IBCE7vbvSg6FqIMizDxY4Xjz5CrWtuuDCD5kytu6y4glhn7RJ0NjWm
+hCO8xhHo2X5o8jahEYpS1kcae5Rp3qSAm9B+ugA6C+3myADPGTwLzxbPI9erpP7s
+i3i1ynPEKNZDRbeQEhzsVr59eM/rgVJQyClghBoOsPugXf/keQ9Mb5knMludaBhT
+ifYa/pE4rwZMblEbAnO93hSOAV90xs6m/ywMcD/H5WvfWHNIr2C72444dX7ugN3p
+VmUSuC+txMy81LA1q9j0kBaLxJ4zZQ+vQyltSMIwJHVQbBV3pCfRLkMPuOEoAQ03
+8+2s4V56URsbZZlorfVxIAc+FmS2gWUT7MysafubAkQ0+bXsuZB9B5+N1o8J+RiT
+a1eiNIJMiA9SZYYjxTO8ANEmYz35/b0CAwEAAaNTMFEwHQYDVR0OBBYEFJvv1BiY
+Kt5z1I529Z24JS5BQd+lMB8GA1UdIwQYMBaAFJvv1BiYKt5z1I529Z24JS5BQd+l
+MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBADiAYfsWPdStQed2
+6jfXMRv7wZ8Z39snBVonLm9Qj5Xb0Om4Agb/Kks5YRWp6mIHPMg0A8j+u6eEcQu4
+XKCtCuKhkFlcg+08xBTLOipCXGG6+od7ws53s5iR4ywLEEaoi7tJtSvP8wQ55bl9
+xeoYRMv9rrBcPkgyeHSRY6Bu1UEKRWo6kb5V8VeXaDIAjIeUKp3IdZIFZSg8doB8
+5hQOxWxSEmNPO9v7Sudc/Zs8t7HRxpYt5s4iXAEY2m9ZKA25kf5L+Gs1HDWFX6AE
+TNitbM3Qz9tpIjKSqR6uEk92RtP38+4ytQXanMndW2vAZOsw+QPOrGA9Fr+HE4fF
+15XUFjzm3WVDTWQZmRcTsKR906uDL8kpnUveQrdBmfVxS8yiJhp/i1pWYv9f7cxU
+G3T54rsZKHjXsvqLXnlivvtE+mo6uS83a0Zc/KD1CqcB72SR6NnCGtIa3j2CsRtM
+7xfdZYynff4xftAxJJWLXrOY4IymplPCMyi1WsfakjzilkNAeg==
+-----END CERTIFICATE-----
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
           test "$fp" = "$RECIPIENT_CERT_FINGERPRINT"
