@@ -1,1 +1,1 @@
-regress TLC index 94 on atomic-next-state exact private head; proof 74bf99cb
+regress TLC index 94 after incident quota predicate restore; proof ebea8bf0
