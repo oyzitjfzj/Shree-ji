@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-canonical-verification-b19a2ba7
+  group: private-indexed-tlc-guardian-schema89-ea6eb244
   cancel-in-progress: true
 
 env:
