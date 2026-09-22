@@ -1,1 +1,1 @@
-TLC 1.7.4 bounded state-space probes: indices 2,27,28; private proof 571430c4
+TLC 1.7.4 throughput benchmark: indices 2,27,28; workers=auto; lncheck=final; proof 571430c4
