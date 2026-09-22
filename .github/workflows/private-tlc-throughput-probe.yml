@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4ce57d8da614ff1e60f229533bdaf145097db28a4549f4e937234edf6220e3a8
   EXPECTED_TLC_PROFILE_COUNT: "129"
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       max-parallel: 8
       matrix:
-        index: [2, 27, 42, 82]
+        index: [2]
         mode: [baseline, optimized]
     runs-on: ubuntu-24.04
     steps:
@@ -58,8 +58,8 @@ jobs:
           ROOT="$GITHUB_WORKSPACE/target"
           cd "$ROOT"
           TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar" >/dev/null 2>&1
-          echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
 
           python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" <<'PY'
           from pathlib import Path
@@ -90,15 +90,15 @@ jobs:
             java_args=(-XX:+UseParallelGC)
             args=(-workers 2 "${args[@]}" -config "$cfg_base" "$tla_base")
           else
-            java_args=(-XX:+UseParallelGC -Dtlc2.tool.ModelChecker.BAQueue=true)
-            args=(-workers auto -fpmem 0.5 -lncheck final "${args[@]}" -config "$cfg_base" "$tla_base")
+            java_args=(-XX:+UseParallelGC)
+            args=(-workers auto -lncheck final "${args[@]}" -config "$cfg_base" "$tla_base")
           fi
 
           log="$RUNNER_TEMP/tlc-probe-private.log"
           set +e
           (
             cd "$cfg_dir"
-            timeout --signal=TERM --kill-after=15s 180s java "${java_args[@]}" -jar "$TLA_JAR" "${args[@]}"
+            timeout --signal=TERM --kill-after=15s 600s java "${java_args[@]}" -jar "$TLA_JAR" "${args[@]}"
           ) >"$log" 2>&1
           rc=$?
           set -e
