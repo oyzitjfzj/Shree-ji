@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: c734b2e415ad3dd7c78a828d5613e06df444bc0ee055cdc84b517c885276550a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 571430c4a2a67d6a13180fd875e56ca90a868465f23b106f30fe70de3049e46a
   EXPECTED_VERIFIER_BLOB: 9a5d693b83a47f9f9aef1f8a266049e8fd8e0c65
   EXPECTED_TLC_PROFILE_COUNT: "129"
   RECIPIENT_CERT_FINGERPRINT: "3B:AB:A5:01:8C:B9:38:57:C5:FE:F3:0B:EC:21:C5:7A:6D:2A:FD:EB:63:24:9D:6F:CB:C0:EE:05:2E:B6:03:B7"
@@ -63,8 +63,8 @@ jobs:
           ROOT="$GITHUB_WORKSPACE/target"
           cd "$ROOT"
           TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar" >/dev/null 2>&1
-          echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
 
           python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" <<'PY'
           from pathlib import Path
