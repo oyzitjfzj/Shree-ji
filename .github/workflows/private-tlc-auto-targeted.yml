@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [2, 27, 28]
+        index: [41, 68]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
@@ -134,33 +134,33 @@ jobs:
 
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
           -----BEGIN CERTIFICATE-----
-          MIIEQTCCAqmgAwIBAgIUZoUBO7HNsCOpSpoFPGLePCExZ04wDQYJKoZIhvcNAQEL
-          BQAwMDEuMCwGA1UEAwwlTEFTIFRMQzEzIGV4YWN0IGRpYWdub3N0aWMgMjAyNi0w
-          OS0yMjAeFw0yNjA5MjIxMjQyMjRaFw0yNjA5MjQxMjQyMjRaMDAxLjAsBgNVBAMM
-          JUxBUyBUTEMxMyBleGFjdCBkaWFnbm9zdGljIDIwMjYtMDktMjIwggGiMA0GCSqG
-          SIb3DQEBAQUAA4IBjwAwggGKAoIBgQCaBCBn7hrqWXJe8Kfdx5DzgefDf2q+Ol8w
-          OdJ2Pu20xJ8bWzcMcAtewsSLN71esvpQuoCir63+M6O+0rUEYmHGVDZ3oAUQgNgo
-          N1Icqh4jM7IBCE7vbvSg6FqIMizDxY4Xjz5CrWtuuDCD5kytu6y4glhn7RJ0NjWm
-          hCO8xhHo2X5o8jahEYpS1kcae5Rp3qSAm9B+ugA6C+3myADPGTwLzxbPI9erpP7s
-          i3i1ynPEKNZDRbeQEhzsVr59eM/rgVJQyClghBoOsPugXf/keQ9Mb5knMludaBhT
-          ifYa/pE4rwZMblEbAnO93hSOAV90xs6m/ywMcD/H5WvfWHNIr2C72444dX7ugN3p
-          VmUSuC+txMy81LA1q9j0kBaLxJ4zZQ+vQyltSMIwJHVQbBV3pCfRLkMPuOEoAQ03
-          8+2s4V56URsbZZlorfVxIAc+FmS2gWUT7MysafubAkQ0+bXsuZB9B5+N1o8J+RiT
-          a1eiNIJMiA9SZYYjxTO8ANEmYz35/b0CAwEAAaNTMFEwHQYDVR0OBBYEFJvv1BiY
-          Kt5z1I529Z24JS5BQd+lMB8GA1UdIwQYMBaAFJvv1BiYKt5z1I529Z24JS5BQd+l
-          MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggGBADiAYfsWPdStQed2
-          6jfXMRv7wZ8Z39snBVonLm9Qj5Xb0Om4Agb/Kks5YRWp6mIHPMg0A8j+u6eEcQu4
-          XKCtCuKhkFlcg+08xBTLOipCXGG6+od7ws53s5iR4ywLEEaoi7tJtSvP8wQ55bl9
-          xeoYRMv9rrBcPkgyeHSRY6Bu1UEKRWo6kb5V8VeXaDIAjIeUKp3IdZIFZSg8doB8
-          5hQOxWxSEmNPO9v7Sudc/Zs8t7HRxpYt5s4iXAEY2m9ZKA25kf5L+Gs1HDWFX6AE
-          TNitbM3Qz9tpIjKSqR6uEk92RtP38+4ytQXanMndW2vAZOsw+QPOrGA9Fr+HE4fF
-          15XUFjzm3WVDTWQZmRcTsKR906uDL8kpnUveQrdBmfVxS8yiJhp/i1pWYv9f7cxU
-          G3T54rsZKHjXsvqLXnlivvtE+mo6uS83a0Zc/KD1CqcB72SR6NnCGtIa3j2CsRtM
-          7xfdZYynff4xftAxJJWLXrOY4IymplPCMyi1WsfakjzilkNAeg==
-          -----END CERTIFICATE-----
+MIIESTCCArGgAwIBAgIUaTo8Xaj7lu/3i0Vkyoe4BbQV2FMwDQYJKoZIhvcNAQEL
+BQAwNDEyMDAGA1UEAwwpTEFTIFRMQyA0MSA2OCBleGFjdCBkaWFnbm9zdGljIDIw
+MjYtMDktMjIwHhcNMjYwOTIyMTQyMDAwWhcNMjYwOTI0MTQyMDAwWjA0MTIwMAYD
+VQQDDClMQVMgVExDIDQxIDY4IGV4YWN0IGRpYWdub3N0aWMgMjAyNi0wOS0yMjCC
+AaIwDQYJKoZIhvcNAQEBBQADggGPADCCAQoCggGBAOdFEmsu3dKOrdS6sABNB3DY
+wJtZNxtBDwp/QKYwKsew7IJ6Vtsp4IQD2rjA5+txhU6FRT4LeAKz4fiI4GB+kGXJ
+f+tg73wCcMyjI8oSoBTmK0FC5PeU5ItooQbBQT9U2utLvtjC6CJAr8YUpHE1NyM5
+Lb0FdZtKzcbwG51ueh0MqAY0ah9WrSrDVf+xHh2DFbpoukfjIaCK01hYvsnIOHdU
+utTAK+x8CVDmc1cGqZp2ysWgXTVI4XUnvob/SdgcqMTH+yd41tfjMyNXJ/gEKMUN
+uqMTKeD3C6m1rLLIETssU8DKSo9Js0txA1jB3iYwf/uXAvYvB/ueYEbY0cTUSmp7
+9Ps78hf4ibs9/ifOTYivPLEVw/WrcK8VFWAkaf+z0XgqCT7G92IH9u9QcihWoR1Z
+itMC18PV8u4LBqRFcxuDIrwbo/KzsKoTjymQ422NUqFuuXBav2W+xjTy0bR6wI
+7us+8p3WtvbU3850xVC1PSotlDkWEjMTPYtyQjRFIwIDAQABo1MwUTAdBgNVHQ4E
+FgQUSCLGWolodlo2YHkyhmKlLAWla9EwHwYDVR0jBBgwFoAUSCLGWolodlo2YHky
+hmKlLAWla9EwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAYEAwB3x
+2zXtDzsRyNfFB51Q7GnqIPk1K7dmnHhTzwqUWg3T/7fVnhWhg7xF7J4MHFdCAUgf
+hjF+Ag+B1ZnVdgZnSo6sHXBbigvf2nGwsX7oT648MaBu1XRHNNCTKowTKAmJlZad
+ChNsKVw6rCDG0sXED7pqsYtEWUKIVz41L0Dc5JcPjJ7ZIUX5LQq6WU+EvzruG/kl
+r25y0/cJKnOgv8nUjmEuRIgFY9v8S4qGowfTSIOyKVejLn0g3N+BwQbFDiS8N4L
+OSkKjHytLTDZ626y3Nm1sunbobBosOVegelxMIQULZpbLGXS5KIXVD3UaZ8hkZ8/
+gudlvJhxVQtN3gSgP5bwW5E+ILWWhCyt9MlNU2AJtLJEd32+0RvFXvEjzsNjoBqK
+w3t51AagONbSVMKSP3YrGk1+m7Pfkxrcjs26B87w1h37ctheNUl0TzQpmg/TkdJT
+bbcnYol+DBMn4zg/LvYMunpZVQxtRXlM8gt5wDo5Z+Rbm/DuuFDmPM56ilyg
+-----END CERTIFICATE-----
           EOF_CERT
           fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "3B:AB:A5:01:8C:B9:38:57:C5:FE:F3:0B:EC:21:C5:7A:6D:2A:FD:EB:63:24:9D:6F:CB:C0:EE:05:2E:B6:03:B7"
+          test "$fp" = "44:58:5E:14:9A:2D:AD:F3:03:DD:7B:00:5E:55:AE:A4:7D:4F:29:58:14:8C:B9:B0:B6:6B:1F:F4:01:EC:6E:FE"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/private-tlc.cms" "$RUNNER_TEMP/recipient-cert.pem"
           echo "LAS_TLC_INDEX=$TARGET_INDEX"
           echo "LAS_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
