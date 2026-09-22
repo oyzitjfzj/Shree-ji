@@ -1,1 +1,1 @@
-parallel exact TLC verification for repaired profiles 29 34 41 68; corrected frozen proof 00c0abcd
+current exact head eaec290b diagnostics 29 30 34 proof 00c0abcd
