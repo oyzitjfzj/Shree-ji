@@ -122,6 +122,7 @@ jobs:
               'mkdir -p "$TMP"' \
               'source "$RUNNER_TEMP/run-fn.sh"' \
               'run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"' \
+              'test "$FAIL" -eq 0' \
               > "$RUNNER_TEMP/probe-run.sh"
             timeout --signal=TERM --kill-after=10s 120s bash "$RUNNER_TEMP/probe-run.sh" \
               "$ROOT" "$RUNNER_TEMP" "$cfg" "$tla" "$deadlock" "$expectation"
