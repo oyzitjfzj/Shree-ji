@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-candidate-case31-c734b2e4
+  group: opaque-tlc-diag-v4-571430c4
   cancel-in-progress: true
 
 env:
