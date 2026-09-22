@@ -114,7 +114,7 @@ jobs:
 
           tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/tlc-checkpoint.tar.gz" tlc-meta
           key="$(cat "$RUNNER_TEMP/relay-key")"
-          openssl cms -EncryptedData_encrypt -aes-256-cbc             -secretkey "$key"             -in "$RUNNER_TEMP/tlc-checkpoint.tar.gz"             -outform DER -out "$RUNNER_TEMP/tlc-checkpoint.cms"
+          openssl cms -EncryptedData_encrypt -binary -aes-256-cbc             -secretkey "$key"             -in "$RUNNER_TEMP/tlc-checkpoint.tar.gz"             -outform DER -out "$RUNNER_TEMP/tlc-checkpoint.cms"
           shred -u "$RUNNER_TEMP/tlc-checkpoint.tar.gz" 2>/dev/null || rm -f "$RUNNER_TEMP/tlc-checkpoint.tar.gz"
           rm -rf "$meta"
           rm -f "$RUNNER_TEMP/relay-key"
@@ -181,7 +181,7 @@ jobs:
           ROOT="$GITHUB_WORKSPACE/target"
           cd "$ROOT"
           key="$(cat "$RUNNER_TEMP/relay-key")"
-          openssl cms -EncryptedData_decrypt             -secretkey "$key"             -inform DER -in "$RUNNER_TEMP/relay/tlc-checkpoint.cms"             -out "$RUNNER_TEMP/tlc-checkpoint.tar.gz"
+          openssl cms -EncryptedData_decrypt -binary             -secretkey "$key"             -inform DER -in "$RUNNER_TEMP/relay/tlc-checkpoint.cms"             -out "$RUNNER_TEMP/tlc-checkpoint.tar.gz"
           mkdir -p "$RUNNER_TEMP/restored"
           tar -C "$RUNNER_TEMP/restored" -xzf "$RUNNER_TEMP/tlc-checkpoint.tar.gz"
           shred -u "$RUNNER_TEMP/tlc-checkpoint.tar.gz" 2>/dev/null || rm -f "$RUNNER_TEMP/tlc-checkpoint.tar.gz"
