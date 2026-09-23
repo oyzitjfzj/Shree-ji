@@ -29,6 +29,8 @@ jobs:
 
           CONSTANTS Slots, Sources, Commits, SourceA, SourceB, DomainA, DomainB, SourceDomain(_)
 
+          SourceDomainModel(src) == IF src = SourceB THEN DomainB ELSE DomainA
+
           DefaultSource == CHOOSE s \in Sources : TRUE
           DefaultCommit == CHOOSE c \in Commits : TRUE
 
