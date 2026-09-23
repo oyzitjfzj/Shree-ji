@@ -1,1 +1,1 @@
-verify syntax-correct next-state split-view TLC94; proof 216ffa77
+historical-control TLC94 candidate latch; opaque proof 990c26cc
