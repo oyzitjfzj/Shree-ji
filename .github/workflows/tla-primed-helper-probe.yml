@@ -46,7 +46,7 @@ jobs:
                   /\ a # b
                   /\ present'[a]
                   /\ present'[b]
-                  /\ SourceDomain[srcOf'[a]] # SourceDomain[srcOf'[b]]
+                  /\ SourceDomain(srcOf'[a]) # SourceDomain(srcOf'[b])
                   /\ commitOf'[a] # commitOf'[b]
 
           Add(slot, src, c) ==
@@ -67,7 +67,7 @@ jobs:
                   /\ a # b
                   /\ present[a]
                   /\ present[b]
-                  /\ SourceDomain[srcOf[a]] # SourceDomain[srcOf[b]]
+                  /\ SourceDomain(srcOf[a]) # SourceDomain(srcOf[b])
                   /\ commitOf[a] # commitOf[b]
 
           Visible == StateCross => split
