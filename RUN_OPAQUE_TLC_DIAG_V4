@@ -1,1 +1,1 @@
-regress TLC index 94 after incident quota predicate restore; proof ebea8bf0
+fresh exact-head TLC94 diagnostic; current private proof ebea8bf0; decrypt with ephemeral local key
