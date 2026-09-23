@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: opaque-tlc-diag-v4-feae1785-index94-canonical
+  group: opaque-tlc-diag-v4-feae1785-index94-single
   cancel-in-progress: true
 
 env:
@@ -91,7 +91,7 @@ jobs:
           log="$RUNNER_TEMP/tlc-private.log"
           metadir="$RUNNER_TEMP/tlc-state"
           mkdir -p "$metadir"
-          args=(-workers auto -lncheck final -fp 0 -metadir "$metadir")
+          args=(-workers 1 -lncheck final -fp 0 -metadir "$metadir")
           [[ "$deadlock" == "1" ]] && args+=(-deadlock)
           args+=(-config "$cfg_base" "$tla_base")
 
