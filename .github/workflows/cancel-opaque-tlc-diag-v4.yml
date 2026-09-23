@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: opaque-tlc-diag-v4-ec6b2b5c
+  group: opaque-tlc-diag-v4-15e53845-tlc94
   cancel-in-progress: true
 
 jobs:
