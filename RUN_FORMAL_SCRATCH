@@ -1,2 +1,3 @@
-private formal scratch exact-proof rerun
-opaque runner revision 84e6e4ff
+private formal scratch graph differential
+exact proof 4b72a3d1
+state-set and edge-set equality required
