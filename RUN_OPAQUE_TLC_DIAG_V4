@@ -1,1 +1,1 @@
-verify bound post-state witness latches TLC94; proof cd14631d
+verify exact witness post-state TLC94; proof e2c48795
