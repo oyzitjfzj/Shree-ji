@@ -74,8 +74,7 @@ jobs:
           PY
           )"
           read -r generated distinct queued <<< "$metrics"
-          printf '%s
-' "$rc" > "$RUNNER_TEMP/formal-scratch.rc"
+          printf '%s\n' "$rc" > "$RUNNER_TEMP/formal-scratch.rc"
           echo "LAS_FORMAL_SCRATCH_GENERATED=$generated"
           echo "LAS_FORMAL_SCRATCH_DISTINCT=$distinct"
           echo "LAS_FORMAL_SCRATCH_QUEUE=$queued"
