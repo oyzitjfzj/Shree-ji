@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: private-indexed-tlc-diag-15e53845-tlc94
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 15e538457f89710bb17abfbdf9ec5f03f3a9392ba55167f350677b72c96fafb7
@@ -26,6 +26,7 @@ jobs:
       matrix:
         index: [94]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Checkout exact private active head
         shell: bash
