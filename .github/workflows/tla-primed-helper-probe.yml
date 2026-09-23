@@ -57,7 +57,7 @@ jobs:
               /\ present' = [present EXCEPT ![slot] = TRUE]
               /\ srcOf' = [srcOf EXCEPT ![slot] = src]
               /\ commitOf' = [commitOf EXCEPT ![slot] = c]
-              /\ split' = split \/ CandidateCross(src, c)
+              /\ split' = (split \/ CandidateCross(src, c))
 
           Next == \E slot \in Slots, src \in Sources, c \in Commits : Add(slot, src, c)
           Spec == Init /\ [][Next]_vars
