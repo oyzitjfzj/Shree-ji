@@ -1,1 +1,1 @@
-historical next-value TLC94 control; opaque proof 63995346
+verify exact-head TLC94 parenthesized latch; proof 15e53845
