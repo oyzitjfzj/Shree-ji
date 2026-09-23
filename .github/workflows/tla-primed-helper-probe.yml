@@ -1,0 +1,91 @@
+name: TLA primed helper semantics probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/tla-primed-helper-probe.yml"
+      - "RUN_TLA_PRIMED_HELPER_PROBE"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Run synthetic TLC semantics probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            -o "$jar" "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $jar" | sha1sum --check --strict
+
+          cat > "$RUNNER_TEMP/PrimedHelperProbe.tla" <<'TLA'
+          -------------------- MODULE PrimedHelperProbe --------------------
+          EXTENDS TLC
+
+          CONSTANTS Slots, Sources, Commits, Domains, SourceDomain
+
+          DefaultSource == CHOOSE s \in Sources : TRUE
+          DefaultCommit == CHOOSE c \in Commits : TRUE
+
+          VARIABLES present, srcOf, commitOf, split
+          vars == <<present, srcOf, commitOf, split>>
+
+          Init ==
+              /\ present = [s \in Slots |-> FALSE]
+              /\ srcOf = [s \in Slots |-> DefaultSource]
+              /\ commitOf = [s \in Slots |-> DefaultCommit]
+              /\ split = FALSE
+
+          PostCross ==
+              \E a \in Slots, b \in Slots :
+                  /\ a # b
+                  /\ present'[a]
+                  /\ present'[b]
+                  /\ SourceDomain[srcOf'[a]] # SourceDomain[srcOf'[b]]
+                  /\ commitOf'[a] # commitOf'[b]
+
+          Add(slot, src, c) ==
+              /\ slot \in Slots
+              /\ src \in Sources
+              /\ c \in Commits
+              /\ ~present[slot]
+              /\ present' = [present EXCEPT ![slot] = TRUE]
+              /\ srcOf' = [srcOf EXCEPT ![slot] = src]
+              /\ commitOf' = [commitOf EXCEPT ![slot] = c]
+              /\ split' = split \/ PostCross
+
+          Next == \E slot \in Slots, src \in Sources, c \in Commits : Add(slot, src, c)
+          Spec == Init /\ [][Next]_vars
+
+          StateCross ==
+              \E a \in Slots, b \in Slots :
+                  /\ a # b
+                  /\ present[a]
+                  /\ present[b]
+                  /\ SourceDomain[srcOf[a]] # SourceDomain[srcOf[b]]
+                  /\ commitOf[a] # commitOf[b]
+
+          Visible == StateCross => split
+          =================================================================
+          TLA
+
+          cat > "$RUNNER_TEMP/PrimedHelperProbe.cfg" <<'CFG'
+          SPECIFICATION Spec
+          CONSTANTS
+            Slots = {Slot_A, Slot_B}
+            Sources = {Source_A, Source_B}
+            Commits = {Commit_A, Commit_B}
+            Domains = {Domain_A, Domain_B}
+            SourceDomain = (Source_A :> Domain_A @@ Source_B :> Domain_B)
+          INVARIANT Visible
+          CHECK_DEADLOCK FALSE
+          CFG
+
+          cd "$RUNNER_TEMP"
+          java -XX:+UseParallelGC -jar "$jar" -workers 1 -lncheck final -fp 0 -config PrimedHelperProbe.cfg PrimedHelperProbe.tla
+          echo "LAS_TLA_PRIMED_HELPER_PROBE=PASS"
