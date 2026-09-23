@@ -1,4 +1,4 @@
-name: TLA primed helper semantics probe
+name: TLA candidate latch semantics probe
 
 on:
   push:
@@ -43,13 +43,11 @@ jobs:
               /\ commitOf = [s \in Slots |-> DefaultCommit]
               /\ split = FALSE
 
-          PostCross ==
-              \E a \in Slots, b \in Slots :
-                  /\ a # b
-                  /\ present'[a]
-                  /\ present'[b]
-                  /\ SourceDomain(srcOf'[a]) # SourceDomain(srcOf'[b])
-                  /\ commitOf'[a] # commitOf'[b]
+          CandidateCross(src, c) ==
+              \E a \in Slots :
+                  /\ present[a]
+                  /\ SourceDomain(srcOf[a]) # SourceDomain(src)
+                  /\ commitOf[a] # c
 
           Add(slot, src, c) ==
               /\ slot \in Slots
@@ -59,7 +57,7 @@ jobs:
               /\ present' = [present EXCEPT ![slot] = TRUE]
               /\ srcOf' = [srcOf EXCEPT ![slot] = src]
               /\ commitOf' = [commitOf EXCEPT ![slot] = c]
-              /\ split' = split \/ PostCross
+              /\ split' = split \/ CandidateCross(src, c)
 
           Next == \E slot \in Slots, src \in Sources, c \in Commits : Add(slot, src, c)
           Spec == Init /\ [][Next]_vars
