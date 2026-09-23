@@ -11,7 +11,7 @@ permissions:
 
 env:
   JAVA_TOOL_OPTIONS: -Xmx5g
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 00c0abcdf40b025c3706a75a3848aa303cca009a99610eeed1c1c9beb84f0d08
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 15e538457f89710bb17abfbdf9ec5f03f3a9392ba55167f350677b72c96fafb7
   EXPECTED_TLC_PROFILE_COUNT: "129"
   DIAG_CERT_PEM_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVSekNDQXErZ0F3SUJBZ0lVQ3lndTJ5Uk4xeHQ1Vk84a09GS3FGaE5QaHZrd0RRWUpLb1pJaHZjTkFRRUwKQlFBd016RXhNQzhHQTFVRUF3d29URUZUSUZSTVF6TXdJSFJoY21kbGRHVmtJR1JwWVdkdWIzTjBhV01nTWpBeQpOaTB3T1MweU1qQWVGdzB5TmpBNU1qSXhOVEkzTWpSYUZ3MHlOakE1TWpReE5USTNNalJhTURNeE1UQXZCZ05WCkJBTU1LRXhCVXlCVVRFTXpNQ0IwWVhKblpYUmxaQ0JrYVdGbmJtOXpkR2xqSURJd01qWXRNRGt0TWpJd2dnR2kKTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCandBd2dnR0tBb0lCZ1FDWGpPV3prbiswd3RWazQzU2J2bmZNUXZ6UQpBbzMyYVRMRTE3b1k2Q0c5VzF1MjRsWElIYy9HdTdUZ0k1TDdxZjBHUDJ0MjViRndoN3dEbUR4SDRueFFzZ2JpCk83RkNTRU1DYStBK3hGZVRhcFVTSktEdXhIUFBqNWlFM0d5eXBLY2d0WGxCUHdwZHAxZ0M1TFBGQk1JUllUN1kKMjZ5RFk2WTc5S1k2bG1kZkVWUHQ3TWVqUmRnZjBrL2FUZlpDMmQ0N29aYW5GYzNyZUxLQmJndENaTEM1U2RzNApQamJGdERyand3UDBNY3FHRGYxNEtHRGhyb1VDL3RSNjRoNGRVcnRtYW94UG51ZklZNXpiM2xsRnppY0NDQlpoCk15RDJBazJZUzZldWtUaFlobldYYUI3V05Ndy9ZdENta3AzRWc2WUhPeVdOTnJGQXZUTi9jOVM2ZHp0L1R3R1kKWTJ6Z1ZWd1dyMElzVFliS3FhSS9LUVFmMmFLdzR0SmU0STF0cmR2TGp1UktWalNCN0tiRE82KzQwcVh0M1c2bQpoK2FDR1NJdGpLUEt1emRQOS93NFpUM1NXcnRkazREK0pFM2IrcFhQY2orSldHVXpVUExxSU9Fa0RGT1ArVzJNCnhJNXlOOWFJMUZUSjA3YTlCY0trVzFDczJoZFdwUHVwbEhFNlRUOENBd0VBQWFOVE1GRXdIUVlEVlIwT0JCWUUKRkI0ZWVVTVZJVDBJTnAvaEJwVnZ5d3NIRVdCQ01COEdBMVVkSXdRWU1CYUFGQjRlZVVNVklUMElOcC9oQnBWdgp5d3NIRVdCQ01BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFEZ2dHQkFCMW8rQzlFCk1SSW0zVkYxenNjWEFHZldzSVZGRzNmNWJsYlN0YmRoYmFwVzMrRlo1MVRYNVJ3UndMV2ZWeGlnekl1RTRTSTAKM2ovS0Y0MUUvSlppTWN1UEpnY3RWeWdGZG5obzJCUGw3RnNoUEJSbjRTUjViNkpHU2lMRytORzBTbjBULy9uRgo5OVpjNGl2V0dsajRQNzU5bTlobzZwTThOMGwzSmFIV2Z4a3VlU1VJUitWc0FxZzZZV1B6ZVlMWGJlNTZzRjVpCld1OVFEVUgyWFlJRXBjRUhuRWZmclNFNWlhQ3VyZnRNZVg1MHVvODZHbXM4eHFQVi9kY2wrTE9KWVZXa1BsVm4KanNnVmdIME1iam1NaDJvSzFPNHhUVFl5dEc5TTI4MTk0T0ZlRXdwckkwVlVlY2tNTkgzSWtYZm9aS3FVbXhJVApCSXh2dGozeXE2YitaVnhES09xb3lidWs4ZU9sWmczWGNEOTV4bm92ZlZ0ZGl5bXl3UGg4Yll5TXdHNHRFakcxCkwvVVRrb09pNWxJM05vbUNLUmR3WjZ1N0gydUMvMU5kSTdPRXJrOStHNVRUSmhqaE1OazYxZ3RNQ3c3bnpsWVMKRnAxY1B3RGNjUkkvZXl1anlYZjBzMzFtcUtJSXBzOXdkS3FHUFJBWDJkcmpycjhLR0JBZDRHVHZhdz09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
   RECIPIENT_CERT_FINGERPRINT: "30:62:25:1D:BA:92:DE:9E:FE:BB:07:BC:95:C4:D3:4B:FB:F3:FD:31:57:09:01:C1:32:A6:A5:E5:2D:20:B1:39"
@@ -20,11 +20,13 @@ jobs:
   probe:
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 5
       matrix:
-        index: [30, 41]
+        index: [94]
         mode: [optimized]
+        variant: [current, maxgen1, archive2, slots2, combined]
     runs-on: ubuntu-24.04
+    timeout-minutes: 4
     steps:
       - name: Checkout exact private active head
         shell: bash
@@ -56,6 +58,7 @@ jobs:
         env:
           TARGET_INDEX: ${{ matrix.index }}
           MODE: ${{ matrix.mode }}
+          VARIANT: ${{ matrix.variant }}
         run: |
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/target"
@@ -83,6 +86,31 @@ jobs:
           line="$(sed -n "$((TARGET_INDEX + 1))p" "$map")"
           IFS=$'\t' read -r cfg tla deadlock expectation <<< "$line"
           test -z "$expectation"
+          python3 - "$cfg" "$VARIANT" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          variant = sys.argv[2]
+          text = path.read_text(encoding="utf-8")
+          def replace_once(old, new):
+              global text
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one occurrence of {old!r}")
+              text = text.replace(old, new)
+          if variant in ("maxgen1", "combined"):
+              replace_once("    MaxGeneration = 2", "    MaxGeneration = 1")
+          if variant in ("archive2", "combined"):
+              replace_once(
+                  "    ArchiveHeads = {ArchiveHead_0, ArchiveHead_1, ArchiveHead_2, ArchiveHead_3}",
+                  "    ArchiveHeads = {ArchiveHead_0, ArchiveHead_1, ArchiveHead_2}")
+              replace_once("    MaxArchiveSequence = 3", "    MaxArchiveSequence = 2")
+          if variant in ("slots2", "combined"):
+              replace_once(
+                  "    HotSlots = {Slot_A, Slot_B, Slot_C}",
+                  "    HotSlots = {Slot_A, Slot_B}")
+          path.write_text(text, encoding="utf-8")
+          PY
+
           cfg_dir="$(dirname "$cfg")"
           cfg_base="$(basename "$cfg")"
           tla_base="$(basename "$tla")"
@@ -101,7 +129,7 @@ jobs:
           set +e
           (
             cd "$cfg_dir"
-            timeout --signal=TERM --kill-after=15s 900s java "${java_args[@]}" -jar "$TLA_JAR" "${args[@]}"
+            timeout --signal=TERM --kill-after=15s 120s java "${java_args[@]}" -jar "$TLA_JAR" "${args[@]}"
           ) >"$log" 2>&1
           rc=$?
           set -e
@@ -109,7 +137,7 @@ jobs:
           metrics="$(python3 - "$log" <<'PY'
           import re, sys
           text=open(sys.argv[1], encoding="utf-8", errors="replace").read()
-          matches=re.findall(r'([0-9,]+) states generated(?: \\([^)]*\\))?, ([0-9,]+) distinct states found(?: \\([^)]*\\))?, ([0-9,]+) states left on queue', text)
+          matches=re.findall(r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue', text)
           if matches:
               g,d,q=matches[-1]
               print(g.replace(",",""), d.replace(",",""), q.replace(",",""))
@@ -120,6 +148,7 @@ jobs:
           read -r generated distinct queued <<< "$metrics"
           echo "LAS_TLC_PROBE_INDEX=$TARGET_INDEX"
           echo "LAS_TLC_PROBE_MODE=$MODE"
+          echo "LAS_TLC_PROBE_VARIANT=$VARIANT"
           echo "LAS_TLC_PROBE_GENERATED=$generated"
           echo "LAS_TLC_PROBE_DISTINCT=$distinct"
           echo "LAS_TLC_PROBE_QUEUE=$queued"
@@ -139,7 +168,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: encrypted-tlc-probe-${{ matrix.index }}-${{ matrix.mode }}
+          name: encrypted-tlc-probe-${{ matrix.index }}-${{ matrix.mode }}-${{ matrix.variant }}
           path: ${{ runner.temp }}/tlc-probe-private.cms
           if-no-files-found: error
           retention-days: 1
