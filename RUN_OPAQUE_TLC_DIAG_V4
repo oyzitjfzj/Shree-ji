@@ -1,1 +1,1 @@
-verify split-view next-state repair TLC94; proof 6c1b1348
+verify syntax-correct next-state split-view TLC94; proof 216ffa77
