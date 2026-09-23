@@ -48,7 +48,6 @@ jobs:
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=10 origin refs/heads/work/assurance-core
           git checkout -q --detach FETCH_HEAD
-          git checkout -q "$(git rev-parse HEAD~6)"
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
