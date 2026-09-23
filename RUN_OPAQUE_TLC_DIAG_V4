@@ -1,1 +1,1 @@
-fresh exact-head TLC94 diagnostic; current private proof ebea8bf0; decrypt with ephemeral local key
+verify candidate-specific split-view latch on exact private head; profile 94; proof 63995346
