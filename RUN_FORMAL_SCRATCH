@@ -1,5 +1,2 @@
-isolated formal scratch verification
-private scratch proof 8c5d89395dce99d7ca67ae038c060b347347a0e966a48858974a61765f5019fb
-PredictionErrorReplaySelectionSession exploratory TLC
-active work branch remains frozen
-workflow-yaml-fixed 66b05f9d5eb08bfd6ae9c29f8aff4b6466cfc8da
+private formal scratch exact-proof rerun
+opaque runner revision 84e6e4ff
