@@ -1,1 +1,1 @@
-verify exact-head TLC94 parenthesized latch; proof 15e53845
+rerun exact-head TLC94 parenthesized latch; proof 15e53845
