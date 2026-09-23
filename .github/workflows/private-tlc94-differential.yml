@@ -107,7 +107,7 @@ jobs:
                "    HotSlots = {Slot_A, Slot_B}"),
               ("    ArchiveHeads = {ArchiveHead_0, ArchiveHead_1, ArchiveHead_2, ArchiveHead_3}",
                "    ArchiveHeads = {ArchiveHead_0, ArchiveHead_1}"),
-              ("    MaxGeneration = 2", "    MaxGeneration = 1"),
+              ("    MaxGeneration = 2", "    MaxGeneration = 0"),
               ("    MaxArchiveSequence = 3", "    MaxArchiveSequence = 1"),
           ]
           for old, new in replacements:
