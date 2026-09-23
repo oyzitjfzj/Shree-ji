@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: opaque-tlc-diag-v4-990c26cc-historical-control-resolved
+  group: opaque-tlc-diag-v4-990c26cc-historical-control-final
   cancel-in-progress: true
 
 env:
@@ -47,6 +47,7 @@ jobs:
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=10 origin refs/heads/work/assurance-core
+          git checkout -q --detach FETCH_HEAD
           git checkout -q "$(git rev-parse HEAD~6)"
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
