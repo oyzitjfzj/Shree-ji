@@ -1,1 +1,1 @@
-verify canonical cross-domain conflict predicate on exact private head; profile 94; proof feae1785
+single-worker exact-head TLC94 diagnostic; proof feae1785
