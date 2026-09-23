@@ -1,1 +1,1 @@
-verify post-state witness conflict repair TLC94; proof 851c6e7d
+verify bound post-state witness latches TLC94; proof cd14631d
