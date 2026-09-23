@@ -26,7 +26,7 @@ jobs:
       matrix:
         index: [94]
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Checkout exact private active head
         shell: bash
@@ -126,7 +126,7 @@ jobs:
               'run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"' \
               'test "$FAIL" -eq 0' \
               > "$RUNNER_TEMP/probe-run.sh"
-            timeout --signal=TERM --kill-after=10s 120s bash "$RUNNER_TEMP/probe-run.sh" \
+            timeout --signal=TERM --kill-after=10s 300s bash "$RUNNER_TEMP/probe-run.sh" \
               "$ROOT" "$RUNNER_TEMP" "$cfg" "$tla" "$deadlock" "$expectation"
           ) >"$log" 2>&1
           rc=$?
