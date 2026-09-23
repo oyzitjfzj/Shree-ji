@@ -27,7 +27,7 @@ jobs:
           -------------------- MODULE PrimedHelperProbe --------------------
           EXTENDS TLC
 
-          CONSTANTS Slots, Sources, Commits, Domains, SourceDomain
+          CONSTANTS Slots, Sources, Commits, SourceA, SourceB, DomainA, DomainB, SourceDomain(_)
 
           DefaultSource == CHOOSE s \in Sources : TRUE
           DefaultCommit == CHOOSE c \in Commits : TRUE
@@ -80,8 +80,11 @@ jobs:
             Slots = {Slot_A, Slot_B}
             Sources = {Source_A, Source_B}
             Commits = {Commit_A, Commit_B}
-            Domains = {Domain_A, Domain_B}
-            SourceDomain = (Source_A :> Domain_A @@ Source_B :> Domain_B)
+            SourceA = Source_A
+            SourceB = Source_B
+            DomainA = Domain_A
+            DomainB = Domain_B
+            SourceDomain <- SourceDomainModel
           INVARIANT Visible
           CHECK_DEADLOCK FALSE
           CFG
