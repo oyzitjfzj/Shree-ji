@@ -55,16 +55,14 @@ jobs:
           test -n "$PRIVATE_TOKEN"
           echo "::add-mask::$PRIVATE_REPOSITORY"
           echo "::add-mask::$PRIVATE_TOKEN"
-
           ROOT="$GITHUB_WORKSPACE/target"
           mkdir "$ROOT"
           cd "$ROOT"
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
           git checkout -q --detach FETCH_HEAD
-
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
@@ -94,10 +92,8 @@ jobs:
           archive="$RUNNER_TEMP/resume/checkpoint.tar.gz.enc"
           test -s "$archive"
           export LAS_CHECKPOINT_SECRET
-          LAS_CHECKPOINT_SECRET="$(
-            printf '%s\0%s\0%s' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$TARGET_INDEX"               | sha256sum | awk '{print $1}'
-          )"
-          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256             -pass env:LAS_CHECKPOINT_SECRET             -in "$archive" -out "$RUNNER_TEMP/checkpoint.tar.gz"
+          LAS_CHECKPOINT_SECRET="$(printf '%s\0%s\0%s' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$TARGET_INDEX" | sha256sum | awk '{print $1}')"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_CHECKPOINT_SECRET -in "$archive" -out "$RUNNER_TEMP/checkpoint.tar.gz"
           tar -xzf "$RUNNER_TEMP/checkpoint.tar.gz" -C "$RUNNER_TEMP"
           test -d "$RUNNER_TEMP/tlc-meta"
           manifest="$RUNNER_TEMP/tlc-meta/las-resume-manifest.txt"
@@ -115,65 +111,54 @@ jobs:
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/target"
           cd "$ROOT"
-
           TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
-          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR"             | sha1sum --check --strict >/dev/null
-
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
           python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" <<'PY'
           from pathlib import Path
           import re, sys
           src = Path(sys.argv[1]).read_text(encoding="utf-8")
-          m = re.search(
-              r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',
-              src, re.S)
+          m = re.search(r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{', src, re.S)
           if not m:
               raise SystemExit("canonical TLC map generator not found")
           Path(sys.argv[2]).write_text(m.group(1) + "\n", encoding="utf-8")
           PY
-
           map="$RUNNER_TEMP/tlc-map.tsv"
           python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$map"
           test "$(wc -l < "$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
           test "$TARGET_INDEX" -ge 0
           test "$TARGET_INDEX" -lt "$EXPECTED_TLC_PROFILE_COUNT"
-
           line="$(sed -n "$((TARGET_INDEX + 1))p" "$map")"
           IFS=$'\t' read -r cfg tla deadlock expectation <<< "$line"
           test -n "$cfg"
           test -n "$tla"
           test -z "$expectation"
-
           cfg_dir="$(dirname "$cfg")"
           cfg_base="$(basename "$cfg")"
           tla_base="$(basename "$tla")"
           log="$RUNNER_TEMP/private-tlc.log"
           meta="$RUNNER_TEMP/tlc-meta"
           mkdir -p "$meta"
-
           args=(-workers auto -lncheck final -fp 0 -checkpoint 5 -metadir "$meta")
           if [[ -n "$RESUME_RUN_ID" ]]; then
-            args+=(-recover "$meta")
+            recover_dir="$(find "$meta" -type f -name 'vars.chkpt' -printf '%h\n' | sort -u | head -n 1)"
+            test -n "$recover_dir"
+            test -f "$recover_dir/queue.chkpt"
+            echo "LAS_TLC_RESUME_RECOVER_DIR_FOUND=1"
+            args+=(-recover "$recover_dir")
           fi
           if [[ "$deadlock" == "1" ]]; then
             args+=(-deadlock)
           fi
           args+=(-config "$cfg_base" "$tla_base")
-
           set +e
-          (
-            cd "$cfg_dir"
-            timeout --signal=KILL "$SLICE_SECONDS"               java -XX:+UseParallelGC -jar "$TLA_JAR" "${args[@]}"
-          ) >"$log" 2>&1
+          (cd "$cfg_dir"; timeout --signal=KILL "$SLICE_SECONDS" java -XX:+UseParallelGC -jar "$TLA_JAR" "${args[@]}") >"$log" 2>&1
           rc=$?
           set -e
-
           metrics="$(python3 - "$log" <<'PY'
           import re, sys
           text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-          matches = re.findall(
-              r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue',
-              text)
+          matches = re.findall(r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue', text)
           if matches:
               g, d, q = matches[-1]
               print(g.replace(",", ""), d.replace(",", ""), q.replace(",", ""))
@@ -188,13 +173,11 @@ jobs:
           echo "LAS_TLC_RESUME_DISTINCT=$distinct"
           echo "LAS_TLC_RESUME_QUEUE=$queued"
           echo "LAS_TLC_RESUME_RC=$rc"
-
           if [[ "$rc" -eq 0 ]]; then
             echo "status=pass" >> "$GITHUB_OUTPUT"
             echo "LAS_TLC_RESUME_RESULT=PASS"
             exit 0
           fi
-
           if [[ "$rc" -eq 124 || "$rc" -eq 137 || "$rc" -eq 143 ]]; then
             test -d "$meta"
             if ! find "$meta" -type f -name '*.chkpt' -print -quit | grep -q .; then
@@ -205,7 +188,6 @@ jobs:
             echo "LAS_TLC_RESUME_RESULT=SLICE_CHECKPOINT"
             exit 0
           fi
-
           echo "status=fail" >> "$GITHUB_OUTPUT"
           echo "LAS_TLC_RESUME_RESULT=FAIL"
           exit 1
@@ -219,17 +201,13 @@ jobs:
           set -euo pipefail
           echo "::add-mask::$PRIVATE_TOKEN"
           meta="$RUNNER_TEMP/tlc-meta"
-          printf 'proof=%s\nindex=%s\nsegment=%s\n'             "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$TARGET_INDEX" "$SEGMENT"             > "$meta/las-resume-manifest.txt"
-
+          printf 'proof=%s\nindex=%s\nsegment=%s\n' "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$TARGET_INDEX" "$SEGMENT" > "$meta/las-resume-manifest.txt"
           raw_bytes="$(du -sb "$meta" | awk '{print $1}')"
           echo "LAS_TLC_RESUME_METADATA_BYTES=$raw_bytes"
-
           tar -C "$RUNNER_TEMP" -cf - tlc-meta | gzip -1 > "$RUNNER_TEMP/checkpoint.tar.gz"
           export LAS_CHECKPOINT_SECRET
-          LAS_CHECKPOINT_SECRET="$(
-            printf '%s\0%s\0%s' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$TARGET_INDEX"               | sha256sum | awk '{print $1}'
-          )"
-          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt             -pass env:LAS_CHECKPOINT_SECRET             -in "$RUNNER_TEMP/checkpoint.tar.gz"             -out "$RUNNER_TEMP/checkpoint.tar.gz.enc"
+          LAS_CHECKPOINT_SECRET="$(printf '%s\0%s\0%s' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$TARGET_INDEX" | sha256sum | awk '{print $1}')"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt -pass env:LAS_CHECKPOINT_SECRET -in "$RUNNER_TEMP/checkpoint.tar.gz" -out "$RUNNER_TEMP/checkpoint.tar.gz.enc"
           enc_bytes="$(stat -c '%s' "$RUNNER_TEMP/checkpoint.tar.gz.enc")"
           echo "LAS_TLC_RESUME_ARTIFACT_BYTES=$enc_bytes"
           rm -f "$RUNNER_TEMP/checkpoint.tar.gz"
@@ -257,16 +235,8 @@ jobs:
           payload="$(python3 - "$TARGET_INDEX" "$next" "$GITHUB_RUN_ID" "$artifact" <<'PY'
           import json, sys
           index, segment, run_id, artifact = sys.argv[1:]
-          print(json.dumps({
-              "ref": "main",
-              "inputs": {
-                  "index": index,
-                  "segment": segment,
-                  "resume_run_id": run_id,
-                  "resume_artifact": artifact,
-              },
-          }))
+          print(json.dumps({"ref":"main","inputs":{"index":index,"segment":segment,"resume_run_id":run_id,"resume_artifact":artifact}}))
           PY
           )"
-          curl --proto '=https' --tlsv1.2 --fail-with-body -sS             -X POST             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/private-slow-tlc-continuation.yml/dispatches"             -d "$payload"
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/private-slow-tlc-continuation.yml/dispatches" -d "$payload"
           echo "LAS_TLC_RESUME_NEXT_SEGMENT=$next"
