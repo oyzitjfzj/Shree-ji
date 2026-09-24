@@ -1,0 +1,102 @@
+name: Private formatter export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_PRIVATE_FORMAT_EXPORT"
+
+permissions:
+  contents: read
+
+env:
+  FORMAT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVKVENDQW8yZ0F3SUJBZ0lVR1o3bXJQRitTSWtwQUhVMXdoaEJISGJTVkJRd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0lqRWdNQjRHQTFVRUF3d1hURUZUSUdWd2FHVnRaWEpoYkNCbWIzSnRZWFIwWlhJd0hoY05Nall3T1RJMApNVFl4TlRVeldoY05Nall3T1RJMU1UWXhOVFV6V2pBaU1TQXdIZ1lEVlFRRERCZE1RVk1nWlhCb1pXMWxjbUZzCklHWnZjbTFoZEhSbGNqQ0NBYUl3RFFZSktvWklodmNOQVFFQkJRQURnZ0dQQURDQ0FZb0NnZ0dCQU5nbjJ0NmYKa3VLZTNVZURRbGgwZzJaalp5b1FRVWQySE1XWFA5MzNZQUJKaVhhUVNmdjB4cjRxaWtCQkxEaFRFY3FPcGY3agpuajRLMkZBWHViRE96T1Byc2g3YUlRRDVJV1B3bjVOMTFyTEtaVUNsOW56UGlIMWM0eE1XRzNRZ0pJdEZlQTFTCjdoNFdSWTllYWhkaFlaREFrRjVucGdVc0w2TFBJUUNkK3Y4V2ZKSFdNUnpIQ0FiSDRabFNrNHFGWnd2ZHpxcGsKMHhBV1ArUWtvYVdHV3QrczdScUt4ZW43S2dOblhCQ1dOOVMwWTJJSWxocUhYdXhsS3NlbVpVZlZWZEVXVG0zUgpBc2tydEZFUHY5dnFWMnI3YkRZNWtwUXYyYnUwNHlmMjBhQXZubUpHSEx1dDZTWVNyZzFiVjdtMTFiZnpSWlFoClBaVENFclg5bUU4S29XRXpJbnVzcDZ3MHNZMXNLbUdqN09zRDYwNjRNeUFFL1BYb2hMaElVb2tFempRSmZicnMKbk53UXhZVzF4eEdpOWlKTEF0ZG81VStwdDBiKzQyMEJQbGtpZVROVG1IY2h6MWpkS0tiMDQxL2ZFek85QlhhbgpSb2gzYTQvMHBCL1JvYWRjc2hXOXcrT3h1bC82MnNEeWFZNEVRV2Y1cUVYeDRlNjVZdUZkSDZoVkJ3SURBUUFCCm8xTXdVVEFkQmdOVkhRNEVGZ1FVOEpHRXRpRWxCMDdLNkRtMHZERGR0S1p0S1JRd0h3WURWUjBqQkJnd0ZvQVUKOEpHRXRpRWxCMDdLNkRtMHZERGR0S1p0S1JRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBTkJna3Foa2lHOXcwQgpBUXNGQUFPQ0FZRUFZTUs5aStXZlJOUmgrWUpqRFlKOWNaYkVxY2VqZVk4ZjlaS1VkNmdnTVJMYVpDZWhtT2lmCmtzbnJ6L3IycXJtNlZvRVd6b0w3QTZMOUoyNm5GQnlTZFhmOWkwaDJDSmlaMjVMRUlxYTIrWWtiREVkNHp1NWsKQzUrMCtzc2Q2QU5Vbzc2NkVYK0VGV0U0S3NDWkE2RmhqU1h5aVU2QVpGYUw1N3RQaXhBQi9ha2tWaGNnZU5OWgpNbGQ4KzlXZWhLNjNMZWJjZ2VtU2xWWG5uclFJd2tpajZqM0dxVHRORWVtNW5zbVp6UmJyZUcrWXhsNGVBU2Z4Cld0dzBpWmtPeTdiTHNlbXUxUU5GMzA3bDFDeEJOZ0l4SFFXa21RZUVJSWRhTWdTUlNrTm5qNk11ZFVyM2IwQUIKakhlZTRhZmxuWUtrcVhHa3Z5Z3lvc0hCWFRGZUswU2M2VkFpR1V1VjNMa24rOXIxekJBMEREMVZtaXlydEdUcApCc1YrWDZ4dHVHWlhkbmNBUG9OQ0pCci9FSnFCSTJiaFlwQWhsV3VzT2ViUkQrcWNzeUFzd2dTTng0elU3dmVsCnNZSnlSRWpJNjZGdXJhMGllVk4zM1F1ZmpDTU1jYnc1eVA5dVVuSVFtVW5wcXFrSU1uQlRxRkNXVmlIUU9KNFoKdGdBdWd3VFcwaGVnCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  FORMAT_CERT_FINGERPRINT: 2C:8A:6E:3D:24:FE:3D:83:7A:21:EF:71:AB:28:38:FA:E9:CA:79:BB:4F:7C:4B:32:CA:65:96:44:5C:08:1B:DB
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@v4
+
+      - name: Load opaque target
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref_hash="$(awk -F= '$1=="TARGET_REF_HASH"{print $2}' RUN_PRIVATE_FORMAT_EXPORT)"
+          proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' RUN_PRIVATE_FORMAT_EXPORT)"
+          [[ "$ref_hash" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
+          echo "TARGET_REF_HASH=$ref_hash" >> "$GITHUB_ENV"
+          echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
+
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          test "$actual" = "$matched_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_FORMAT_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth matched_ref matched_sha actual
+
+      - name: Run exact formatter and seal output
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add --toolchain 1.98.1 rustfmt
+          cargo +1.98.1 fmt --all
+          git diff --name-only -z -- '*.rs' > "$RUNNER_TEMP/formatted-files.z"
+          count="$(tr '\0' '\n' < "$RUNNER_TEMP/formatted-files.z" | sed '/^$/d' | wc -l | tr -d ' ')"
+          test "$count" -gt 0
+          echo "LAS_FORMAT_CHANGED_FILE_COUNT=$count"
+          tar --null -T "$RUNNER_TEMP/formatted-files.z" -czf "$RUNNER_TEMP/formatted.tar.gz"
+          printf '%s' "$FORMAT_CERT_B64" | base64 -d > "$RUNNER_TEMP/format-cert.pem"
+          actual_fp="$(openssl x509 -in "$RUNNER_TEMP/format-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$actual_fp" = "$FORMAT_CERT_FINGERPRINT"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$RUNNER_TEMP/formatted.tar.gz" -out "$RUNNER_TEMP/formatted.cms" "$RUNNER_TEMP/format-cert.pem"
+          echo "LAS_FORMAT_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.cms" | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/formatted.tar.gz" "$RUNNER_TEMP/formatted-files.z"
+
+      - name: Upload encrypted formatted output
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-format
+          path: ${{ runner.temp }}/formatted.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
