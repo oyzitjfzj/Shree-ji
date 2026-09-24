@@ -1,0 +1,136 @@
+name: Private targeted Rust format
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_TARGETED_FORMAT"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-targeted-rust-format
+  cancel-in-progress: false
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@v4
+
+      - name: Load opaque target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RUN_TARGETED_FORMAT
+          ref_hash="$(awk -F= '$1=="TARGET_REF_HASH"{print $2}' RUN_TARGETED_FORMAT)"
+          proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' RUN_TARGETED_FORMAT)"
+          [[ "$ref_hash" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
+          echo "TARGET_REF_HASH=$ref_hash" >> "$GITHUB_ENV"
+          echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
+
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q -B format-target FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          test "$actual" = "$matched_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+
+          printf '%s' "$matched_ref" > "$RUNNER_TEMP/private-ref"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private-start-sha"
+          printf '%s' "$auth" > "$RUNNER_TEMP/private-auth"
+          chmod 600 "$RUNNER_TEMP/private-ref" "$RUNNER_TEMP/private-start-sha" "$RUNNER_TEMP/private-auth"
+          echo "LAS_TARGETED_FORMAT_SNAPSHOT_PROOF=$proof"
+
+      - name: Format and verify scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+
+          changed="$RUNNER_TEMP/format-paths"
+          git diff --name-only > "$changed"
+          test -s "$changed"
+          while IFS= read -r path; do
+            case "$path" in
+              *.rs) ;;
+              *) echo "LAS_TARGETED_FORMAT_SCOPE=FAIL"; exit 2 ;;
+            esac
+          done < "$changed"
+          git diff --check
+          echo "LAS_TARGETED_FORMAT_CHANGED_FILES=$(wc -l < "$changed" | tr -d ' ')"
+          echo "LAS_TARGETED_FORMAT_SCOPE=RUST_ONLY"
+
+      - name: Commit and fast-forward exact private ref
+        shell: bash
+        env:
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          matched_ref="$(cat "$RUNNER_TEMP/private-ref")"
+          start_sha="$(cat "$RUNNER_TEMP/private-start-sha")"
+          auth="$(cat "$RUNNER_TEMP/private-auth")"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$auth"
+          echo "::add-mask::$start_sha"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+
+          git config user.name "LAS Verification Formatter"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -u
+          git commit -q -m "Format System-F Rust with pinned 1.98.1 rustfmt"
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:"$matched_ref"
+          echo "LAS_TARGETED_FORMAT_RESULT=PASS"
+          echo "LAS_TARGETED_FORMAT_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
