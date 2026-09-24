@@ -93,4 +93,5 @@ jobs:
           test -n "$match"
           echo "LAS_FMT_CONTENT_SHA256=$(sha256sum "$match" | awk '{print $1}')"
           echo "LAS_FMT_CHANGED=$([[ -n "$(git diff -- "$match")" ]] && echo YES || echo NO)"
+          awk 'NR>=145 && NR<=160 { printf "LAS_FMT_LINE=%d:%d:", NR, length($0); print $0 | "sha256sum"; close("sha256sum") }' "$match" | sed -E 's/[[:space:]]+-[[:space:]]*$//'
           echo "LAS_FMT_FINGERPRINT_RESULT=PASS"
