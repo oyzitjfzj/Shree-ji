@@ -1,0 +1,57 @@
+name: Private slow TLC resumable verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_SLOW_TLC_CONTINUATION"
+  workflow_dispatch:
+    inputs:
+      index:
+        description: Opaque canonical TLC profile index
+        required: true
+        type: string
+      segment:
+        description: Continuation segment number
+        required: true
+        type: string
+      resume_run_id:
+        description: Prior workflow run containing encrypted checkpoint
+        required: false
+        default: ""
+        type: string
+      resume_artifact:
+        description: Prior encrypted checkpoint artifact name
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  bootstrap:
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        index: [2, 27, 28, 30, 94]
+    uses: ./.github/workflows/_private-tlc-continuation-slice.yml
+    with:
+      index: ${{ matrix.index }}
+      segment: 0
+      resume_run_id: ""
+      resume_artifact: ""
+    secrets: inherit
+
+  continuation:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/_private-tlc-continuation-slice.yml
+    with:
+      index: ${{ fromJSON(inputs.index) }}
+      segment: ${{ fromJSON(inputs.segment) }}
+      resume_run_id: ${{ inputs.resume_run_id }}
+      resume_artifact: ${{ inputs.resume_artifact }}
+    secrets: inherit
