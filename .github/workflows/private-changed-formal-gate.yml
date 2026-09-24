@@ -1,0 +1,151 @@
+name: Private changed formal gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-changed-formal-gate.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_BASE_PROOF: b615bb5129b28292b237ff2bcf1bae3dbecfffac81f99bb6ea44e281272a57e6
+  EXPECTED_HEAD_PROOF: 4bfe20874123bdda1f6a26f8cc0a4dc75d756bb723fc3a08384c9db960747393
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  formal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Recover exact private revisions opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=200 origin '+refs/heads/*:refs/remotes/origin/*'
+
+          find_by_proof() {
+            local expected="$1"
+            local found=""
+            while IFS= read -r oid; do
+              [[ -n "$oid" ]] || continue
+              proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+              if [[ "$proof" = "$expected" ]]; then
+                found="$oid"
+                break
+              fi
+            done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+            test -n "$found"
+            printf '%s' "$found"
+          }
+
+          base="$(find_by_proof "$EXPECTED_BASE_PROOF")"
+          head="$(find_by_proof "$EXPECTED_HEAD_PROOF")"
+          echo "::add-mask::$base"
+          echo "::add-mask::$head"
+          git merge-base --is-ancestor "$base" "$head"
+          git checkout -q --detach "$head"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          printf '%s' "$base" > "$RUNNER_TEMP/base"
+          printf '%s' "$head" > "$RUNNER_TEMP/head"
+          echo "LAS_PRIVATE_FORMAL_BASE_PROOF=$EXPECTED_BASE_PROOF"
+          echo "LAS_PRIVATE_FORMAL_HEAD_PROOF=$EXPECTED_HEAD_PROOF"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run exact changed canonical formal profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          base="$(cat "$RUNNER_TEMP/base")"
+          head="$(cat "$RUNNER_TEMP/head")"
+          log="$RUNNER_TEMP/private-formal.log"
+          : > "$log"
+
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"             >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR"             | sha1sum --check --strict >/dev/null
+
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" "$RUNNER_TEMP/run-fn.sh" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src=Path(sys.argv[1]).read_text(encoding="utf-8")
+          mm=re.search(
+              r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',
+              src,re.S)
+          if not mm:
+              raise SystemExit("canonical map generator unavailable")
+          Path(sys.argv[2]).write_text(mm.group(1)+"\n",encoding="utf-8")
+          fm=re.search(
+              r'(run_tlc_profile\(\) \{.*?\n\})\n\nwhile IFS=\$\'\\t\' read -r cfg tla deadlock expectation; do',
+              src,re.S)
+          if not fm:
+              raise SystemExit("canonical TLC runner unavailable")
+          Path(sys.argv[3]).write_text(fm.group(1)+"\n",encoding="utf-8")
+          PY
+
+          map="$RUNNER_TEMP/map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$map"
+
+          changed="$RUNNER_TEMP/changed-spec-paths"
+          git diff --name-only "$base" "$head" -- ':(glob)spec/**/*.cfg' ':(glob)spec/**/*.tla'             | sort -u > "$changed"
+
+          selected="$RUNNER_TEMP/selected.tsv"
+          python3 - "$map" "$changed" > "$selected" <<'PY'
+          import sys
+          changed={line.strip() for line in open(sys.argv[2],encoding="utf-8") if line.strip()}
+          rows=[]
+          with open(sys.argv[1],encoding="utf-8") as f:
+              for raw in f:
+                  row=raw.rstrip("\n").split("\t")
+                  if len(row) < 4:
+                      row += [""]*(4-len(row))
+                  cfg,tla,deadlock,expectation=row[:4]
+                  if cfg in changed or tla in changed:
+                      rows.append((cfg,tla,deadlock,expectation))
+          for row in rows:
+              print("\t".join(row))
+          PY
+
+          count="$(wc -l < "$selected" | tr -d ' ')"
+          test "$count" -gt 0
+          echo "LAS_PRIVATE_FORMAL_PROFILE_COUNT=$count"
+
+          TMP="$RUNNER_TEMP/tlc-private"
+          mkdir -p "$TMP"
+          PASS=0
+          FAIL=0
+          FAILED=()
+          source "$RUNNER_TEMP/run-fn.sh"
+
+          set +e
+          while IFS=$'\t' read -r cfg tla deadlock expectation; do
+            [[ -n "$cfg" && -n "$tla" ]] || continue
+            run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
+          done < "$selected" >"$log" 2>&1
+          loop_rc=$?
+          set -e
+
+          echo "LAS_PRIVATE_FORMAL_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_PRIVATE_FORMAL_PASS_COUNT=$PASS"
+          echo "LAS_PRIVATE_FORMAL_FAIL_COUNT=$FAIL"
+          if [[ "$loop_rc" -eq 0 && "$FAIL" -eq 0 && "$PASS" -eq "$count" ]]; then
+            echo "LAS_PRIVATE_CHANGED_FORMAL_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_PRIVATE_CHANGED_FORMAL_RESULT=FAIL"
+          exit 1
