@@ -1,0 +1,4 @@
+start resumable exact slow TLC verification
+private proof: b615bb5129b28292b237ff2bcf1bae3dbecfffac81f99bb6ea44e281272a57e6
+profiles: 2,27,28,30,94
+mode: canonical args + checkpoint/metadir/recover only
