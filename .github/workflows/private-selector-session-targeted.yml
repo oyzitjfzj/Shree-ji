@@ -1,0 +1,106 @@
+name: Private selector-session targeted
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_SELECTOR_SESSION_TARGETED"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b564eec8cb84c45e3278dc6175d40de5cc6a7e55b1c0b02cbdd8151f3b1d5fed
+  DIAG_CERT_PEM_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVTekNDQXJPZ0F3SUJBZ0lVTkxLOUxWNlkwTnRWOVNGdmhnUHpQZTJSZVBjd0RRWUpLb1pJaHZjTkFRRUwKQlFBd05URXpNREVHQTFVRUF3d3FURUZUSUhObGJHVmpkRzl5SUhObGMzTnBiMjRnWkdsaFoyNXZjM1JwWXlBeQpNREkyTFRBNUxUSTBNQjRYRFRJMk1Ea3lOREUzTVRjeU1Gb1hEVEkyTURreU5qRTNNVGN5TUZvd05URXpNREVHCkExVUVBd3dxVEVGVElITmxiR1ZqZEc5eUlITmxjM05wYjI0Z1pHbGhaMjV2YzNScFl5QXlNREkyTFRBNUxUSTAKTUlJQm9qQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FZOEFNSUlCaWdLQ0FZRUF6RHBpL09qUFpncFJaWlJYWTJ6UQpOemszdlEyNytQV1A0c0Y5M2lQbFpvZFN0c0YySWR4QWk4U3l0am92ejdOVkROeFhHSU03TllZclFFRFYvZ2o2CkNISVJGM3YrYWpydHdWMU1iUDQwenIxT0k1dzhEN3VlL1VvMFZNTy9tS0RucFpXUU91UUlkOTc1a0ZBWVdBNXUKMWp3TzBvdFZiV1hqc2h1NEs1Y0tzTU9WSEJFWDZaa09ZS3F4UGJtWnltVmh1V3VjbTRYYVJZcjUzUDhKaWtUTAp1MWo3V0tQTmJ4b0ZwQ3AvSm5pNXBrSHFla2dnVUp4ZTVkODNXS24vdk15VnU3ZXEwOEZuVXBYQWp2N3g0QW9qCk1RbkY0VzlRVW9iNjRvdER2THJRYUNvUXlxOUdHRUhjQ3l4Z0ZiNmlVeVdqcVJYTnk2Nm1lblBGNVNtZ0Fhd04KZ3VvSVIxMmhQM2h6eGpTU003eTFra3ZwYy9JRHZwKzRSWlZLME1kZG5FbHNybG1uQ0hkNzRwL3RUVC9oQWhlaApFWXR2Ykl2RUpBY3hyb1NaMkF1S2JqQy8wSEFhekI4ZnFXZHJSSXFrNXhsM2FZbUtwYjRMbWg3VjVzOUlKT3hvCkVWckVNV29RWkhSMWNuZE5YRDlsNFdUbGt0ZVZmRFJoZ0JZM1dML01KR3YvQWdNQkFBR2pVekJSTUIwR0ExVWQKRGdRV0JCUUQxRnNKMkNWOXZudW5oUjlDY2VQTjBJVzVxekFmQmdOVkhTTUVHREFXZ0JRRDFGc0oyQ1Y5dm51bgpoUjlDY2VQTjBJVzVxekFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQTBHQ1NxR1NJYjNEUUVCQ3dVQUE0SUJnUUNyClhBdFJ0cGpzTDhYTlFzSS9Jb0hrNkdMaTcrMDVJd25HRmkzOVVLSSswVmFjc3YzSHRuK1pTOWhPZmJrUFRia1AKYTRCMTJIK2dHSTI1NTMyeXBMRDZPcTdCNUMrVVlPaEsxd1FyTXRvZW9wL3U4V2ZCRWdQamR4T2dLWitJaFp0YQpPRW12SmZ4NUs3a29JNmpBSGErSUtNRUJ3VmZOZnhha0ZaZEU4bzgyalpvUjFtSHFHcnhJejJseWN0eDl6MEtKCjh5akw2bVdhNW5UMUU0WTJsU3c0NEtRdjloK3d3N0ZYcEtRRGJhMDl5aHAxVmk2QzlETHBCZUtUa3lraVMvTE0KTTBLR1RPODhVbkhQVDlaeURXVWF6dTV6bFdkeFoydis3UTVQM0syenhtRXRNWngwMVFiZ3lua1FkQlBkWVZ2bAoxeFVCZlZhUGRoVmpxQzMxSE5ONzhrOUErMHF4bmd0YVJybjFVdE5WUmpUZi91L1hEQ01LQ3YvaUZXblkrYXFWCitrczdUMXlQeWNCL0NiOVF5aStFYnhMM2ZuQ1IvZXFGanRPTDhIdkE4NmlRdURiMTZ5MVZrWlM3dFBYUUF3bGsKcHdycC9SZENBVDNBUnZmc2taUWRGM2Z4YVpBeEJoa1g5dkdONmZweFc3bVpXTC81azlwSjNWdXVrblk2QXhFPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  RECIPIENT_CERT_FINGERPRINT: "FF:E2:89:5C:26:A6:58:BB:51:88:09:C1:21:89:13:B5:1F:39:11:D3:22:23:C9:D8:30:C2:B0:0E:82:B9:F5:81"
+
+jobs:
+  targeted:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact private selector branch
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/tmp/selector-execution-20260924
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_SELECTOR_TARGET_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run private targeted boundary verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/selector-private.log"
+          set +e
+          (
+            cd "$ROOT"
+            bash tools/verify_current_boundary.sh
+          ) >"$log" 2>&1
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > "$RUNNER_TEMP/selector-private.rc"
+          last_stage="$(grep '^LAS_CURRENT_BOUNDARY_STAGE=' "$log" | tail -n 1 || true)"
+          if [[ -n "$last_stage" ]]; then
+            echo "$last_stage"
+          else
+            echo "LAS_CURRENT_BOUNDARY_STAGE=checkout_or_bootstrap"
+          fi
+          echo "LAS_SELECTOR_BOUNDARY_RC=$rc"
+
+      - name: Encrypt private diagnostic log
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/selector-private.log"
+          test -s "$log"
+          printf '%s' "$DIAG_CERT_PEM_B64" | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
+          fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "$RECIPIENT_CERT_FINGERPRINT"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/selector-private.cms" "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_SELECTOR_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+
+      - name: Upload encrypted private diagnostic
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-selector-session-targeted
+          path: ${{ runner.temp }}/selector-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Enforce result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/selector-private.rc"
+          rc="$(cat "$RUNNER_TEMP/selector-private.rc")"
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_SELECTOR_BOUNDARY_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_SELECTOR_BOUNDARY_RESULT=FAIL"
+          exit 1
