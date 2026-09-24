@@ -1,0 +1,79 @@
+name: Private encrypted formatting diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-encrypted-formatting-diagnostic.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: dc833f818afafbb83028f775fdc3d9cf0605b7cac5a616e4489ca9ac9f6dd9cf
+  DIAG_CERT_PEM_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURUVENDQWpXZ0F3SUJBZ0lVSVYvTEtRK2YrSExGb3NtNWxyNVpwRGU5a3g4d0RRWUpLb1pJaHZjTkFRRUwKQlFBd05qRTBNRElHQTFVRUF3d3JURUZUSUhSbGJYQnZjbUZ5ZVNCd2NtbDJZWFJsSUdadmNtMWhkSFJwYm1jZwpaR2xoWjI1dmMzUnBZekFlRncweU5qQTVNalF5TXpVM016ZGFGdzB5TmpBNU1qVXlNelUzTXpkYU1EWXhOREF5CkJnTlZCQU1NSzB4QlV5QjBaVzF3YjNKaGNua2djSEpwZG1GMFpTQm1iM0p0WVhSMGFXNW5JR1JwWVdkdWIzTjAKYVdNd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUUREU1FVNjhSd2J0a2ptajRpNwphdTh1MnJ5aDRtR1h6b3dGdTkwcS9LalRQNnRsWldKQ0k4anppc3E0cTNWeXR6bnN0eTU1cUVibDMxWHlqZlRGCnRpUlJuMFZrS2V3VHUzQlUvd0tmS0pMRU56aStOYTFmZFhKVGNEMTl6Qi9GSWZ5MXY5NlBiekpQRkFWYlJZMjAKN09qWjUxMmp5enZRY1hZeTAxR0pxZnh4NUF2Z2oraHhHTGszeXh5RmI5SmU4RUVRdmU5UFE3MEVLUTBtT1MrbgoyN2RLYkNyVDgwS1VEZmw3cVVhTVRmZ3IwSCszVzZTM2V0cUJUeW5COFIyWnRrdjZmS3lIbHgzbDlrb1VDZXBTCnYzYWMxdWZjZGY0QVAzQTNpSC9KNExpZDVJTWsxWE01N042NTUxTGJwYUpiVTVuRjhSdHFJUUdjZVJZb3BCMHoKaThoMUFnTUJBQUdqVXpCUk1CMEdBMVVkRGdRV0JCVHlzWFBJMVZocG1UQmdsZGZpU0tRbU1YMmpoekFmQmdOVgpIU01FR0RBV2dCVHlzWFBJMVZocG1UQmdsZGZpU0tRbU1YMmpoekFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQTBHCkNTcUdTSWIzRFFFQkN3VUFBNElCQVFDWjZpZHNadVkwYVB3WVdLajdCZGd1TkxMbFV6czRqY2lVV3UraTJQaVUKVWRCaU5iNFpROVMrWEZJS2E2aFJBVmlWRHdXWTQxUW9nM01pRGN5Y09QYmcydlA0ZGd4cDdCd2tCTzNrVUtXTQpQekY3R3BVaEdYeFpnZy9PMHVLUjA4ekNkVVpzVGcrU2hqTnE1emlNUXBRZnQyeGIzMDIxUzFYTFVaVHAxS3NVCmI1Tk95UU5wazdrVlVUZHg2Rmh2MnBCeUV5TWtJTERSYndKQ2JBVi85T3ZpRE8rc1dpc3RwZDB3Rm5ld3ZaK1EKMUtBa3dEODRoVUJFYXhaVnVjOHRGOUxQNGFCUFhXMlpvQWt5TFRsOFhWRkNqbzYybUhTMkN0czdVVHQxcUdXZAo5TGFZN0JlVVgvb3FoK2VCcU1aWGh2U2RIL1hnV1lLeE1sTW55U2hPcEkxbwotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  RECIPIENT_CERT_FINGERPRINT: "1C:D1:51:1D:92:8C:59:AD:19:78:5A:E5:BA:7F:B7:BF:54:25:32:03:2C:D9:22:78:65:31:79:0A:55:64:34:64"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=200 origin '+refs/heads/*:refs/remotes/origin/*'
+          found=""
+          while IFS= read -r oid; do
+            [[ -n "$oid" ]] || continue
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              found="$oid"
+              break
+            fi
+          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          test -n "$found"
+          echo "::add-mask::$found"
+          git checkout -q --detach "$found"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_PRIVATE_FORMAT_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth
+
+      - name: Produce encrypted exact formatting diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 fmt --all
+          git diff --no-ext-diff --no-color > "$RUNNER_TEMP/private-format.patch"
+          test -s "$RUNNER_TEMP/private-format.patch"
+
+          printf '%s' "$DIAG_CERT_PEM_B64" | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
+          fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "$RECIPIENT_CERT_FINGERPRINT"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$RUNNER_TEMP/private-format.patch"             -out "$RUNNER_TEMP/private-format.cms"             "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_PRIVATE_FORMAT_PATCH_SHA256=$(sha256sum "$RUNNER_TEMP/private-format.patch" | awk '{print $1}')"
+
+      - name: Upload encrypted formatting evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-format-diff
+          path: ${{ runner.temp }}/private-format.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
