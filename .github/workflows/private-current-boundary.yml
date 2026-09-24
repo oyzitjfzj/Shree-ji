@@ -89,6 +89,12 @@ jobs:
           set -e
           echo "LAS_BOUNDARY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_BOUNDARY_RC=$rc"
+          printf '%s' 'LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVMekNDQXBlZ0F3SUJBZ0lVQ0lWSDhQcS90YnA0SlNuNkZaL0R5ckhlazVjd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0p6RWxNQ01HQTFVRUF3d2NURUZUSUVWd2FHVnRaWEpoYkNCU2RYTjBabTEwSUVKeWFXUm5aVEFlRncweQpOakE1TWpReU16RTBNalJhRncweU5qQTVNalV5TXpFME1qUmFNQ2N4SlRBakJnTlZCQU1NSEV4QlV5QkZjR2hsCmJXVnlZV3dnVW5WemRHWnRkQ0JDY21sa1oyVXdnZ0dpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCandBd2dnR0sKQW9JQmdRRGd4S1pGQ2M3UkZhTXVCSG9Tc3QvQUVkNVFnM28xSlpBTmkrZEc2aDB4dlQ2WUhhbVJ0aHRKWEdBYQpYdUVyMHNYRFEzb1I5ZFBpV2NVd3hZdzZwMmVLOXJ6V2lCRUg3K0kvU2Z4czNSRUoyNGMwTTFqTnc5VjRHaThVCjArdUIyUDJwV2p6TkpSc1FyNU1iOTFCaDFMS2RQMEdYZ3lNN0sxSHFMeFFkVkQ2Q3drMWlnVEdaWVMwL0t0MVQKZThPaG12a1ZwQmE0eTlzWlRFNW56ZktCRjVJNTdpYUViYUVlMUgzN1UwQVJkaytRUjhwbUZkSjdvNzgwOFFxNApXeVBZR2NYZVhaMjJQV1ZEc3pRWHJGRWgxbHdmWkNBa1pETzlzTUh1MEx0ZVA5OXVMcGl0ZTkzcmpSMlk0akdpCno2bmlnclZGMVFrWGZsWFVxWWc2Zy9nalFaaWEyc011OFV5azVJZlpzN1h5dGYraEEzMS9FQ3VGM1V5cUtzQmEKSWFPazNRcmRCRDYvTkx6dk9vRFQ5N01mbDQ0cytxRnZDTGY5a014NVkvVXFCV21xWjgvZ0tDdEhnS2ZVRTJ4KwpJWWpUM1FOTEdUbHduM0M3ZjBqb2NmUzk1M2s2cU5yL0ZOZWlNejFlMzVhKzRyYWZMajRWZVRIOGdpcjRISExjCjdmb0xoVjBDQXdFQUFhTlRNRkV3SFFZRFZSME9CQllFRkpaQ0ErWjJYQjFxZXptbGlKQnFJNFFId3R1M01COEcKQTFVZEl3UVlNQmFBRkpaQ0ErWjJYQjFxZXptbGlKQnFJNFFId3R1M01BOEdBMVVkRXdFQi93UUZNQU1CQWY4dwpEUVlKS29aSWh2Y05BUUVMQlFBRGdnR0JBRHkyVjBVNUYvRytDMEs5V08wVjFOOG1Fb1FKSEg2S2svWWVOcVpsCk5zZXBSWDB4cmtTYmcwLzJCMFN4a0I3SFRFY29tUDlQV2FYb0ZDcEYrYlg4VVk3UmVvLzgwZ2tJZWZJQ2F6OEwKNkxMblpaSGRtb2lGK0l5ZDQyOHl6eXdncHAwQkgxaHBHUEFoN0lNTk9nai93Z2NmR3BWNHZRcUdFNXI1QjJUaQptRGJ4VHR1Z090ZDczMEpjWVlvTmZob2FEejFpUXdyRHBGY01janYxWkJWSlZIWGo2V1diZFNrSmdMb3BmNDR2ClZUNms3WS9VdFNQSU5meDN1V0lvNiszODRNaVk2MUFqVmRLamUxMENXWkd5TkFDZWk4RWJlakRzdGNXcmRaYnYKdTFxdDVWZ09vQUJMRDJHc2Zscm1Pc0dkVVpLNHFyTzM2V2I3RUhNbVcxRVQ4MkJwNTdOMVFhTHJkd0hFVk5PUAoveFhLWjhkMXFlRkxHQmVjS2NNa3hjQ3NsNnM3OVN2RHJQL2JPU0hwUmMyWW5heCtWSXZQWmhWWmJ4MHhsL3BXClNaSURWVjg2S1BjL3lkNkd3aXRHdXB4dzFBeU1ydkRLU1F3NkJxRFJ6ZkdtYk9acjlxZ2wxSG5mTzVsRlFuVm4KUW1WWG0rVUlSOE5oYjJrTForY1MxcDZkcHc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==' | base64 -d > "$RUNNER_TEMP/private-diag-recipient.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER \
+            -in "$log" \
+            -out "$RUNNER_TEMP/private-boundary.cms" \
+            "$RUNNER_TEMP/private-diag-recipient.pem"
+          echo "LAS_BOUNDARY_ENCRYPTED_DIAGNOSTIC=READY"
           stage="$(grep '^LAS_CURRENT_BOUNDARY_STAGE=' "$log" | tail -n 1 | cut -d= -f2 || true)"
           case "$stage" in
             rustfmt|cargo_check|session_tests|plan_tests|auth_test|system_f_tests|formal|clean_tree) ;;
@@ -125,6 +131,16 @@ jobs:
           fi
           echo "LAS_BOUNDARY_RESULT=PASS"
           rm -f "$log"
+
+      - name: Upload encrypted private boundary diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-boundary
+          path: ${{ runner.temp }}/private-boundary.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
 
       - name: Export encrypted rustfmt repair patch
         if: failure()
