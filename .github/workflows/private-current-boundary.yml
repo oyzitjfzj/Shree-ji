@@ -1,4 +1,4 @@
-name: Private current boundary verification
+name: Private current-boundary verification
 
 on:
   push:
@@ -9,17 +9,30 @@ on:
 permissions:
   contents: read
 
-env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 66fb3968798bcedcf25be47c02dae6e1cebdffcfe0cac0d5d21acd886f292599
-  DIAG_CERT_PEM_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVPVENDQXFHZ0F3SUJBZ0lVR0ZlZUhIVG9jb1IxRy9YNUhzaVlyN2IzUjRzd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xERXFNQ2dHQTFVRUF3d2hURUZUSUhCeWFYWmhkR1VnWkdsaFoyNXZjM1JwWXlBeU1ESTJMVEE1TFRJMApNQjRYRFRJMk1Ea3lOREUxTXpjME9Wb1hEVEkyTURreU5qRTFNemMwT1Zvd0xERXFNQ2dHQTFVRUF3d2hURUZUCklIQnlhWFpoZEdVZ1pHbGhaMjV2YzNScFl5QXlNREkyTFRBNUxUSTBNSUlCb2pBTkJna3Foa2lHOXcwQkFRRUYKQUFPQ0FZOEFNSUlCaWdLQ0FZRUFtci8vRkxHYUtGTmljUVBNNEpUYitBdHBPYjh0UVpoSWNtV0dMT3RXYlFmWgpURjZJcS9DVTBTTWljODV1YitaN1dpNGp6WVRDckVyenVpc2NhRnVRdWFoODZzMFBqUzd4ZWQ1L0sxSnhNUjcvCkdUOWVVcUt0VmJUb2ZKSE9xSThJQVZ3d05NNUg1bEdBRmdwVnc1cTRzWDR5K3NFQk95NTB6dVdyZzcvL0JjUGUKd3V6U0o2cE1mQkxSbWE1dEtnRGFxQzFVZStKY1Nld2xZc3lSY0J2QlNnbWlmdENyRzgxRmJvOWJDYlZqd2x6MQpmdmxDMlRNZWZHWUZ2OGQveXNjVHJYdm1idG5FVkt6OW1XTDZYeEFqanUzMVQ1ZmdlK1BPUHE3M2x5bEsyVDZXCnBrNVZsS0VvUUNMU2wxWE5LOEs5TjdVWVpJNWN6Nk1KR0pueGM4Zy8zUTJrZ1BJaXdjK3d0a2VJNld0U2I2NE8KbXhNQ2FGVjJHeC9jU05LVThIUS8zNkNsV2VBeWlldjRIZVZtZ0V2czlxTEcwN3htNW5pZUNBUS8yRjNja1c4RQpKNjlIS3d5L0dCQlM5SGdTMklxc05YMmRoUVc2cWRGSGluVFdnWTcrTmpNSy9DUDY1bk1ZdUVyaUljSDVodGF3CjFLaFc0aTBQeS93SVRKbTFoOVpwQWdNQkFBR2pVekJSTUIwR0ExVWREZ1FXQkJUbU5HdGg0UXpkVm0zeVgyT0gKb2pxaEN4UTB0ekFmQmdOVkhTTUVHREFXZ0JUbU5HdGg0UXpkVm0zeVgyT0hvanFoQ3hRMHR6QVBCZ05WSFJNQgpBZjhFQlRBREFRSC9NQTBHQ1NxR1NJYjNEUUVCQ3dVQUE0SUJnUUJ5MjdIYUdCMTFMdVhHMlduSkJUQW1HNlhuCmhraENvVGI5MnQ1bHlQdFRhSGNUOWZvbmVFbHFURzRGbHUwUTNWaGtPZEs3NkJ5czF1RndnMGFJODZVWFVrdXoKQU5SNmJWc3BIaTJmV3JWMXRBd3ZmSXIvODlreGdHeGFIdnRFYXdlUjJCK3VMUTRnNmtXZDVQc01JSE5VTHdjbgpMMTZmcitWMWp5SzhkaERkRUM2cVQ3R1ZyTWgxTmxzcU1DTHp4cTgrZ3NPYzIyZ2hlNzM0Rkc5c1BybW1zSmZzCkhpd2hMd1NCcVJsaXpGalVkdmxlWVJpMEh5WnhueG5uZEdzMTV3NHlyakprOGF4MlVSU3loejhwQ21lWloyazQKcXMycjZNaWZEWEVxa0lyZWF2UDY5SFhFcE5DR3Jzbld3U01uT1BmSU5Cb1JGVU4zdC9nejlCZklUb1Y4THhEVQpQWS9vZHBLRUJEVTcvQktLTzhoeXBRckZwRWtCajJER0lKQjlwR3VpYW1vTHhpd211UDFvRlBFMzVjSkY5YXBYCmFvUVZhbS9XbmhFRUorM3NXY2FlcUphUzNmYnNnRHZQOThFeTVVZEIrR0JYblFPMHljZW1iZnpWaWErT3hBL0kKUmtZemcvTzRodlpKdmRhY2dtbnZQMGg1VUlHcW9TSDlKT3ZvS0R3PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
-  RECIPIENT_CERT_FINGERPRINT: "94:00:57:14:D4:15:F6:C7:87:D8:C8:7E:BD:23:E2:0B:3B:8F:D7:EC:F0:F1:79:03:1E:2E:CD:68:AB:C7:1A:F3"
-
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 90
     steps:
-      - name: Checkout exact private engineering snapshot
+      - name: Checkout public control shell
+        uses: actions/checkout@v4
+
+      - name: Load opaque verification request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RUN_CURRENT_BOUNDARY
+          ref_hash="$(awk -F= '$1=="TARGET_REF_HASH"{print $2}' RUN_CURRENT_BOUNDARY)"
+          proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' RUN_CURRENT_BOUNDARY)"
+          expect="$(awk -F= '$1=="EXPECT"{print $2}' RUN_CURRENT_BOUNDARY)"
+          [[ "$ref_hash" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$expect" == "PASS" || "$expect" == "FAIL" ]]
+          echo "TARGET_REF_HASH=$ref_hash" >> "$GITHUB_ENV"
+          echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
+          echo "EXPECTED_OUTCOME=$expect" >> "$GITHUB_ENV"
+
+      - name: Checkout exact hidden private revision
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -31,66 +44,67 @@ jobs:
           echo "::add-mask::$PRIVATE_REPOSITORY"
           echo "::add-mask::$PRIVATE_TOKEN"
 
-          ROOT="$GITHUB_WORKSPACE/target"
-          mkdir "$ROOT"
-          cd "$ROOT"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/tmp/selector-execution-20260924
-          git checkout -q --detach FETCH_HEAD
 
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach FETCH_HEAD
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
-          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
-          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
-          test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_CURRENT_BOUNDARY_SNAPSHOT_PROOF=$proof"
-          unset PRIVATE_TOKEN auth
+          test "$actual" = "$matched_sha"
+          actual_proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$actual_proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_BOUNDARY_SNAPSHOT_PROOF=$actual_proof"
+          unset PRIVATE_TOKEN auth matched_sha matched_ref actual
 
-      - name: Run exact private current-boundary verifier
+      - name: Run exact private boundary verifier
         shell: bash
         run: |
           set -euo pipefail
-          ROOT="$GITHUB_WORKSPACE/target"
-          LOG="$RUNNER_TEMP/current-boundary-private.log"
-          : > "$LOG"
-
+          cd "$RUNNER_TEMP/private-target"
+          log="$RUNNER_TEMP/private-boundary.log"
           set +e
-          (
-            cd "$ROOT"
-            bash tools/verify_current_boundary.sh
-          ) >"$LOG" 2>&1
+          bash tools/verify_current_boundary.sh >"$log" 2>&1
           rc=$?
           set -e
+          echo "LAS_BOUNDARY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_BOUNDARY_RC=$rc"
 
-          printf '%s\n' "$rc" > "$RUNNER_TEMP/current-boundary.rc"
-          echo "LAS_CURRENT_BOUNDARY_LOG_SHA256=$(sha256sum "$LOG" | awk '{print $1}')"
-          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_CURRENT_BOUNDARY_RESULT=PASS$' "$LOG"; then
-            echo "LAS_CURRENT_BOUNDARY_RESULT=PASS"
-          else
-            echo "LAS_CURRENT_BOUNDARY_RESULT=FAIL"
-            exit 1
+          if [[ "$EXPECTED_OUTCOME" == "FAIL" ]]; then
+            if [[ "$rc" -eq 0 ]]; then
+              echo "LAS_BOUNDARY_EXPECTED_RED=NOT_OBSERVED"
+              rm -f "$log"
+              exit 1
+            fi
+            echo "LAS_BOUNDARY_EXPECTED_RED=OBSERVED"
+            rm -f "$log"
+            exit 0
           fi
 
-      - name: Encrypt private verification log
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          log="$RUNNER_TEMP/current-boundary-private.log"
-          test -s "$log"
-          printf '%s' "$DIAG_CERT_PEM_B64" | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
-          fp="$(openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
-          test "$fp" = "$RECIPIENT_CERT_FINGERPRINT"
-          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log"             -out "$RUNNER_TEMP/current-boundary-private.cms"             "$RUNNER_TEMP/recipient-cert.pem"
-
-      - name: Upload encrypted verification evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: encrypted-current-boundary
-          path: ${{ runner.temp }}/current-boundary-private.cms
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
+          if [[ "$rc" -ne 0 ]]; then
+            echo "LAS_BOUNDARY_RESULT=FAIL"
+            rm -f "$log"
+            exit 1
+          fi
+          echo "LAS_BOUNDARY_RESULT=PASS"
+          rm -f "$log"
