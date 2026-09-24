@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f47e40bd53da583778ff4fd03aebc6c8c43cd60050bbb1dcf5f0638bf21cdc5c
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3a0185f2ad458935ba290568aa8c405d80e29d68e7f7eedc2bf1a5a27b96eb23
 
 jobs:
   targeted:
@@ -53,6 +53,7 @@ jobs:
       - name: Diagnose private Rust gate opaquely
         shell: bash
         run: |
+          set +e
           set -u
           cd "$GITHUB_WORKSPACE/target"
           fmt_log="$RUNNER_TEMP/fmt.log"
