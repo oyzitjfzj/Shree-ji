@@ -89,6 +89,12 @@ jobs:
           set -e
           echo "LAS_BOUNDARY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_BOUNDARY_RC=$rc"
+          stage="$(grep '^LAS_CURRENT_BOUNDARY_STAGE=' "$log" | tail -n 1 | cut -d= -f2 || true)"
+          case "$stage" in
+            rustfmt|cargo_check|session_tests|plan_tests|auth_test|formal|clean_tree) ;;
+            *) stage="unknown" ;;
+          esac
+          echo "LAS_BOUNDARY_LAST_STAGE=$stage"
 
           if [[ "$EXPECTED_OUTCOME" == "FAIL" ]]; then
             if [[ "$rc" -eq 0 ]]; then
