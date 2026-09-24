@@ -33,17 +33,12 @@ permissions:
 jobs:
   bootstrap:
     if: github.event_name == 'push'
-    strategy:
-      fail-fast: false
-      max-parallel: 5
-      matrix:
-        index: [2, 27, 28, 30, 94]
     uses: ./.github/workflows/_private-tlc-continuation-slice.yml
     with:
-      index: ${{ matrix.index }}
-      segment: 0
-      resume_run_id: ""
-      resume_artifact: ""
+      index: 27
+      segment: 1
+      resume_run_id: "35953628486"
+      resume_artifact: "tlc-state-27-0"
     secrets: inherit
 
   continuation:
