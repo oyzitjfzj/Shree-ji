@@ -104,25 +104,7 @@ jobs:
               rel_path="${abs_path#"$RUNNER_TEMP/private-target/"}"
               path_hash="$(printf '%s' "$rel_path" | sha256sum | awk '{print $1}')"
               echo "LAS_BOUNDARY_FMT_LOC=$path_hash:$line_no"
-            done < <(grep -E '^Diff in .*:[0-9]+:
-            if [[ "$rc" -eq 0 ]]; then
-              echo "LAS_BOUNDARY_EXPECTED_RED=NOT_OBSERVED"
-              rm -f "$log"
-              exit 1
-            fi
-            echo "LAS_BOUNDARY_EXPECTED_RED=OBSERVED"
-            rm -f "$log"
-            exit 0
-          fi
-
-          if [[ "$rc" -ne 0 ]]; then
-            echo "LAS_BOUNDARY_RESULT=FAIL"
-            rm -f "$log"
-            exit 1
-          fi
-          echo "LAS_BOUNDARY_RESULT=PASS"
-          rm -f "$log"
- "$log" || true)
+            done < <(grep -E '^Diff in .*:[0-9]+:$' "$log" || true)
           fi
 
           if [[ "$EXPECTED_OUTCOME" == "FAIL" ]]; then
