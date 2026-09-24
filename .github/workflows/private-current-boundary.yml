@@ -95,6 +95,41 @@ jobs:
             *) stage="unknown" ;;
           esac
           echo "LAS_BOUNDARY_LAST_STAGE=$stage"
+          if [[ "$stage" == "rustfmt" && "$rc" -ne 0 ]]; then
+            python3 - "$log" "$RUNNER_TEMP/private-target" <<'PY'
+          import hashlib, re, sys
+          log_path, root = sys.argv[1], sys.argv[2]
+          text = open(log_path, encoding="utf-8", errors="replace").read()
+          seen = set()
+          for path, line in re.findall(r'^Diff in (.*?):(\\d+):
+            if [[ "$rc" -eq 0 ]]; then
+              echo "LAS_BOUNDARY_EXPECTED_RED=NOT_OBSERVED"
+              rm -f "$log"
+              exit 1
+            fi
+            echo "LAS_BOUNDARY_EXPECTED_RED=OBSERVED"
+            rm -f "$log"
+            exit 0
+          fi
+
+          if [[ "$rc" -ne 0 ]]; then
+            echo "LAS_BOUNDARY_RESULT=FAIL"
+            rm -f "$log"
+            exit 1
+          fi
+          echo "LAS_BOUNDARY_RESULT=PASS"
+          rm -f "$log"
+, text, flags=re.M):
+              rel = path
+              prefix = root.rstrip("/") + "/"
+              if rel.startswith(prefix):
+                  rel = rel[len(prefix):]
+              item = (hashlib.sha256(rel.encode()).hexdigest(), line)
+              if item not in seen:
+                  seen.add(item)
+                  print(f"LAS_BOUNDARY_FMT_LOC={item[0]}:{item[1]}")
+          PY
+          fi
 
           if [[ "$EXPECTED_OUTCOME" == "FAIL" ]]; then
             if [[ "$rc" -eq 0 ]]; then
