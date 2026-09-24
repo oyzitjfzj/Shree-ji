@@ -1,0 +1,74 @@
+name: Private targeted Rust
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-targeted-rust.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f47e40bd53da583778ff4fd03aebc6c8c43cd60050bbb1dcf5f0638bf21cdc5c
+
+jobs:
+  targeted:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact private temporary head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/tmp/selector-execution-20260924
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_PRIVATE_TARGET_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Install exact Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Run private Rust gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/private-targeted-rust.log"
+          set +e
+          {
+            cargo +1.98.1 fmt --all -- --check
+            RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1
+          } >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_PRIVATE_TARGET_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_PRIVATE_TARGET_RUST_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_PRIVATE_TARGET_RUST_RESULT=FAIL"
+          exit 1
