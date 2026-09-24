@@ -96,12 +96,15 @@ jobs:
           esac
           echo "LAS_BOUNDARY_LAST_STAGE=$stage"
           if [[ "$stage" == "rustfmt" && "$rc" -ne 0 ]]; then
-            python3 - "$log" "$RUNNER_TEMP/private-target" <<'PY'
-          import hashlib, re, sys
-          log_path, root = sys.argv[1], sys.argv[2]
-          text = open(log_path, encoding="utf-8", errors="replace").read()
-          seen = set()
-          for path, line in re.findall(r'^Diff in (.*?):(\\d+):
+            while IFS= read -r fmt_line; do
+              spec="${fmt_line#Diff in }"
+              spec="${spec%:}"
+              line_no="${spec##*:}"
+              abs_path="${spec%:*}"
+              rel_path="${abs_path#"$RUNNER_TEMP/private-target/"}"
+              path_hash="$(printf '%s' "$rel_path" | sha256sum | awk '{print $1}')"
+              echo "LAS_BOUNDARY_FMT_LOC=$path_hash:$line_no"
+            done < <(grep -E '^Diff in .*:[0-9]+:
             if [[ "$rc" -eq 0 ]]; then
               echo "LAS_BOUNDARY_EXPECTED_RED=NOT_OBSERVED"
               rm -f "$log"
@@ -119,16 +122,7 @@ jobs:
           fi
           echo "LAS_BOUNDARY_RESULT=PASS"
           rm -f "$log"
-, text, flags=re.M):
-              rel = path
-              prefix = root.rstrip("/") + "/"
-              if rel.startswith(prefix):
-                  rel = rel[len(prefix):]
-              item = (hashlib.sha256(rel.encode()).hexdigest(), line)
-              if item not in seen:
-                  seen.add(item)
-                  print(f"LAS_BOUNDARY_FMT_LOC={item[0]}:{item[1]}")
-          PY
+ "$log" || true)
           fi
 
           if [[ "$EXPECTED_OUTCOME" == "FAIL" ]]; then
