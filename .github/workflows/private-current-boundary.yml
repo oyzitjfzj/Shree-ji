@@ -91,7 +91,7 @@ jobs:
           echo "LAS_BOUNDARY_RC=$rc"
           stage="$(grep '^LAS_CURRENT_BOUNDARY_STAGE=' "$log" | tail -n 1 | cut -d= -f2 || true)"
           case "$stage" in
-            rustfmt|cargo_check|session_tests|plan_tests|auth_test|formal|clean_tree) ;;
+            rustfmt|cargo_check|session_tests|plan_tests|auth_test|system_f_tests|formal|clean_tree) ;;
             *) stage="unknown" ;;
           esac
           echo "LAS_BOUNDARY_LAST_STAGE=$stage"
