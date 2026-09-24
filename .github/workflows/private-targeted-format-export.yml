@@ -1,0 +1,112 @@
+name: Private targeted format export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_TARGETED_FORMAT_EXPORT"
+
+permissions:
+  contents: read
+
+env:
+  FORMAT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVPVENDQXFHZ0F3SUJBZ0lVTWV5dWZiY2F1REdvMnFWdXphdTJzd3NvNkxFd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xERXFNQ2dHQTFVRUF3d2hURUZUSUhSaGNtZGxkR1ZrSUdadmNtMWhkSFJsY2lBeU1ESTJMVEE1TFRJMApNQjRYRFRJMk1Ea3lOREUzTkRZME9Gb1hEVEkyTURreU5URTNORFkwT0Zvd0xERXFNQ2dHQTFVRUF3d2hURUZUCklIUmhjbWRsZEdWa0lHWnZjbTFoZEhSbGNpQXlNREkyTFRBNUxUSTBNSUlCb2pBTkJna3Foa2lHOXcwQkFRRUYKQUFPQ0FZOEFNSUlCaWdLQ0FZRUF6cTJBbU5oWmw0eWhEais1a0lBZ2FRZTJVd1JWUHZXdnJlWTk0UEZYcTdrRgozZVhoSGJWb29Qc0xxWFFTamJUcjEreUhUUEQxMm83OHY3SVhCT1VvMXk0WHZjQmcrM0cySVBnc3BzckVSallKCnJpUDE3eG5mN0ZNdjRQcjhDQjVxSENHMENtaGRPeWZaQzB3U2IrMmcxcHFmYmU1dU82VTdyekdyQS9sdjhoSnQKNTZqbDNXLzRYczBla00xMm1nWk9TejJndkNoL3NXbUJrSEZRZFkyV1oxUDI1MjNGZnN6UWUyb2ttWStYZC9KQgpQamZiYmhJTlFwRVdLMEluaUVGZzIyYnZZMmFBd1czQkZGZGt4OHZrbTZVbGl2d0RodE1mNmVmM09ZdlFDVVFMClU3bTBOcEZJT1BMNFpZeUFoTU5qckhGcEZnb2h5RUpYMk5abXFyVG1sdEtoMWNjQ1Z3S1NUN3c5UVJlZUtia1kKSUd2M0dxMlIreERXVUt2dVQ4WTZnblh5YUpDc1luWjRCL3BQZm45eW5JR0NIL2xoVzNFS29NZ0JnUkN4U1RiMApwV3I3SStGZWJMa2JyVXY1ZEV1NVYRYWRhN1ppMVJWMHRDSlpCSEVoemNWUVQvbHpBM24zL1BTZWE5NGR3U2MvCmNNYjJMS2lLZE1KbUg5aEh4Y09QQWdNQkFBR2pVekJSTUIwR0ExVWREZ1FXQkJRVWF4R3U4YjJqNkJMZ28xSmQKRFloY3BuNXk1akFmQmdOVkhTTUVHREFXZ0JRVWF4R3U4YjJqNkJMZ28xSmREWWhjcG41eTVqQVBCZ05WSFJNQgpBZjhFQlRBREFRSC9NQTBHQ1NxR1NJYjNEUUVCQ3dVQUE0SUJnUUI2WTRrTFNxeFdzM016WGJQM281Qy8ydmpWCjFaa0dBZENxTXBqbThJNm1LOS8rbURWNDEya0kyd0xXTFFiNTVZVk01V3pFaEZNbStaMzlmWnlhM3A0elg3b3EKK2Q4RUo5cXR4dDhkN01wbUJ2NU1YYVZJdklNS2V6Vzc3cTVYNW0rNEFXOUVncDJiSXA2OTJWZlIrakpvcDQwVwpHL05DMkJKMmIxbElrUjV4Q3ZDRkloQ2tuL3FMQzBoMC9oUmR0WnF4MWUzbVBvaDEvREwyL1FtKzlUeVZTUzYzCi8xNVByK0ZBdkZkNXVtaVIrd2NsUG50aHY2QUdZVDRpM0RGVHB3OGdZMEUyVkt2dTNvOFlRdllES1VTelN2RFMKQlFPZURWUGJjSlFhVU1SQXF1emErTXFXQm5xUGRWMHdJTVdscEc1NFlocmlrb21yMHcvTHplMzFtUW1Jd0ZIbApIWUNidmxWWUFnK092T0UxQ2xuZEVieDlWVWhXdnJxNHpkbTVpK0owTDVQdDdKeGRaTWhVU1hJbXJNeEUyRG1LCmlwdkh3TlR4Q2dvUlZIWG5ZVmhlM2ZGa0dFUS9Xc0hESUtJRmhuNVVkcEpjQnFPK3orWHF6eGhsRTZ2OU9kR2QKMlR3WW5MSkVGM3AvZXZTQ1VoMFBqU0M0VlQ2U2VPQkVmb2sycStFPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  FORMAT_CERT_FINGERPRINT: "30:EB:CF:8D:D1:A6:80:62:D5:3C:C7:D4:19:0F:78:0B:C1:95:1B:9E:96:E2:6E:D0:E9:16:F5:C3:26:75:59:C8"
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@v4
+
+      - name: Load opaque target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RUN_TARGETED_FORMAT_EXPORT
+          ref_hash="$(awk -F= '$1=="TARGET_REF_HASH"{print $2}' RUN_TARGETED_FORMAT_EXPORT)"
+          proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' RUN_TARGETED_FORMAT_EXPORT)"
+          [[ "$ref_hash" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
+          echo "TARGET_REF_HASH=$ref_hash" >> "$GITHUB_ENV"
+          echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
+
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          test "$actual" = "$matched_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_TARGETED_FORMAT_EXPORT_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth matched_ref matched_sha actual
+
+      - name: Run pinned formatter and seal changed Rust files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          changed="$RUNNER_TEMP/format-paths"
+          git diff --name-only > "$changed"
+          test -s "$changed"
+          while IFS= read -r path; do
+            case "$path" in
+              *.rs) ;;
+              *) echo "LAS_TARGETED_FORMAT_EXPORT_SCOPE=FAIL"; exit 2 ;;
+            esac
+          done < "$changed"
+          git diff --check
+          tar -czf "$RUNNER_TEMP/formatted.tar.gz" -T "$changed"
+          printf '%s' "$FORMAT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
+          fp="$(openssl x509 -in "$RUNNER_TEMP/cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "$FORMAT_CERT_FINGERPRINT"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$RUNNER_TEMP/formatted.tar.gz"             -out "$RUNNER_TEMP/formatted.cms" "$RUNNER_TEMP/cert.pem"
+          echo "LAS_TARGETED_FORMAT_EXPORT_FILES=$(wc -l < "$changed" | tr -d ' ')"
+          echo "LAS_TARGETED_FORMAT_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.cms" | awk '{print $1}')"
+
+      - name: Upload encrypted formatted output
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-targeted-format
+          path: ${{ runner.temp }}/formatted.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
