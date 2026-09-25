@@ -1,0 +1,189 @@
+name: Private adversarial material semantic differential
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ADVERSARIAL_MATERIAL_DIFF"
+
+permissions:
+  contents: read
+
+env:
+  JAVA_TOOL_OPTIONS: -Xmx5g
+  EXPECTED_BASE_PROOF: 49303e86dc9b0d852652b917cd7f9e1128db4dd9e221fa8dfd5964d54ce7f959
+  EXPECTED_CANDIDATE_PROOF: 5375291609d71367deafa6f2bc39f9390fedd9017b947af2c7acb31e02436153
+
+jobs:
+  graph:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        side: [base, candidate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          SIDE: ${{ matrix.side }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=2 origin refs/heads/tmp/selector-execution-20260924
+          candidate="$(git rev-parse FETCH_HEAD)"
+          base="$(git rev-parse FETCH_HEAD^)"
+          echo "::add-mask::$candidate"
+          echo "::add-mask::$base"
+          candidate_proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+          base_proof="$(printf '%s' "$base" | sha256sum | awk '{print $1}')"
+          test "$candidate_proof" = "$EXPECTED_CANDIDATE_PROOF"
+          test "$base_proof" = "$EXPECTED_BASE_PROOF"
+          if [[ "$SIDE" == "base" ]]; then
+            selected="$base"
+            selected_proof="$base_proof"
+          else
+            test "$SIDE" = "candidate"
+            selected="$candidate"
+            selected_proof="$candidate_proof"
+          fi
+          git checkout -q --detach "$selected"
+          test "$(git rev-parse HEAD)" = "$selected"
+          echo "LAS_ADV_MAT_DIFF_SIDE=$SIDE"
+          echo "LAS_ADV_MAT_DIFF_SELECTED_PROOF=$selected_proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Exhaust representative reduced graph
+        shell: bash
+        env:
+          SIDE: ${{ matrix.side }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+
+          cfg="spec/defence_evolution/AdversarialScenarioMaterial.cfg"
+          tla="spec/defence_evolution/AdversarialScenarioMaterialModel.tla"
+          python3 - "$cfg" <<'PY'
+          from pathlib import Path
+          import sys
+          path=Path(sys.argv[1])
+          text=path.read_text(encoding="utf-8")
+          replacements=[
+              ("    MaxFamilies = 2","    MaxFamilies = 1"),
+              ("    MaxContents = 2","    MaxContents = 1"),
+              ("    MaxContracts = 2","    MaxContracts = 1"),
+              ("    MaxCorrelations = 2","    MaxCorrelations = 1"),
+              ("    MaxProvenance = 2","    MaxProvenance = 1"),
+          ]
+          for old,new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"reduced substitution mismatch: {old}")
+              text=text.replace(old,new)
+          path.write_text(text,encoding="utf-8")
+          PY
+
+          cfg_dir="$(dirname "$cfg")"
+          cfg_base="$(basename "$cfg")"
+          tla_base="$(basename "$tla")"
+          dot="$RUNNER_TEMP/adv-material-${SIDE}.dot"
+          log="$RUNNER_TEMP/adv-material-${SIDE}.log"
+          set +e
+          (
+            cd "$cfg_dir"
+            java -XX:+UseParallelGC -jar "$TLA_JAR" \
+              -workers auto -lncheck final -fp 0 -dump dot "$dot" \
+              -config "$cfg_base" "$tla_base"
+          ) >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_ADV_MAT_DIFF_${SIDE^^}_TLC_RC=$rc"
+          test "$rc" -eq 0
+          test -s "$dot"
+
+          python3 - "$dot" "$RUNNER_TEMP/nodes.raw" "$RUNNER_TEMP/edges.raw" <<'PY'
+          import re,sys
+          node=re.compile(r'^\s*(-?\d+)\s+\[label=')
+          edge=re.compile(r'^\s*(-?\d+)\s*->\s*(-?\d+)')
+          with open(sys.argv[1],encoding="utf-8",errors="strict") as src, \
+               open(sys.argv[2],"w",encoding="ascii") as nodes, \
+               open(sys.argv[3],"w",encoding="ascii") as edges:
+              for line in src:
+                  m=node.match(line)
+                  if m:
+                      nodes.write(m.group(1)+"\n")
+                      continue
+                  m=edge.match(line)
+                  if m:
+                      edges.write(m.group(1)+"->"+m.group(2)+"\n")
+          PY
+          LC_ALL=C sort -u "$RUNNER_TEMP/nodes.raw" > "$RUNNER_TEMP/nodes.sorted"
+          LC_ALL=C sort -u "$RUNNER_TEMP/edges.raw" > "$RUNNER_TEMP/edges.sorted"
+          test -s "$RUNNER_TEMP/nodes.sorted"
+          test -s "$RUNNER_TEMP/edges.sorted"
+          nodes="$(wc -l < "$RUNNER_TEMP/nodes.sorted" | tr -d ' ')"
+          edges="$(wc -l < "$RUNNER_TEMP/edges.sorted" | tr -d ' ')"
+          node_digest="$(sha256sum "$RUNNER_TEMP/nodes.sorted" | awk '{print $1}')"
+          edge_digest="$(sha256sum "$RUNNER_TEMP/edges.sorted" | awk '{print $1}')"
+          {
+            printf 'nodes=%s\n' "$nodes"
+            printf 'edges=%s\n' "$edges"
+            printf 'node_sha256=%s\n' "$node_digest"
+            printf 'edge_sha256=%s\n' "$edge_digest"
+          } > "$RUNNER_TEMP/graph.digest"
+          echo "LAS_ADV_MAT_DIFF_${SIDE^^}_STATE_COUNT=$nodes"
+          echo "LAS_ADV_MAT_DIFF_${SIDE^^}_EDGE_COUNT=$edges"
+          echo "LAS_ADV_MAT_DIFF_${SIDE^^}_GRAPH_DIGEST_READY=PASS"
+          rm -f "$dot" "$log" "$RUNNER_TEMP/nodes.raw" "$RUNNER_TEMP/edges.raw" \
+            "$RUNNER_TEMP/nodes.sorted" "$RUNNER_TEMP/edges.sorted"
+
+      - name: Upload graph digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: adv-material-graph-${{ matrix.side }}
+          path: ${{ runner.temp }}/graph.digest
+          if-no-files-found: error
+          retention-days: 1
+
+  compare:
+    needs: graph
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download graph digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: adv-material-graph-*
+          path: ${{ runner.temp }}/digests
+
+      - name: Compare reduced transition relation
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$RUNNER_TEMP/digests/adv-material-graph-base/graph.digest"
+          candidate="$RUNNER_TEMP/digests/adv-material-graph-candidate/graph.digest"
+          test -s "$base"
+          test -s "$candidate"
+          echo "LAS_ADV_MAT_BASE_DIGEST"
+          cat "$base"
+          echo "LAS_ADV_MAT_CANDIDATE_DIGEST"
+          cat "$candidate"
+          cmp --silent "$base" "$candidate"
+          echo "LAS_ADV_MAT_REDUCED_STATESET_AND_GRAPH_MATCH=PASS"
