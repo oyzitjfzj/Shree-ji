@@ -102,6 +102,30 @@ jobs:
           echo "LAS_TARGETED_FORMAT_EXPORT_FILES=$(wc -l < "$changed" | tr -d ' ')"
           echo "LAS_TARGETED_FORMAT_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.cms" | awk '{print $1}')"
 
+      - name: Diagnose formatted private compile without accepting formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          log="$RUNNER_TEMP/formatted-check.log"
+          set +e
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_FORMATTED_CHECK_RC=$rc"
+          grep -oE 'error\\[E[0-9]+\\]' "$log" \
+            | sort -u \
+            | sed -E 's/error\\[([^]]+)\\]/LAS_FORMATTED_RUST_ERROR_CODE=\\1/' || true
+          first_error="$(grep -m1 -E '^error(\\[[^]]+\\])?:' "$log" || true)"
+          if [[ -n "$first_error" ]]; then
+            normalized="$(printf '%s' "$first_error" | sed -E 's#(/[^ ]+)+#<PATH>#g')"
+            echo "LAS_FORMATTED_FIRST_ERROR_HASH=$(printf '%s' "$normalized" | sha256sum | awk '{print $1}')"
+          fi
+          if grep -Fqi 'unresolved import' "$log"; then echo "LAS_FORMATTED_CATEGORY_UNRESOLVED_IMPORT=YES"; fi
+          if grep -Fqi 'cannot find' "$log"; then echo "LAS_FORMATTED_CATEGORY_CANNOT_FIND=YES"; fi
+          if grep -Fqi 'could not compile' "$log"; then echo "LAS_FORMATTED_CATEGORY_COULD_NOT_COMPILE=YES"; fi
+          exit 0
+
       - name: Upload encrypted formatted output
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
