@@ -1,4 +1,4 @@
 TARGET_REF_HASH=08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=c738dc231d67df4f39cca8ec7fa57848eccf51af177280eef3699cd85b2a87db
 EXPECT=FAIL
-REQUEST=historical-incident-owner-first-green-diagnostic
+REQUEST=historical-incident-owner-format-diagnostic-2
