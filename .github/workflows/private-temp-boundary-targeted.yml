@@ -1,0 +1,102 @@
+name: Private temp boundary targeted check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_TEMP_BOUNDARY_CHECK"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b3bdf91e674ae63f2403eb6535c96de09163fe3cdc2f8d0f813e0b8f2dac15da
+  DIAG_CERT_PEM_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVSVENDQXEyZ0F3SUJBZ0lVVnN5ckdFNkw3SEJhaUNiZzNEaXVDWE5Ua0VNd0RRWUpLb1pJaHZjTkFRRUwKQlFBd01qRXdNQzRHQTFVRUF3d25URUZUSUdacGJtRnNJR1Y0WVdOMElIWmxjbWxtYVdOaGRHbHZiaUF5TURJMgpMVEE1TFRJeU1CNFhEVEkyTURreU1qRTFOVEF6TUZvWERUSTJNRGt5TkRFMU5UQXpNRm93TWpFd01DNEdBMVVFCkF3d25URUZUSUdacGJtRnNJR1Y0WVdOMElIWmxjbWxtYVdOaGRHbHZiaUF5TURJMkxUQTVMVEl5TUlJQm9qQU4KQmdrcWhraUc5dzBCQVFFRkFBT0NBWThBTUlJQmlnS0NBWUVBdTV3UDlMSmpIdW9nVk5TdmNORDBiWFZnNkFCdgoxTVYreTh5QmRoYzc0NHFvMDcxL3dqR1B5VTFLdVVta3hzeW53TFM0UUU5OVJDWDA0YUE4VjZKcDRZQU9sWFFMCjFjTUJkcVBPNWtmQXRTdnBrZFhXQVdtRm9hWVlOOEMzV1lMbTZrb3lGQVBOeE5RRml3cmlHVWhTN25jMm1rcFoKakZ3UWhNc2lWT2ZlbXVQaXdkY1FoSXRHQ21GMGp1aEpKaHhUYnVEUkpOcTZmWnZ4UlBBSTU4ZHZSdDAwckNVaQorU1BYMDJCeWtvdHBZSS96ZisvOGRSZ0FZZ3RnQU90Rmc3YjBubFJ6eWVIaktHc2tmeExkR21BMUFIR2pFNi9QCjVHUG4zc0pwTzJIbTlVZWJrN1NWSk5WMWdLNGFHOXZOMDIxQmVFY2VYa1pFbzU4bE1WaHhIb052QVp1OVd5SGQKWW5qcGxGeXpWUXltZDZwWVY5RXdEWk1HWHpPT05Hb3dodm5WQmxtYmozcWdlcmk5Q1pkUVdCY2tiZ0REZDE2VwpyZkZZcS9XaWVVemI2c1pXV3UwVFRsSEU1Q3R6VDNKemEwTHVJdDZkTWc0L2k5THhEUWxZOHV4OHl6S3dTU1htCjJQazBpVUdHM2RRU2w1MDd6NjJkK1VLWDVDS0hIQjZLMzFOTEFnTUJBQUdqVXpCUk1CMEdBMVVkRGdRV0JCUW4KbE5RUnozWDdCa3UzTW5hdWsvZDFmUTVtaWpBZkJnTlZIU01FR0RBV2dCUW5sTlFSejNYN0JrdTNNbmF1ay9kMQpmUTVtaWpBUEJnTlZIUk1CQWY4RUJUQURBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCZ1FCbHpQejRzWmM4Ckp5ZWZENk5CR0xNZ05aVDVaOVNKYzJ5WVJ4eTZCRVB3MjVSRW9vd1ZCUmJKeWwvQlJ3MXdCWHZvVCtMcVNwbXQKNUtlNXNWeTB6d3k0NTJCMXR2QmhyMXdXZjJpeXFhT1JMVFFud0NJd0RwRGtrM1d0TzFTa1ZaWmJNblAvL3JoQQpqdjlJNTJ2MVZxSDdrb0R3SXpMOFNieUgwL1A1ZTJFeVFhcjFrZDdRYkppTERJTTdXazZISDZCSnFqeWZUenpaCmhsRU1YYjVjaUo3RytHMU1MbS9qd0RxSVlXbnlTSm42ZU05b0F0dUNGMHk5NkIyRWhhUkthMDFSckptZGp3WUYKZWV0WGZmeHRYYXpoQXpLa2l0RWI2ejFZLzAxQTVxUVBkQytGUjZGWkJFMnBDQmYyaHpnaFVQZHU4M0libXFkNwo4d3VuaWxGejBjTGpneU00MklQbFVMS1I1L0F4QlZ3Nnh4cHRNL2NSVWJ0V3Y3cEtwQXhrR3QvV1g1QU1yWjVqCnptTExOQ0RhL1dOazNCRW5ud3ZNS01NY2psNkRXWDhTQlFjOFlpMGY0Uk1jRXQxdjJ4bHRlRUVRTlNqT3F5UkQKd010V0dRNTlYMVN1QWU0dy9IL3pJOHBVdjBWQXRqMkF3a2Q4ZWJmdzNES0krYmlXQktzL3pEND0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+
+jobs:
+  targeted:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact private temp head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/tmp/selector-execution-20260924
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_TEMP_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run private targeted checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+          log="$RUNNER_TEMP/private-temp-boundary.log"
+          : > "$log"
+          failed=0
+
+          run_stage() {
+            local name="$1"
+            shift
+            set +e
+            "$@" >>"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ "$rc" -eq 0 ]]; then
+              echo "LAS_TEMP_STAGE_${name}=PASS"
+            else
+              echo "LAS_TEMP_STAGE_${name}=FAIL"
+              failed=1
+            fi
+          }
+
+          run_stage RUSTFMT cargo +1.98.1 fmt --all -- --check
+          run_stage CHECK env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          run_stage MATERIAL env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked historical_case_use_is_revalidated_at_material_composition_time -- --exact --test-threads=1
+          run_stage SYSTEM_F env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked defence_evolution -- --test-threads=1
+          run_stage CLEAN bash -c 'test -z "$(git status --porcelain --untracked-files=no)"'
+
+          printf '%s' "$failed" > "$RUNNER_TEMP/private-temp-boundary.rc"
+
+          printf '%s' "$DIAG_CERT_PEM_B64" | base64 -d > "$RUNNER_TEMP/recipient-cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$log" -out "$RUNNER_TEMP/private-temp-boundary.cms"             "$RUNNER_TEMP/recipient-cert.pem"
+          echo "LAS_TEMP_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+
+      - name: Upload encrypted private evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-temp-boundary
+          path: ${{ runner.temp }}/private-temp-boundary.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Enforce targeted result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/private-temp-boundary.rc"
+          test "$(cat "$RUNNER_TEMP/private-temp-boundary.rc")" = "0"
+          echo "LAS_TEMP_BOUNDARY_TARGETED=PASS"
