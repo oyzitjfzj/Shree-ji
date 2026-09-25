@@ -1,0 +1,111 @@
+name: Private exact single-file rustfmt repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-temp-exact-rustfmt.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a52dfd3c10e4bebb0fc812d8209e2d482e1ccdeb8d3ad4362ed9773c9e0aaa4c
+  EXPECTED_CHANGED_PATH_HASH: cff0429fde987223a81a224ce8d0e72e332fc1386ee41e01bca98a4e5a62e14a
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+
+          proof="$(printf '%s' "$matched_sha" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q -B formatting FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$matched_sha"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+          printf '%s' "$matched_ref" > "$RUNNER_TEMP/private-ref"
+          printf '%s' "$matched_sha" > "$RUNNER_TEMP/private-start-sha"
+          printf '%s' "$auth" > "$RUNNER_TEMP/private-auth"
+          chmod 600 "$RUNNER_TEMP/private-ref" "$RUNNER_TEMP/private-start-sha" "$RUNNER_TEMP/private-auth"
+          echo "LAS_FMT_START_PROOF=$proof"
+
+      - name: Apply pinned formatter and fast-forward exact private ref
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          git diff --check
+
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          path_hash="$(printf '%s' "${changed[0]}" | sha256sum | awk '{print $1}')"
+          test "$path_hash" = "$EXPECTED_CHANGED_PATH_HASH"
+          echo "LAS_FMT_SCOPE=EXACT_ONE_EXPECTED_PRIVATE_PATH"
+
+          matched_ref="$(cat "$RUNNER_TEMP/private-ref")"
+          start_sha="$(cat "$RUNNER_TEMP/private-start-sha")"
+          auth="$(cat "$RUNNER_TEMP/private-auth")"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          echo "::add-mask::$auth"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$remote_sha" = "$start_sha"
+
+          git config user.name "LAS Verification Formatter"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -- "${changed[0]}"
+          git commit -q -m "[skip ci] Apply exact pinned rustfmt to current RED"
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:"$matched_ref"
+          new_proof="$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_FMT_PUSH=PASS"
+          echo "LAS_FMT_NEW_PROOF=$new_proof"
