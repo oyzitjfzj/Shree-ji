@@ -1,0 +1,90 @@
+name: Private ephemeral format export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-ephemeral-format-export.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7d098dd44203e8877d267d1e12f1f6571abeb6f0dab400635d509a544a859883
+  EPHEMERAL_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVQVENDQXFXZ0F3SUJBZ0lVV0swRlNCS3FnN091ckV1R3dNNExZbjV3WmRJd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xqRXNNQ29HQTFVRUF3d2pURUZUSUZCeWFYWmhkR1VnUm05eWJXRjBJRVY0Y0c5eWRDQkZjR2hsYldWeQpZV3d3SGhjTk1qWXdPVEkxTURVeE16QTFXaGNOTWpZd09USTNNRFV4TXpBMVdqQXVNU3d3S2dZRFZRUUREQ05NClFWTWdVSEpwZG1GMFpTQkdiM0p0WVhRZ1JYaHdiM0owSUVWd2FHVnRaWEpoYkRDQ0FhSXdEUVlKS29aSWh2Y04KQVFFQkJRQURnZ0dQQURDQ0FZb0NnZ0dCQUxtSXVucGZZRFFkNXVaTEJUU3ZRbkM5SUtTR2ZOVm1yUUdUNlhWQgpuMHMrTDAvV3FMVHFUOG0wK2w5bkM4TjNkUDkzK1A1L053c3NuSDNhMTczemU4Slp6NGxlSXNSSUlQTGFVc3htCnA0Zk5nT3NOTmN5ZmlZSjFRL1dtM0wyWGIyUjRjYkJ6OUhSaDBDQXFGV2dDdnNKUHNIY0hNOGp5QlVhc0xTaHcKaUVlVDZFTk9ObzlacWN1ZWhVeEtrV2R3QzdsRXV3R3lxYjI1TWZscVU5dkJneENnL1lNTlIvMTBKS3BVK3hoUApqY2JDVVFOQlhIOVRlUXdieU1QWVJqNVRXQUxkaVoxQk9KNzJoRDlDQ01LTVlUTFhaZjhoY05jWXRuWDBFWXBQCjIxbXdXcXNycTBnRlI4ZlZrUUJTTzRlYlZrOUl4ZFg3SklocUd1Q1ZjMThHS2dJYnAvWHprZTBLcHZkODRZTWEKZ0Q1dFYwSWhHOHpJRDR6YmNRZUMvckkzbjVwNVdqblZFRFRPL3NUdEFsVHkvSXg5R015RFQvZ0lnMCthVFZuRwovSkFFcGlNeXFld0lCSW9XeXF0Rm0wMHUvalM0ajY0dU8yQTU3bzF4TWR5N0JNOEhkRDRySEtVOG51bHdVNlVRClhlYnpudDdFS3lIOTZKb3BsZGN2OFUyUmd3SURBUUFCbzFNd1VUQWRCZ05WSFE0RUZnUVVTdWRwdExWbnNwNEwKZE83VUU4Y2ZQV2xOUkdzd0h3WURWUjBqQkJnd0ZvQVVTdWRwdExWbnNwNExkTzdVRThjZlBXbE5SR3N3RHdZRApWUjBUQVFIL0JBVXdBd0VCL3pBTkJna3Foa2lHOXcwQkFRc0ZBQU9DQVlFQUkyY3M4TzBwenQ0cGF4SHNqeUpaCjdpb1J2R2szczR6MWcxck1FSytRdk5MbXNRYnpyUlk2UklQRkR5Um5lQlpvZWM1TEpvUUNTOWhVZTd5VzdIbWUKRVJxcUwrbmJJYWp6aFVUdFBocnI1UjFON01GVTRFZ0pHNE5NTFUyZXlHWlduTEd0Q1VmVS9jSFNTWW9FTkQxRQpGVGttbCtIQVBCYlkwNkJxbkU1TWlqSVdoRW1QRlJIYjZ4ZFIwTW5RdG1kOFZDZHQ3L0RLbGVOUGVKZjZRZUh0CmIvWVFQc0VDdVFiWStDZGV6ZkhRZFAzSGtoT2RRa3ZaKzB5TWtWcDhQdFR1SW1GTTFIZHB2NnlGVDhwM05xL3kKWHQ2TUExdi9jRXlzdUJmS1ByT0hhVCtjZ0JTMkxrWWdyWkdXS2xIVkFyZEtCclRha0RCcUNUdHF1UW9MS3puaQpPNG9lUThzVDRWVWtpTFZTbHRucGgrZUltVzM5RkNST1VEb2lKcVJoNGJOSXl1Uk9sbjNWdVpkZm5tNjhscDFDCjVOZEpJVFlaTnFGUVBhU2pFK0pCVTNYV1Z5UUJXSjRwR056alhxOWpEakF6QTVrWFg2SUpUMDY2MHJNbXZyaUMKTXV6UmpJMWdjSzhVaTU2MWJKUlNmc2hjNUNONnFORGxWaWRUMndWT0tqd1YKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$matched_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_EPHEMERAL_FORMAT_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth matched_ref matched_sha actual
+      - name: Format exact private source and encrypt changed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          changed="$RUNNER_TEMP/changed"
+          git diff --name-only > "$changed"
+          test -s "$changed"
+          while IFS= read -r path; do
+            case "$path" in *.rs) ;; *) exit 2 ;; esac
+          done < "$changed"
+          tar -czf "$RUNNER_TEMP/formatted-private.tar.gz" -T "$changed"
+          printf '%s' "$EPHEMERAL_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$RUNNER_TEMP/formatted-private.tar.gz"             -out "$RUNNER_TEMP/formatted-private.cms"             "$RUNNER_TEMP/cert.pem"
+          echo "LAS_EPHEMERAL_FORMAT_CHANGED_COUNT=$(wc -l < "$changed" | tr -d ' ')"
+          echo "LAS_EPHEMERAL_FORMAT_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted-private.cms" | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/formatted-private.tar.gz" "$RUNNER_TEMP/cert.pem" "$changed"
+      - name: Upload encrypted formatted private source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-ephemeral-formatted-private
+          path: ${{ runner.temp }}/formatted-private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
