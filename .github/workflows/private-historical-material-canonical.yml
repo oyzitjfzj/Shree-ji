@@ -1,0 +1,108 @@
+name: Private historical material canonical exact
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_HISTORICAL_MATERIAL_CANONICAL"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-historical-material-canonical-exact
+  cancel-in-progress: true
+
+env:
+  JAVA_TOOL_OPTIONS: -Xmx5g
+  EXPECTED_CANDIDATE_PROOF: f8c7fdb5f317cea61f48307890c5160e118de86d8aea4249f5c7cf449bc5a91a
+
+jobs:
+  canonical:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout exact private candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1 origin refs/heads/tmp/selector-execution-20260924
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_CANDIDATE_PROOF"
+          echo "LAS_HIST_CANONICAL_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run exact canonical profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          log="$RUNNER_TEMP/historical-canonical-private.log"
+          set +e
+          (
+            cd spec/defence_evolution
+            java -XX:+UseParallelGC -jar "$TLA_JAR" \
+              -workers auto -lncheck final -fp 0 \
+              -config HistoricalIncidentMaterial.cfg HistoricalIncidentMaterialModel.tla
+          ) >"$log" 2>&1
+          rc=$?
+          set -e
+
+          LOG_PATH="$log" TLC_RC="$rc" python3 - <<'PY'
+          from pathlib import Path
+          import os,re
+          log=Path(os.environ["LOG_PATH"]).read_text(encoding="utf-8",errors="replace")
+          rc=int(os.environ["TLC_RC"])
+          generated=distinct=queue=0
+          progress=re.findall(
+              r"([0-9][0-9,]*) states generated, ([0-9][0-9,]*) distinct states found(?:, ([0-9][0-9,]*) states left on queue)?",
+              log)
+          if progress:
+              g,d,q=progress[-1]
+              generated=int(g.replace(",",""))
+              distinct=int(d.replace(",",""))
+              queue=int((q or "0").replace(",",""))
+          failure="NONE" if rc==0 else "UNKNOWN"
+          if "OutOfMemoryError" in log or "Java heap space" in log:
+              failure="JVM_OOM"
+          elif "No space left on device" in log:
+              failure="DISK_EXHAUSTION"
+          elif rc in (137,143) or re.search(r"(?m)^Killed\s*$",log):
+              failure="PROCESS_KILLED"
+          elif re.search(r"(?i)invariant\s+[A-Za-z_][A-Za-z0-9_]*\s+is\s+violated",log):
+              failure="INVARIANT"
+          elif re.search(r"(?i)(?:property|temporal property).*violat",log):
+              failure="TEMPORAL"
+          elif re.search(r"(?i)TLC threw an unexpected exception|Exception in thread",log):
+              failure="JAVA_OR_TLC_EXCEPTION"
+          print(f"LAS_HIST_CANONICAL_RC={rc}")
+          print(f"LAS_HIST_CANONICAL_GENERATED={generated}")
+          print(f"LAS_HIST_CANONICAL_DISTINCT={distinct}")
+          print(f"LAS_HIST_CANONICAL_QUEUE={queue}")
+          print(f"LAS_HIST_CANONICAL_FAILURE_CLASS={failure}")
+          PY
+          rm -f "$log"
+          test "$rc" -eq 0
+          echo "LAS_HIST_CANONICAL_RESULT=PASS"
