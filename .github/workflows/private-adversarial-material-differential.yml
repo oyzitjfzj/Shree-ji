@@ -43,22 +43,33 @@ jobs:
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            fetch -q --depth=2 origin refs/heads/tmp/selector-execution-20260924
-          candidate="$(git rev-parse FETCH_HEAD)"
-          base="$(git rev-parse FETCH_HEAD^)"
+            fetch -q --depth=32 origin refs/heads/tmp/selector-execution-20260924
+
+          candidate=""
+          base=""
+          while read -r commit; do
+            proof="$(printf '%s' "$commit" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_CANDIDATE_PROOF" ]]; then
+              candidate="$commit"
+            fi
+            if [[ "$proof" = "$EXPECTED_BASE_PROOF" ]]; then
+              base="$commit"
+            fi
+          done < <(git rev-list --max-count=32 FETCH_HEAD)
+
+          test -n "$candidate"
+          test -n "$base"
           echo "::add-mask::$candidate"
           echo "::add-mask::$base"
-          candidate_proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
-          base_proof="$(printf '%s' "$base" | sha256sum | awk '{print $1}')"
-          test "$candidate_proof" = "$EXPECTED_CANDIDATE_PROOF"
-          test "$base_proof" = "$EXPECTED_BASE_PROOF"
+          test "$(git rev-parse "$candidate^")" = "$base"
+
           if [[ "$SIDE" == "base" ]]; then
             selected="$base"
-            selected_proof="$base_proof"
+            selected_proof="$EXPECTED_BASE_PROOF"
           else
             test "$SIDE" = "candidate"
             selected="$candidate"
-            selected_proof="$candidate_proof"
+            selected_proof="$EXPECTED_CANDIDATE_PROOF"
           fi
           git checkout -q --detach "$selected"
           test "$(git rev-parse HEAD)" = "$selected"
