@@ -1,0 +1,212 @@
+name: Private TLC31 opaque diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_DIAG_TLC31"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-tlc31-opaque-diagnostic
+  cancel-in-progress: true
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b615bb5129b28292b237ff2bcf1bae3dbecfffac81f99bb6ea44e281272a57e6
+  EXPECTED_TLC_PROFILE_COUNT: "129"
+  EXPECTED_VERIFIER_BLOB: 9f4b3b02c936d5af877f0cfe7c1ebc46f4bb5774
+  TARGET_INDEX: "31"
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout exact private frozen head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          fetched=0
+          for attempt in 1 2 3 4; do
+            if git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core; then
+              fetched=1
+              break
+            fi
+            sleep $((attempt * 5))
+          done
+          test "$fetched" -eq 1
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          echo "LAS_DIAG_SNAPSHOT_PROOF_MATCH=PASS"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run exact opaque profile and classify failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" "$RUNNER_TEMP/run-fn.sh" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          map_match = re.search(
+              r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',
+              src, re.S)
+          if not map_match:
+              raise SystemExit("canonical TLC map generator not found")
+          Path(sys.argv[2]).write_text(map_match.group(1) + "\n", encoding="utf-8")
+          fn_match = re.search(
+              r'(run_tlc_profile\(\) \{.*?\n\})\n\nwhile IFS=\$\'\\t\' read -r cfg tla deadlock expectation; do',
+              src, re.S)
+          if not fn_match:
+              raise SystemExit("canonical TLC runner not found")
+          Path(sys.argv[3]).write_text(fn_match.group(1) + "\n", encoding="utf-8")
+          PY
+
+          TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$TLC_MAP"
+          count="$(wc -l < "$TLC_MAP" | tr -d ' ')"
+          test "$count" = "$EXPECTED_TLC_PROFILE_COUNT"
+          line="$(sed -n "$((TARGET_INDEX + 1))p" "$TLC_MAP")"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<< "$line"
+          test -n "$cfg"
+          test -n "$tla"
+
+          log="$RUNNER_TEMP/tlc31-private.log"
+          runner="$RUNNER_TEMP/run-one.sh"
+          cat > "$runner" <<'EOF_RUNNER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TMP="$RUNNER_TEMP/tlc-private"
+          mkdir -p "$TMP"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          PASS=0
+          FAIL=0
+          FAILED=()
+          source "$RUNNER_TEMP/run-fn.sh"
+          run_tlc_profile "$CFG" "$TLA" "$DEADLOCK" "$EXPECTATION"
+          test "$FAIL" -eq 0
+          test -z "$(git status --porcelain --untracked-files=no)"
+          EOF_RUNNER
+          chmod 0700 "$runner"
+
+          set +e
+          CFG="$cfg" TLA="$tla" DEADLOCK="$deadlock" EXPECTATION="$expectation" \
+            "$runner" >"$log" 2>&1
+          rc=$?
+          set -e
+
+          CFG_PATH="$cfg" LOG_PATH="$log" TLC_RC="$rc" python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+
+          log = Path(os.environ["LOG_PATH"]).read_text(encoding="utf-8", errors="replace")
+          cfg = Path(os.environ["CFG_PATH"]).read_text(encoding="utf-8", errors="replace")
+          rc = int(os.environ["TLC_RC"])
+
+          def names_for(kind):
+              target = {"inv": {"INVARIANT", "INVARIANTS"},
+                        "prop": {"PROPERTY", "PROPERTIES"}}[kind]
+              blockers = {"SPECIFICATION","CONSTANT","CONSTANTS","CONSTRAINT","CONSTRAINTS",
+                          "ACTION_CONSTRAINT","ACTION_CONSTRAINTS","INVARIANT","INVARIANTS",
+                          "PROPERTY","PROPERTIES","SYMMETRY","VIEW","CHECK_DEADLOCK",
+                          "ALIAS","POSTCONDITION"}
+              names=[]
+              active=False
+              for raw in cfg.splitlines():
+                  s=raw.strip()
+                  if not s or s.startswith("\\*"):
+                      continue
+                  parts=s.split()
+                  head=parts[0]
+                  if head in target:
+                      active=True
+                      parts=parts[1:]
+                  elif head in blockers:
+                      active=False
+                      continue
+                  if active:
+                      for token in parts:
+                          if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", token):
+                              names.append(token)
+              return names
+
+          inv=names_for("inv")
+          prop=names_for("prop")
+          kind="UNKNOWN"
+          ordinal=0
+
+          m=re.search(r"(?i)invariant\s+([A-Za-z_][A-Za-z0-9_]*)\s+is\s+violated", log)
+          if m:
+              kind="INVARIANT"
+              if m.group(1) in inv:
+                  ordinal=inv.index(m.group(1))+1
+          else:
+              m=re.search(r"(?i)(?:property|temporal property)\s+([A-Za-z_][A-Za-z0-9_]*)\s+is\s+violated", log)
+              if m:
+                  kind="TEMPORAL"
+                  if m.group(1) in prop:
+                      ordinal=prop.index(m.group(1))+1
+              elif "OutOfMemoryError" in log or "Java heap space" in log:
+                  kind="JVM_OOM"
+              elif "No space left on device" in log:
+                  kind="DISK_EXHAUSTION"
+              elif rc in (137,143) or re.search(r"(?m)^Killed\s*$", log):
+                  kind="PROCESS_KILLED"
+              elif re.search(r"(?i)TLC threw an unexpected exception|Exception in thread", log):
+                  kind="JAVA_OR_TLC_EXCEPTION"
+              elif rc == 0:
+                  kind="PASS"
+              elif re.search(r"(?i)Error:", log):
+                  kind="TLC_OTHER_ERROR"
+
+          generated=distinct=queue=0
+          progress=re.findall(r"([0-9][0-9,]*) states generated, ([0-9][0-9,]*) distinct states found(?:, ([0-9][0-9,]*) states left on queue)?", log)
+          if progress:
+              g,d,q=progress[-1]
+              generated=int(g.replace(",",""))
+              distinct=int(d.replace(",",""))
+              queue=int((q or "0").replace(",",""))
+
+          print(f"LAS_TLC31_RC={rc}")
+          print(f"LAS_TLC31_FAILURE_CLASS={kind}")
+          print(f"LAS_TLC31_FAILED_CHECK_ORDINAL={ordinal}")
+          print(f"LAS_TLC31_GENERATED={generated}")
+          print(f"LAS_TLC31_DISTINCT={distinct}")
+          print(f"LAS_TLC31_QUEUE={queue}")
+          PY
+
+          rm -f "$log"
+          if [[ "$rc" -eq 0 ]]; then
+            exit 0
+          fi
+          exit 1
