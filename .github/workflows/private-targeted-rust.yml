@@ -94,6 +94,38 @@ jobs:
           PY
           )"
 
+          python3 - "$compile_log" <<'PY'
+          import hashlib, json, os, sys
+          root = os.path.abspath(os.path.join(os.environ["GITHUB_WORKSPACE"], "target"))
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
+              for line in f:
+                  try:
+                      obj = json.loads(line)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
+                  spans = [x for x in (msg.get("spans") or []) if x.get("is_primary")]
+                  if not spans:
+                      print(f"LAS_PRIVATE_TARGET_ERROR_LOC=NO_SPAN:0:{code}")
+                      continue
+                  span = spans[0]
+                  path = span.get("file_name") or ""
+                  abs_path = os.path.abspath(os.path.join(root, path))
+                  try:
+                      rel = os.path.relpath(abs_path, root)
+                  except Exception:
+                      rel = path
+                  ph = hashlib.sha256(rel.encode()).hexdigest()
+                  line_no = int(span.get("line_start") or 0)
+                  mh = hashlib.sha256((msg.get("message") or "").encode()).hexdigest()
+                  print(f"LAS_PRIVATE_TARGET_ERROR_LOC={ph}:{line_no}:{code}:{mh}")
+          PY
+
           test_rc=125
           if [[ "$compile_rc" -eq 0 ]]; then
             RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$test_log" 2>&1
