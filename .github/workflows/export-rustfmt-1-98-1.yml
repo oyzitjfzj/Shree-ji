@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Install pinned rustfmt
+      - name: Install and pack pinned rustfmt
         shell: bash
         run: |
           set -euo pipefail
@@ -22,22 +22,25 @@ jobs:
           rustup component add --toolchain 1.98.1 rustfmt >/dev/null
           toolchain="$(rustup +1.98.1 which rustfmt)"
           rustfmt +1.98.1 --version
-          root="$(dirname "$(dirname "$toolchain")")"
-          mkdir -p "$RUNNER_TEMP/rustfmt-export/lib"
-          cp "$toolchain" "$RUNNER_TEMP/rustfmt-export/rustfmt"
+          root="$RUNNER_TEMP/rustfmt-root"
+          mkdir -p "$root/lib"
+          cp "$toolchain" "$root/rustfmt"
           driver="$(ldd "$toolchain" | awk '/librustc_driver-/{print $3; exit}')"
           llvm="$(ldd "$toolchain" | awk '/libLLVM\.so/{print $3; exit}')"
           test -f "$driver"
           test -f "$llvm"
-          cp "$driver" "$RUNNER_TEMP/rustfmt-export/lib/"
-          cp "$llvm" "$RUNNER_TEMP/rustfmt-export/lib/"
-          ldd "$toolchain" > "$RUNNER_TEMP/rustfmt-export/ldd.txt"
-          sha256sum "$toolchain" "$driver" "$llvm" > "$RUNNER_TEMP/rustfmt-export/sha256.txt"
-      - name: Upload pinned rustfmt
+          cp "$driver" "$root/lib/"
+          cp "$llvm" "$root/lib/"
+          ldd "$toolchain" > "$root/ldd.txt"
+          sha256sum "$toolchain" "$driver" "$llvm" > "$root/sha256.txt"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/rustfmt-1.98.1-linux-x64.tar.gz" rustfmt-root
+          echo "LAS_RUSTFMT_BUNDLE_SIZE=$(stat -c%s "$RUNNER_TEMP/rustfmt-1.98.1-linux-x64.tar.gz")"
+          echo "LAS_RUSTFMT_BUNDLE_SHA256=$(sha256sum "$RUNNER_TEMP/rustfmt-1.98.1-linux-x64.tar.gz" | awk '{print $1}')"
+      - name: Upload packed rustfmt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: rustfmt-1.98.1-linux-x64-with-libs
-          path: ${{ runner.temp }}/rustfmt-export
+          name: rustfmt-1.98.1-linux-x64-packed
+          path: ${{ runner.temp }}/rustfmt-1.98.1-linux-x64.tar.gz
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
