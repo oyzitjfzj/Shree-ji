@@ -1,0 +1,104 @@
+name: Private rustfmt signature
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_RUSTFMT_SIGNATURE"
+
+permissions:
+  contents: read
+
+jobs:
+  signature:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@v4
+
+      - name: Load opaque formatting request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RUN_RUSTFMT_SIGNATURE
+          ref_hash="$(awk -F= '$1=="TARGET_REF_HASH"{print $2}' RUN_RUSTFMT_SIGNATURE)"
+          proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' RUN_RUSTFMT_SIGNATURE)"
+          [[ "$ref_hash" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
+          echo "TARGET_REF_HASH=$ref_hash" >> "$GITHUB_ENV"
+          echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
+
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          test "$actual" = "$matched_sha"
+          actual_proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$actual_proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_RUSTFMT_SNAPSHOT_PROOF=$actual_proof"
+          unset PRIVATE_TOKEN auth matched_sha matched_ref actual
+
+      - name: Emit opaque rustfmt signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            source "$HOME/.cargo/env"
+          fi
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add --toolchain 1.98.1 rustfmt
+
+          cargo +1.98.1 fmt --all
+
+          if test -z "$(git status --porcelain --untracked-files=no)"; then
+            echo "LAS_RUSTFMT_SIGNATURE=CLEAN"
+            exit 0
+          fi
+
+          git diff --name-only -z | while IFS= read -r -d '' rel_path; do
+            path_hash="$(printf '%s' "$rel_path" | sha256sum | awk '{print $1}')"
+            original_blob="$(git rev-parse "HEAD:$rel_path")"
+            formatted_blob="$(git hash-object "$rel_path")"
+            counts="$(git diff --numstat -- "$rel_path" | awk '{print $1 ":" $2}')"
+            echo "LAS_RUSTFMT_FILE=$path_hash:$original_blob:$formatted_blob:$counts"
+            git diff --unified=0 -- "$rel_path" |
+              awk -v path_hash="$path_hash" '/^@@ / {print "LAS_RUSTFMT_HUNK=" path_hash ":" $2 ":" $3}'
+          done
