@@ -101,6 +101,58 @@ jobs:
             *) stage="unknown" ;;
           esac
           echo "LAS_BOUNDARY_LAST_STAGE=$stage"
+          if [[ "$stage" == "cargo_check" && "$rc" -ne 0 ]]; then
+            cargo_json="$RUNNER_TEMP/private-cargo-check.jsonl"
+            set +e
+            RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --message-format=json >"$cargo_json" 2>/dev/null
+            diag_rc=$?
+            set -e
+            echo "LAS_BOUNDARY_CARGO_DIAG_RC=$diag_rc"
+            python3 - "$cargo_json" "$RUNNER_TEMP/private-target" <<'PY'
+          import hashlib, json, os, sys
+          log_path, root = sys.argv[1], os.path.realpath(sys.argv[2])
+          seen = set()
+          with open(log_path, encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
+                  target = obj.get("target") or {}
+                  kinds = ",".join(target.get("kind") or []) or "UNKNOWN"
+                  name = str(target.get("name") or "")
+                  name_hash = hashlib.sha256(name.encode()).hexdigest()
+                  spans = [s for s in (msg.get("spans") or []) if s.get("is_primary")]
+                  if not spans:
+                      key = (code, "NO_SPAN", 0, 0, kinds, name_hash)
+                      if key not in seen:
+                          seen.add(key)
+                          print(f"LAS_BOUNDARY_CARGO_ERROR={code}:NO_SPAN:0:0:{kinds}:{name_hash}")
+                      continue
+                  for span in spans:
+                      filename = str(span.get("file_name") or "")
+                      absolute = os.path.realpath(os.path.join(root, filename)) if not os.path.isabs(filename) else os.path.realpath(filename)
+                      if absolute == root or absolute.startswith(root + os.sep):
+                          rel = os.path.relpath(absolute, root).replace(os.sep, "/")
+                      else:
+                          rel = "<EXTERNAL>"
+                      path_hash = hashlib.sha256(rel.encode()).hexdigest()
+                      line = int(span.get("line_start") or 0)
+                      col = int(span.get("column_start") or 0)
+                      key = (code, path_hash, line, col, kinds, name_hash)
+                      if key in seen:
+                          continue
+                      seen.add(key)
+                      print(f"LAS_BOUNDARY_CARGO_ERROR={code}:{path_hash}:{line}:{col}:{kinds}:{name_hash}")
+          PY
+            rm -f "$cargo_json"
+          fi
           if [[ "$stage" == "rustfmt" && "$rc" -ne 0 ]]; then
             while IFS= read -r fmt_line; do
               spec="${fmt_line#Diff in }"
