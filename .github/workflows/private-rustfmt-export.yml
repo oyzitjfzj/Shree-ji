@@ -1,0 +1,101 @@
+name: Private rustfmt export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_RUSTFMT_EXPORT"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@v4
+
+      - name: Load opaque formatting request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RUN_RUSTFMT_EXPORT
+          ref_hash="$(awk -F= '$1=="TARGET_REF_HASH"{print $2}' RUN_RUSTFMT_EXPORT)"
+          proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' RUN_RUSTFMT_EXPORT)"
+          [[ "$ref_hash" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
+          echo "TARGET_REF_HASH=$ref_hash" >> "$GITHUB_ENV"
+          echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
+
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          test "$actual" = "$matched_sha"
+          actual_proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$actual_proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_RUSTFMT_EXPORT_SNAPSHOT_PROOF=$actual_proof"
+          unset PRIVATE_TOKEN auth matched_sha matched_ref actual
+
+      - name: Format and emit encrypted archive
+        shell: bash
+        env:
+          RUSTFMT_EXPORT_RECIPIENT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURNekNDQWh1Z0F3SUJBZ0lVVkJ0M2NVaEJMQ1QwWUFZaE9oL0hGNytvTlpnd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0tURW5NQ1VHQTFVRUF3d2VURUZUSUdWd2FHVnRaWEpoYkNCbWIzSnRZWFIwWlhJZ1luSnBaR2RsTUI0WApEVEkyTURreU5UQTNNamt3TVZvWERUSTJNRGt5TnpBM01qa3dNVm93S1RFbk1DVUdBMVVFQXd3ZVRFRlRJR1Z3CmFHVnRaWEpoYkNCbWIzSnRZWFIwWlhJZ1luSnBaR2RsTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEEKTUlJQkNnS0NBUUVBeENUOTZxKzdnR3cxK0JIT3JqWWw4YVB0QUJ2OUFRUmJJeEhJUFpmeVBxYUNxMjFGY0ZuSApROE9yRGY3aE0vcmhNaCt5bVFVeWRrZC9MNStQa2wyL2tscFhiNEVYYzdkNktXQlFocjQxTTY1cEFNaFNUVXJKCm9yWXU2VUdTMVZEMk8vMUpzRS9OV280SlVpVkJnTnpSTDhQNjNwa1BSNi9BV1ArNkZBcHdISkJNTmdyYmtpR3cKNElRUjlkL1ZBS2lDYmNxTnNhZVFYWFJqaGdrM3Z4UXNlcGh4WmYwMEU3TUxTMXpka285NUVVeFU2RXNkYmV4ZwpPdUJWMzJIVFp4VE5KUlNmeTVFYlBPbVlQUjdUZUJwNW5iZDFFMzU2ZTlOb0tjTTNlRTZHeWl4MFVFVEE3ZzFFClJFMW50Ui9rUHlzN1pteFcwV3pDTFRTZDFkN29ic0lvbXdJREFRQUJvMU13VVRBZEJnTlZIUTRFRmdRVWkrOWEKQ2dLOEZYVEpNK0pBOW55ZHZuVytTZk13SHdZRFZSMGpCQmd3Rm9BVWkrOWFDZ0s4RlhUSk0rSkE5bnlkdm5XKwpTZk13RHdZRFZSMFRBUUgvQkFVd0F3RUIvekFOQmdrcWhraUc5dzBCQVFzRkFBT0NBUUVBSE1QR2l1dTA2ak1BCkpLZnNLWEFKYUdWVmhvdUNsdG00cGZOM2V5NzJVWkxkT2pXdnJFa2dsQXVCSEQxMXRmb3M3QUdvNVlRQ3oxL2UKaDZpM3ZwelIvSUtkZzh1aUp5Q0RuQXdnaGRWdWNPV3Q1cDdoeW42NTJMWWlLRCs0YjlIbllvZHZubHdhMk0rSgp2aXUrb1JNSFRmWWU2a25YOTdkMGlZcnAzUlhEbTZSWElSQlRQcCsxc3MxVEEwM1NOclNGOXJQYWNyK0dKNTBCCmt1WnlzVmZnYWpuZnNZY2lxNFVnYjdpOURsaGFmWnhxMGRSM000dFVDYXl5QUkwdmsraVQrWkVHb0d4Z3FUZkgKeHNVMEQ0TE9mQ0lKUU8xNE5zQ0hJVHBKY1BYZThUM3lKT3ZDNjJob0JXTUtUMVNsaW9qQVJBaDFNUXFiVlZIUgpPOFJ1L3k4Lzl3PT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            source "$HOME/.cargo/env"
+          fi
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add --toolchain 1.98.1 rustfmt
+          cargo +1.98.1 fmt --all
+          mapfile -d '' changed < <(git diff --name-only -z)
+          if (( ${#changed[@]} == 0 )); then
+            echo "LAS_RUSTFMT_EXPORT=CLEAN"
+            exit 0
+          fi
+          archive="$RUNNER_TEMP/formatted-files.tgz"
+          cipher="$RUNNER_TEMP/formatted-files.cms"
+          cert="$RUNNER_TEMP/rustfmt-export-recipient.pem"
+          tar -czf "$archive" -- "${changed[@]}"
+          printf '%s' "$RUSTFMT_EXPORT_RECIPIENT_CERT_B64" | base64 -d > "$cert"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$archive"             -out "$cipher"             "$cert"
+          echo "LAS_RUSTFMT_EXPORT_ARCHIVE_SHA256=$(sha256sum "$archive" | awk '{print $1}')"
+          echo "LAS_RUSTFMT_EXPORT_CIPHER_SHA256=$(sha256sum "$cipher" | awk '{print $1}')"
+          echo "LAS_RUSTFMT_EXPORT_B64=$(base64 -w0 "$cipher")"
