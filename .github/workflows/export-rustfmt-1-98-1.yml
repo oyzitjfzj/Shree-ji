@@ -1,0 +1,36 @@
+name: Export pinned rustfmt 1.98.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/export-rustfmt-1-98-1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Install pinned rustfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          toolchain="$(rustup +1.98.1 which rustfmt)"
+          rustfmt +1.98.1 --version
+          mkdir -p "$RUNNER_TEMP/rustfmt-export"
+          cp "$toolchain" "$RUNNER_TEMP/rustfmt-export/rustfmt"
+          ldd "$toolchain" > "$RUNNER_TEMP/rustfmt-export/ldd.txt" || true
+          sha256sum "$toolchain" > "$RUNNER_TEMP/rustfmt-export/sha256.txt"
+      - name: Upload pinned rustfmt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rustfmt-1.98.1-linux-x64
+          path: ${{ runner.temp }}/rustfmt-export
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
