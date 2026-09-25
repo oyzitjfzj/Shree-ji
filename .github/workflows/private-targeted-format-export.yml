@@ -124,7 +124,25 @@ jobs:
           if grep -Fqi 'unresolved import' "$log"; then echo "LAS_FORMATTED_CATEGORY_UNRESOLVED_IMPORT=YES"; fi
           if grep -Fqi 'cannot find' "$log"; then echo "LAS_FORMATTED_CATEGORY_CANNOT_FIND=YES"; fi
           if grep -Fqi 'could not compile' "$log"; then echo "LAS_FORMATTED_CATEGORY_COULD_NOT_COMPILE=YES"; fi
+          printf '%s' "$FORMAT_CERT_B64" | base64 -d > "$RUNNER_TEMP/formatted-check-cert.pem"
+          fp="$(openssl x509 -in "$RUNNER_TEMP/formatted-check-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "$FORMAT_CERT_FINGERPRINT"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER \
+            -in "$log" \
+            -out "$RUNNER_TEMP/formatted-check.cms" \
+            "$RUNNER_TEMP/formatted-check-cert.pem"
+          echo "LAS_FORMATTED_CHECK_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted-check.cms" | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/formatted-check-cert.pem" "$log"
           exit 0
+
+      - name: Upload encrypted formatted compile diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-formatted-check
+          path: ${{ runner.temp }}/formatted-check.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
 
       - name: Upload encrypted formatted output
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
