@@ -1,3 +1,3 @@
 TARGET_REF_HASH=08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=ccb31b1448b44e90993b10b37b4acc6177058812f8f90264b9e70adcbe89263d
-ATTEMPT=current-boundary-ephemeral-format-export
+ATTEMPT=current-boundary-formatted-compile-red
