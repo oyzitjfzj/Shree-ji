@@ -1,0 +1,73 @@
+name: Private ephemeral rustfmt patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-ephemeral-rustfmt-patch.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact hidden private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          EXPECTED_PRIVATE_SNAPSHOT_PROOF: d4edf0a65704a39a517b1340fad047dbe8d0bd32ae4dff1f90b84cb2376a363c
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=250 origin '+refs/heads/*:refs/remotes/origin/*'
+          actual=""
+          while IFS= read -r oid; do
+            [[ -n "$oid" ]] || continue
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              actual="$oid"
+              break
+            fi
+          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          test -n "$actual"
+          echo "::add-mask::$actual"
+          git checkout -q --detach "$actual"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_FMT_SOURCE_PROOF=$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          unset PRIVATE_TOKEN auth actual
+
+      - name: Apply exact pinned rustfmt and encrypt patch
+        shell: bash
+        env:
+          RECIPIENT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVMekNDQXBlZ0F3SUJBZ0lVS3VyV29SeHZObFdkb1lFbm8yWUxMckRHQWE0d0RRWUpLb1pJaHZjTkFRRUwKQlFBd0p6RWxNQ01HQTFVRUF3d2NURUZUSUVWd2FHVnRaWEpoYkNCU2RYTjBabTEwSUZKbGNHRnBjakFlRncweQpOakE1TWpVeE5qVTJORFZhRncweU5qQTVNall4TmpVMk5EVmFNQ2N4SlRBakJnTlZCQU1NSEV4QlV5QkZjR2hsCmJXVnlZV3dnVW5WemRHWnRkQ0JTWlhCaGFYSXdnZ0dpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCandBd2dnR0sKQW9JQmdRQ3dWTnZPR2ZtV3ZYWkc1OCtnQ0FORDExYzZhazVrNXJNUUprTkdacUNiSkRwWHlpWUlCdmlUK21Ybgpuc04yMElybEpOa0s1ZHBZQ2ZwNmFuMUJJWG9na1ExUndFeGJLeFFlTGJHTDgxYm5xWDJ0WG1vYVNneHcrbllYCmw0a2dEK05aZlFSOXM3NU52ekR4Nm1ORm12WGxzQ2U2cjFmOFkrNTF5RktMUC9QRG1RaCtoY0c3bS91YTZhVkYKcVJ0NXNPRHg2QWZ0ZzNFUngyV0NjUUpiV05nbExtNnJCaG95SGpSUytsSnRVOHlwVWR5YytBT2VjTkJlYnV5bgpHU1E1U3dkQjlRYjFLeFE5UzBwNklyK3dYR01TdWxWVmV5YlN3clVlRCtiNUIrR0dtVmUxKzdrdENZaEVFSWY0CjlTQlp5MTkrems3NG8wOVE0TXpSMktrNVFqV2pCZU5SN2psYlFYOStLdnNDWllidG14bVZ4QStDTXZtbUlDQksKSHVHMHdkcldqMUNlcVRqUmhNbEhGN3VwT1NKMkJac1h4YWJVUWxDc3ZMOS9jU2tQd0JudFJnL08xZGRLcEFlSwpWd3loNEhQS2R4RDl3WkppYzRZWE9GSTJnVzZvREE4MEdoRFhxYkpJU3dTOW0vLzQ5OWZZSUlHZzdmSmJuMnJ6Cnh6cnB0R01DQXdFQUFhTlRNRkV3SFFZRFZSME9CQllFRklYR1pVOEVjVjhzMG50S080cXpYTzA1NjVFck1COEcKQTFVZEl3UVlNQmFBRklYR1pVOEVjVjhzMG50S080cXpYTzA1NjVFck1BOEdBMVVkRXdFQi93UUZNQU1CQWY4dwpEUVlKS29aSWh2Y05BUUVMQlFBRGdnR0JBQy9NcUlFTTQ5Q3B2RWFrbEpZalZpdFRad0kyb2ZBV0FoMnFTZDBpCmZWeTI1OTBRb3FIa0x3ZkhJclRLVWxjMHJIbzJCMnUxWXE3NTdOc0VSM1BWNkZIYnI3dVZ3cW1zcFhZeDZnYTcKYTRBdFM3ZVlkYkJjREIzZ1hpRDlMMmlJMEpsL1NlTnowSGR0Z2UzbnFEdDAvWmZzYWEzUVBQSEN0SnFmVzBISAp0dGYyb0ZzS0dxSld5cWpCd1BTVHptV2RYZGtoUE0xa09HV0t1RGtzYlJveUlwRkJjRXl1djR6SXdxdnpVcDhaCkRTTWJaYk5KTmZmUU9lekR1TUpvaFU1WUtBN0xGMjdHY2ovSFdCMm84RmxmUW85eW5scUNrbEZFUWJYcmlxM3cKaU8rZFBsQTk5ZW5Eakl0bkluMndSY2VRTEY2KzJ1amFSNzkwcEJUd1laaGdCNDcvUjNuMTI5RVdETmxUTnVlZQp4YjdVY25QNUlXbVA2aFRYd014UXg1Zy9SUGdCLzkwNVd0YWZ6WmZ1WWJvQTg0RVkwTFIxY05SQ2t5djZZZHFaCjZOcm9BK3g5NXh5M2lwQ0h1MC9adGcvcVBWTkUzSXg5SUZoZGswa2ViSU1ZM280UVk0c3pyRTdzQ0szYTFxUGUKT1Q0dDlERDJsRWUyUmpZc1QxOHFqa2owelE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 fmt --all
+          git diff --no-ext-diff --binary --             src/defence_evolution/evaluation_material_bundle.rs             src/defence_evolution/historical_incident_material.rs             > "$RUNNER_TEMP/rustfmt.patch"
+          test -s "$RUNNER_TEMP/rustfmt.patch"
+          printf '%s' "$RECIPIENT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$RUNNER_TEMP/rustfmt.patch"             -out "$RUNNER_TEMP/rustfmt.patch.cms"             "$RUNNER_TEMP/cert.pem"
+          echo "LAS_FMT_PATCH_SHA256=$(sha256sum "$RUNNER_TEMP/rustfmt.patch" | awk '{print $1}')"
+
+      - name: Upload encrypted patch
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-rustfmt-patch
+          path: ${{ runner.temp }}/rustfmt.patch.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
