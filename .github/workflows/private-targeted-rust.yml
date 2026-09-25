@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 10be364f5d7d6b4e543035861b56b7b15363e5692c4abe309605c2ddb6c8a59f
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 11bf81afda95c532de435e392ac478c78c80330cf3d1abd712228ba3c035f662
 
 jobs:
   targeted:
@@ -33,12 +33,20 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/tmp/selector-execution-20260924
-          git checkout -q --detach FETCH_HEAD
-          actual="$(git rev-parse HEAD)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=200 origin '+refs/heads/*:refs/remotes/origin/*'
+          actual=""
+          while IFS= read -r oid; do
+            [[ -n "$oid" ]] || continue
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              actual="$oid"
+              break
+            fi
+          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          test -n "$actual"
           echo "::add-mask::$actual"
-          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
-          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_PRIVATE_TARGET_SNAPSHOT_PROOF=$proof"
           unset PRIVATE_TOKEN auth
