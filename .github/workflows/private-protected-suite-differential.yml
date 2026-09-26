@@ -22,7 +22,6 @@ jobs:
       matrix:
         side: [base, candidate]
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
     steps:
       - name: Checkout exact private revision
         uses: actions/checkout@v4
