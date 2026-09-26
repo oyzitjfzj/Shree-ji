@@ -1,4 +1,4 @@
 TARGET_REF_HASH=08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=8ae253e553add61727795cd3f56582c047e83c622893a60be1d13a766bb49fca
 EXPECT=FAIL
-REQUEST=protected-suite-currentness-compile-red
+REQUEST=protected-suite-currentness-behavioral-red
