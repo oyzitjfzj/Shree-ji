@@ -1,4 +1,4 @@
 TARGET_REF_HASH=08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=a089edb18383e82e67f27f422504218ad5a319e868e1808c9ed1b9afab72a032
 EXPECT=PASS
-REQUEST=evaluation-execution-terminal-attestation-task1-green-format2
+REQUEST=execution-terminal-attestation-task1-green-formatted
