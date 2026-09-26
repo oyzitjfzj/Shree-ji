@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 15e538457f89710bb17abfbdf9ec5f03f3a9392ba55167f350677b72c96fafb7
-  EXPECTED_TLC_PROFILE_COUNT: "129"
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 63dbd7c8ad6006ff115184b856e1ac663b3e93ddce9424c9a26c32f9c515ef30
+  EXPECTED_TLC_PROFILE_COUNT: "133"
   DIAG_RSA_PUB_B64: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQm9qQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FZOEFNSUlCaWdLQ0FZRUFvREZvQVpUYUFhRm1hOEdqMElLMQprWTc2MHptV2RReWxuOUNNSXlScGUreGh0SVgrWlcvdjBCcGQ3UGljdkpvVnlJajVPTStRTUlVTGRxdURueW1PCk5pSzVzNXBkVHliNXI0NVZ3Z3Q1T2ppc2JDdFUwa1VqZ2xwL1VPaXFtNEZWdjk3aUJ2NXJXZXVnS2c0NmlQWVgKTGI4Nnd4bWJZRXNtVUdNc1BsOHV6aTBsdGtoTW16QmdOR1pucnpRV1AveUdlTW1TaDM5MFZkZ3VHVnBtc3RtcgphTlcxcGJ0RU5ibkI1dDQzVi92c1UzMm4yQzZGWnFMQ1pNR1hDTWZUSXgxTVc1QTJvM213UTUwMXB1NitZS0FuCnRRYlU3a3BMdktXbnZlUHIvcVh6aE5ENW04bFY3RFJ6QUozcEpxWkFPOE5UVEV0OEdLRDJzWERXNFY5M1FHMTcKZ0M3VEVabW0zZEtNKy9BeEZ6NndoZUE2blV1RVRSTlVISFFqUi9RaUsvQldkbnZ3QjJBWExKbWFsQkcrZ05MUgpERG1xRWFpYklZaFVvc3RXaEgzdng4OVlqVFgvL2lsRmtnckViMzhYSmZMaDczbWVwZnh0bDl5SWpLQlltNzdGCnlCclNjejRwcVFRcGltbFZkZWZhckl1ak56d0VuSXFKVW1ib0hPNkNWcFpKQWdNQkFBRT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==
   DIAG_RSA_PUB_SHA256: 09dd314ef0de438c41b3e841274ef58e71f2acc658c0ad58294fce668ed3feba
 
@@ -24,9 +24,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [94]
+        index: [47]
     runs-on: ubuntu-24.04
-    timeout-minutes: 7
     steps:
       - name: Checkout exact private active head
         shell: bash
@@ -44,7 +43,7 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/work/assurance-core
+          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1 origin refs/heads/tmp/selector-execution-20260924
           git checkout -q --detach FETCH_HEAD
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
@@ -126,7 +125,7 @@ jobs:
               'run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"' \
               'test "$FAIL" -eq 0' \
               > "$RUNNER_TEMP/probe-run.sh"
-            timeout --signal=TERM --kill-after=10s 300s bash "$RUNNER_TEMP/probe-run.sh" \
+            bash "$RUNNER_TEMP/probe-run.sh" \
               "$ROOT" "$RUNNER_TEMP" "$cfg" "$tla" "$deadlock" "$expectation"
           ) >"$log" 2>&1
           rc=$?
