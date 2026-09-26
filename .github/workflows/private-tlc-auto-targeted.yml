@@ -15,8 +15,8 @@ concurrency:
 
 env:
   TARGET_REF_HASH: 08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 57b13679fde2e2ce71b9083e4b325c4c28408591da209dee273c2312a70aea78
-  EXPECTED_TLC_PROFILE_COUNT: "133"
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: dd293950002dd4639139e6f3c7c6156e69256ddaf9c78e2b22fb2ac9d676c6af
+  EXPECTED_TLC_PROFILE_COUNT: "134"
   DIAG_RSA_PUB_B64: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQm9qQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FZOEFNSUlCaWdLQ0FZRUFvREZvQVpUYUFhRm1hOEdqMElLMQprWTc2MHptV2RReWxuOUNNSXlScGUreGh0SVgrWlcvdjBCcGQ3UGljdkpvVnlJajVPTStRTUlVTGRxdURueW1PCk5pSzVzNXBkVHliNXI0NVZ3Z3Q1T2ppc2JDdFUwa1VqZ2xwL1VPaXFtNEZWdjk3aUJ2NXJXZXVnS2c0NmlQWVgKTGI4Nnd4bWJZRXNtVUdNc1BsOHV6aTBsdGtoTW16QmdOR1pucnpRV1AveUdlTW1TaDM5MFZkZ3VHVnBtc3RtcgphTlcxcGJ0RU5ibkI1dDQzVi92c1UzMm4yQzZGWnFMQ1pNR1hDTWZUSXgxTVc1QTJvM213UTUwMXB1NitZS0FuCnRRYlU3a3BMdktXbnZlUHIvcVh6aE5ENW04bFY3RFJ6QUozcEpxWkFPOE5UVEV0OEdLRDJzWERXNFY5M1FHMTcKZ0M3VEVabW0zZEtNKy9BeEZ6NndoZUE2blV1RVRSTlVISFFqUi9RaUsvQldkbnZ3QjJBWExKbWFsQkcrZ05MUgpERG1xRWFpYklZaFVvc3RXaEgzdng4OVlqVFgvL2lsRmtnckViMzhYSmZMaDczbWVwZnh0bDl5SWpLQlltNzdGCnlCclNjejRwcVFRcGltbFZkZWZhckl1ak56d0VuSXFKVW1ib0hPNkNWcFpKQWdNQkFBRT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==
   DIAG_RSA_PUB_SHA256: 09dd314ef0de438c41b3e841274ef58e71f2acc658c0ad58294fce668ed3feba
 
@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        index: [47]
+        index: [41]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact private active head
@@ -148,6 +148,21 @@ jobs:
           rm -f "$RUNNER_TEMP/aes.key" "$RUNNER_TEMP/diag-public.pem"
           echo "LAS_TLC_INDEX=$TARGET_INDEX"
           echo "LAS_TLC_BUNDLE_SHA256=$(sha256sum "$RUNNER_TEMP/private-tlc-bundle.tgz" | awk '{print $1}')"
+          python3 - "$log" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+          matches = re.findall(
+              r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue',
+              text)
+          if matches:
+              generated, distinct, queue = matches[-1]
+              print(f"LAS_TLC_GENERATED={generated.replace(',', '')}")
+              print(f"LAS_TLC_DISTINCT={distinct.replace(',', '')}")
+              print(f"LAS_TLC_QUEUE={queue.replace(',', '')}")
+          depth = re.findall(r'Search depth of complete state graph is ([0-9]+)', text)
+          if depth:
+              print(f"LAS_TLC_SEARCH_DEPTH={depth[-1]}")
+          PY
           if [[ "$rc" -eq 0 ]]; then
             echo "LAS_TLC_RESULT=PASS"
             exit 0
