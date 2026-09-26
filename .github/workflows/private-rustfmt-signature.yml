@@ -12,7 +12,6 @@ permissions:
 jobs:
   signature:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
     steps:
       - name: Checkout public control shell
         uses: actions/checkout@v4
