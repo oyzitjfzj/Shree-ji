@@ -48,7 +48,16 @@ jobs:
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           refs="$RUNNER_TEMP/private-heads"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          listed=0
+          for attempt in 1 2 3 4; do
+            if git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"; then
+              listed=1
+              break
+            fi
+            echo "LAS_PRIVATE_LS_REMOTE_RETRY=$attempt"
+            sleep $((attempt * 5))
+          done
+          test "$listed" -eq 1
           matched_ref=""
           matched_sha=""
           while read -r sha ref; do
@@ -62,7 +71,16 @@ jobs:
           rm -f "$refs"
           test -n "$matched_ref"
           test -n "$matched_sha"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          fetched=0
+          for attempt in 1 2 3 4; do
+            if git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"; then
+              fetched=1
+              break
+            fi
+            echo "LAS_PRIVATE_FETCH_RETRY=$attempt"
+            sleep $((attempt * 5))
+          done
+          test "$fetched" -eq 1
           git checkout -q --detach FETCH_HEAD
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
