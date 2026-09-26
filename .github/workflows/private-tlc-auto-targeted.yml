@@ -28,6 +28,9 @@ jobs:
         index: [47]
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@v4
+
       - name: Checkout exact private active head
         shell: bash
         env:
