@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-indexed-tlc-diag-15e53845-tlc94
+  group: private-execution-attestation-tlc-index-41-dd293950
   cancel-in-progress: false
 
 env:
