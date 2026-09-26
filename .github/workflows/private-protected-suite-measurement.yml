@@ -1,0 +1,64 @@
+name: Private protected suite lightweight measurement
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_PROTECTED_SUITE_MEASUREMENT"
+      - ".github/workflows/private-protected-suite-measurement.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@v4
+
+      - name: Load exact request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RUN_PROTECTED_SUITE_MEASUREMENT
+          proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' RUN_PROTECTED_SUITE_MEASUREMENT)"
+          [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
+          echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
+
+      - name: Checkout exact private working head
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          token: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          ref: tmp/selector-execution-20260924
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact private snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          actual="$(git rev-parse HEAD)"
+          echo "::add-mask::$actual"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_PROTECTED_MEASUREMENT_SNAPSHOT_PROOF=$proof"
+
+      - name: Run release measurement
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 fmt --all -- --check
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked             protected_suite_lightweight_measurement --             --ignored --nocapture --test-threads=1             | tee "$RUNNER_TEMP/protected-suite-measurement.log"
+          grep '^LAS_PROTECTED_SUITE_' "$RUNNER_TEMP/protected-suite-measurement.log"
+          echo "LAS_PROTECTED_MEASUREMENT_RESULT=PASS"
