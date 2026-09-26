@@ -1,4 +1,5 @@
 name: Export pinned rustfmt 1.98.1
+# refresh-export: 2026-09-26
 
 on:
   push:
