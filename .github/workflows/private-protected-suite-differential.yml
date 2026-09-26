@@ -25,27 +25,24 @@ jobs:
     timeout-minutes: 180
     steps:
       - name: Checkout exact private revision
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          token: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          ref: tmp/selector-execution-20260924
+          path: target
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Select exact differential side
         shell: bash
         env:
-          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
-          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
           SIDE: ${{ matrix.side }}
         run: |
           set -euo pipefail
-          test -n "$PRIVATE_REPOSITORY"
-          test -n "$PRIVATE_TOKEN"
-          echo "::add-mask::$PRIVATE_REPOSITORY"
-          echo "::add-mask::$PRIVATE_TOKEN"
-          ROOT="$GITHUB_WORKSPACE/target"
-          mkdir "$ROOT"
-          cd "$ROOT"
-          git init -q
-          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
-          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            fetch -q --depth=2 origin refs/heads/tmp/selector-execution-20260924
-          candidate="$(git rev-parse FETCH_HEAD)"
-          base="$(git rev-parse FETCH_HEAD^)"
+          cd target
+          candidate="$(git rev-parse HEAD)"
+          base="$(git rev-parse HEAD^)"
           echo "::add-mask::$candidate"
           echo "::add-mask::$base"
           candidate_proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
@@ -64,7 +61,6 @@ jobs:
           test "$(git rev-parse HEAD)" = "$selected"
           echo "LAS_PROTECTED_DIFF_SIDE=$SIDE"
           echo "LAS_PROTECTED_DIFF_SELECTED_PROOF=$selected_proof"
-          unset PRIVATE_TOKEN auth
 
       - name: Exhaust representative reduced graph
         shell: bash
