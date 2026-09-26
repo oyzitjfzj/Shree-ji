@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4da0a5bdfe949559aec0b33af37ddef5289b3ea434822ef5c6530041d56d529f
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4b75e5f3606c847f83d66831328dd996fe8f4603a5af2eab9c7af00edb1be001
 
 jobs:
   targeted:
@@ -130,6 +130,31 @@ jobs:
           if [[ "$compile_rc" -eq 0 ]]; then
             RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$test_log" 2>&1
             test_rc=$?
+          fi
+
+          if [[ -s "$test_log" ]]; then
+            while IFS= read -r failed_line; do
+              test_name="${failed_line#test }"
+              test_name="${test_name% ... FAILED}"
+              test_hash="$(printf '%s' "$test_name" | sha256sum | awk '{print $1}')"
+              echo "LAS_PRIVATE_TARGET_FAILED_TEST_HASH=$test_hash"
+            done < <(grep -E '^test .* \.\.\. FAILED          echo "LAS_PRIVATE_TARGET_FMT_RC=$fmt_rc"
+          echo "LAS_PRIVATE_TARGET_COMPILE_RC=$compile_rc"
+          echo "LAS_PRIVATE_TARGET_COMPILE_ERROR_CODES=$codes"
+          echo "LAS_PRIVATE_TARGET_TEST_RC=$test_rc"
+          echo "LAS_PRIVATE_TARGET_FMT_LOG_SHA256=$(sha256sum "$fmt_log" | awk '{print $1}')"
+          echo "LAS_PRIVATE_TARGET_COMPILE_LOG_SHA256=$(sha256sum "$compile_log" | awk '{print $1}')"
+          if [[ -s "$test_log" ]]; then
+            echo "LAS_PRIVATE_TARGET_TEST_LOG_SHA256=$(sha256sum "$test_log" | awk '{print $1}')"
+          fi
+
+          if [[ "$fmt_rc" -eq 0 && "$compile_rc" -eq 0 && "$test_rc" -eq 0 ]]; then
+            echo "LAS_PRIVATE_TARGET_RUST_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_PRIVATE_TARGET_RUST_RESULT=FAIL"
+          exit 1
+ "$test_log" || true)
           fi
 
           echo "LAS_PRIVATE_TARGET_FMT_RC=$fmt_rc"
