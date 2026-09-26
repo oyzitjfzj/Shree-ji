@@ -1,4 +1,4 @@
 TARGET_REF_HASH=08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=b5d6c6f4626542443e14177af51c3944f59945267bc8ea384dede96c989b6592
 EXPECT=PASS
-REQUEST=evaluation-execution-terminal-attestation-task2-green-resident-provenance
+REQUEST=verified-execution-terminal-consumption-green-resident-provenance
