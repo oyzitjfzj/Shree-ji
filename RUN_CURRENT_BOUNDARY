@@ -1,4 +1,4 @@
 TARGET_REF_HASH=08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=4b75e5f3606c847f83d66831328dd996fe8f4603a5af2eab9c7af00edb1be001
 EXPECT=PASS
-REQUEST=protected-suite-invariant-test-hash-diagnostic
+REQUEST=protected-suite-invariant-failure-hash
