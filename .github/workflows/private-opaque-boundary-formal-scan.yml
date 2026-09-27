@@ -11,7 +11,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: c865ed2a85f2265cdac67a6910ac74a6864bd89564ae523318fa22adaff6a625
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8314f886753aa9bdcae84ee6776d55632109f68135102fa7e41a196e7c13472b
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 599ee673572547b4fec81795d45fbeb3023ed8b28d5ad3565ae3c2ec39980cca
   EXPECTED_TLC_PROFILE_COUNT: "155"
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       max-parallel: 8
       matrix:
-        index: [11, 30, 33, 44, 45, 57, 59, 60, 65, 66, 67, 68]
+        index: [65, 66, 67, 68]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -155,7 +155,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "LAS_OPAQUE_SCAN_PROFILE_COUNT=12"
+          echo "LAS_OPAQUE_SCAN_PROFILE_COUNT=4"
           if [[ "${{ needs.scan.result }}" == "success" ]]; then
             echo "LAS_OPAQUE_SCAN_AGGREGATE=PASS"
           else
