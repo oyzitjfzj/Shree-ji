@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: census-currentness-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 040daca3248e11981cd9f5a8d393500fef370f3978fb3cccc0a5342b772f1c17
+  REQUEST_MARKER: census-currentness-red-formatted
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d6946f1a3749e79d8448717fd5ebd1c9a85c3dff8aa55241ade9c4c8061cf628
 
 jobs:
   targeted:
