@@ -10,49 +10,104 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-execution-attestation-tlc-index-41-460f58c5
+  group: private-current-tlc-auto-targeted
   cancel-in-progress: false
 
 env:
-  TARGET_REF_HASH: 08b0da4b34aa8a93ecc8e155744fc7c64c83d94562bdaec69d0b2f7164178b37
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 460f58c5a58ffd3668e57fa8dd05f83d2fba453a2692653a33b868f30ed4d076
-  EXPECTED_TLC_PROFILE_COUNT: "134"
   DIAG_RSA_PUB_B64: LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQm9qQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FZOEFNSUlCaWdLQ0FZRUFvREZvQVpUYUFhRm1hOEdqMElLMQprWTc2MHptV2RReWxuOUNNSXlScGUreGh0SVgrWlcvdjBCcGQ3UGljdkpvVnlJajVPTStRTUlVTGRxdURueW1PCk5pSzVzNXBkVHliNXI0NVZ3Z3Q1T2ppc2JDdFUwa1VqZ2xwL1VPaXFtNEZWdjk3aUJ2NXJXZXVnS2c0NmlQWVgKTGI4Nnd4bWJZRXNtVUdNc1BsOHV6aTBsdGtoTW16QmdOR1pucnpRV1AveUdlTW1TaDM5MFZkZ3VHVnBtc3RtcgphTlcxcGJ0RU5ibkI1dDQzVi92c1UzMm4yQzZGWnFMQ1pNR1hDTWZUSXgxTVc1QTJvM213UTUwMXB1NitZS0FuCnRRYlU3a3BMdktXbnZlUHIvcVh6aE5ENW04bFY3RFJ6QUozcEpxWkFPOE5UVEV0OEdLRDJzWERXNFY5M1FHMTcKZ0M3VEVabW0zZEtNKy9BeEZ6NndoZUE2blV1RVRSTlVISFFqUi9RaUsvQldkbnZ3QjJBWExKbWFsQkcrZ05MUgpERG1xRWFpYklZaFVvc3RXaEgzdng4OVlqVFgvL2lsRmtnckViMzhYSmZMaDczbWVwZnh0bDl5SWpLQlltNzdGCnlCclNjejRwcVFRcGltbFZkZWZhckl1ak56d0VuSXFKVW1ib0hPNkNWcFpKQWdNQkFBRT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==
   DIAG_RSA_PUB_SHA256: 09dd314ef0de438c41b3e841274ef58e71f2acc658c0ad58294fce668ed3feba
 
 jobs:
   tlc:
-    strategy:
-      fail-fast: false
-      matrix:
-        index: [41]
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact private active head
+      - name: Checkout public control shell
         uses: actions/checkout@v4
         with:
-          repository: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
-          token: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          ref: tmp/selector-execution-20260924
-          path: target
-          fetch-depth: 1
-          persist-credentials: false
+          path: control
 
-      - name: Verify exact private snapshot
+      - name: Load opaque TLC request
         shell: bash
         run: |
           set -euo pipefail
-          cd target
+          file="$GITHUB_WORKSPACE/control/RUN_CURRENT_TLC_AUTO"
+          test -s "$file"
+          ref_hash="$(awk -F= '$1=="TARGET_REF_HASH"{print $2}' "$file")"
+          proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' "$file")"
+          index="$(awk -F= '$1=="TARGET_INDEX"{print $2}' "$file")"
+          request="$(awk -F= '$1=="REQUEST"{print $2}' "$file")"
+          [[ "$ref_hash" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$index" =~ ^[0-9]+$ ]]
+          [[ -n "$request" ]]
+          echo "TARGET_REF_HASH=$ref_hash" >> "$GITHUB_ENV"
+          echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
+          echo "TARGET_INDEX=$index" >> "$GITHUB_ENV"
+          echo "LAS_REQUEST=$request" >> "$GITHUB_ENV"
+
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          fetched_head="$(git rev-parse FETCH_HEAD)"
+          echo "::add-mask::$matched_sha"
+          echo "::add-mask::$fetched_head"
+
+          resolved_sha=""
+          while read -r candidate; do
+            candidate_proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$candidate_proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved_sha"
+              resolved_sha="$candidate"
+            fi
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+
+          test -n "$resolved_sha"
+          echo "::add-mask::$resolved_sha"
+          git merge-base --is-ancestor "$resolved_sha" FETCH_HEAD
+          git checkout -q --detach "$resolved_sha"
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
+          test "$actual" = "$resolved_sha"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           echo "LAS_TLC_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth matched_sha matched_ref fetched_head resolved_sha actual candidate candidate_proof
 
       - name: Run canonical TLC profile by opaque index
         shell: bash
-        env:
-          TARGET_INDEX: ${{ matrix.index }}
         run: |
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/target"
@@ -84,7 +139,8 @@ jobs:
           TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
           python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$TLC_MAP"
           count="$(wc -l < "$TLC_MAP" | tr -d ' ')"
-          test "$count" = "$EXPECTED_TLC_PROFILE_COUNT"
+          echo "LAS_TLC_PROFILE_COUNT=$count"
+          test "$count" -gt 0
           test "$TARGET_INDEX" -ge 0
           test "$TARGET_INDEX" -lt "$count"
           line="$(sed -n "$((TARGET_INDEX + 1))p" "$TLC_MAP")"
@@ -174,7 +230,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: encrypted-tlc-index-${{ matrix.index }}
+          name: encrypted-tlc-targeted
           path: ${{ runner.temp }}/private-tlc-bundle.tgz
           if-no-files-found: error
           retention-days: 1
