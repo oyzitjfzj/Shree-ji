@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-corrected-canonical-restriction-residency
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b15720f0ada2ab123492d598b9baa52ecce4584f40ba43a36c8dead8b0b92fac
+  REQUEST_MARKER: qrc-determination-source-integrity-reconstruction-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1398fb787ebf06b44234eab11994a06dbf2d815a19a300f1224eb39497b5592f
 
 jobs:
   targeted:
