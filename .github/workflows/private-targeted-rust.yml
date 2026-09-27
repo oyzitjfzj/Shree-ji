@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: determination-source-integrity-red-formatted
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4507d9155d98781744638a2c0b4cf5f81e072c78f9a8ff8efccf157b3ea4e9ec
+  REQUEST_MARKER: verify-determination-source-integrity-repair
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e3793fb8bc3d18bc0afafe91cffb7babc8e6b224f1c0bba4470330cd54249282
 
 jobs:
   targeted:
