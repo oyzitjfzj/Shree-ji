@@ -24,12 +24,15 @@ jobs:
           ref_hash="$(awk -F= '$1=="TARGET_REF_HASH"{print $2}' RUN_CURRENT_BOUNDARY)"
           proof="$(awk -F= '$1=="EXPECTED_PRIVATE_SNAPSHOT_PROOF"{print $2}' RUN_CURRENT_BOUNDARY)"
           expect="$(awk -F= '$1=="EXPECT"{print $2}' RUN_CURRENT_BOUNDARY)"
+          request="$(awk -F= '$1=="REQUEST"{print $2}' RUN_CURRENT_BOUNDARY)"
           [[ "$ref_hash" =~ ^[0-9a-f]{64}$ ]]
           [[ "$proof" =~ ^[0-9a-f]{64}$ ]]
           [[ "$expect" == "PASS" || "$expect" == "FAIL" ]]
+          [[ -n "$request" ]]
           echo "TARGET_REF_HASH=$ref_hash" >> "$GITHUB_ENV"
           echo "EXPECTED_PRIVATE_SNAPSHOT_PROOF=$proof" >> "$GITHUB_ENV"
           echo "EXPECTED_OUTCOME=$expect" >> "$GITHUB_ENV"
+          echo "LAS_REQUEST=$request" >> "$GITHUB_ENV"
 
       - name: Checkout exact hidden private revision
         shell: bash
@@ -95,7 +98,45 @@ jobs:
           echo "LAS_BOUNDARY_SNAPSHOT_PROOF=$actual_proof"
           unset PRIVATE_TOKEN auth matched_sha matched_ref fetched_head resolved_sha actual candidate candidate_proof
 
+      - name: Diagnose isolated composition formal profiles
+        if: env.LAS_REQUEST == 'composition-formal-profile-diagnostic'
+        shell: bash
+        env:
+          DIAG_RECIPIENT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUROVENDQWgyZ0F3SUJBZ0lVWnFTb1ZiaUpxNXNFUEd1WkxLSWh1c1ZJQWxJd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0tqRW9NQ1lHQTFVRUF3d2ZURUZUSUVWd2FHVnRaWEpoYkNCR2IzSnRZV3dnUkdsaFoyNXZjM1JwWXpBZQpGdzB5TmpBNU1qY3hOVEl3TlRGYUZ3MHlOakE1TWpneE5USXdOVEZhTUNveEtEQW1CZ05WQkFNTUgweEJVeUJGCmNHaGxiV1Z5WVd3Z1JtOXliV0ZzSUVScFlXZHViM04wYVdNd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUIKRHdBd2dnRUtBb0lCQVFEWExOWTVLUGI3RUVQd01nVm9oeENDREJMRENuK2Zjbng2K25NVEo5MDZkM1Vmc2hUUgoraHQvZlN2SThqYkJuZDFWRnJ4aGt1TmxCck5QOWhKMzVsMzdjNmtNRUdUUlNIUzBnVDNqOUtBYjNBZ2x6VFZZClZXbnBHT2xTc0xsbXNkbWZ3SDNEK29wdVk1MHFhOW04a3k4akNMQmtWZGlKZE54cElpem9vRFN4Ly80V0REc00KRzZrWE1FVGRXeGUwdTI0S1lIVjlnR2QzdXhoR3BXZkMxN043RGg4Z2MxUlMyYmZBRzNDQXRaM3Yrb1NYU0J1VApTYnB5MzNrT3QxTmtWc3dlMWZibkczcXdrK3J0RTN5YWFIcGcvNkZBcmpiZ3dBYWR0cXI1Q2E5MGRhS05WOTZ6ClRoblRBNmlhQ1FYS00yaDNjc1FrNUdBN29DbSs3U3JBeTRRVEFnTUJBQUdqVXpCUk1CMEdBMVVkRGdRV0JCUWcKSjVMMlgwYmE4UWM0cjgxTVR1SktGcytwSnpBZkJnTlZIU01FR0RBV2dCUWdKNUwyWDBiYThRYzRyODFNVHVKSwpGcytwSnpBUEJnTlZIUk1CQWY4RUJUQURBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFBYi8rcjBlMEJEClJVWWx2Wmt6OUZaQkhkcVdzaCtsTmNZaW5UODB6VEp2dWE5UW9kazlZKzhybWNrcjZWNXV5ejFITEczcFBXWisKYk9ISFRxMmlJRklGcnQrRnllaC9jdG50MlRvcGFBMTZYT3lXeXI4NjdZcGdRRkppZUtmUkFLejF0Q1dGbzV4cAoxbkZtSEY4SnprVmtGdWVMODZDQXRHOGs5eHBLWWk2SDNwQmRmMnN2ejY1V0phT2JUNXRYenRsOFpYWDBNRVFQCnhta1dCVGZuVzRpQ09sa1VzTmFhTHV3SmxpVm9IdnFVSTFxb3pLL1JBbE54UkpoNk1HQVl1NEpCQnYvZXJUQmMKSStBOUlINGpUZlR2cVFhNXBDamVyWE10ZnNDbzd6TCtqa2gyZTJEZ0FOUDZLTktxR2l4ekM5d3NaMVZOTitCawozQXBsbUQ5eks1VGIKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/private-target"
+          log="$RUNNER_TEMP/private-boundary.log"
+          tla_jar="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$tla_jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $tla_jar" | sha1sum --check --strict
+          cd "$root/spec/defence_evolution"
+          sany_cmd="$(sed -n '63p' "$root/tools/verify_current_boundary.sh")"
+          TLA_JAR="$tla_jar" bash -c "$sany_cmd" >"$log" 2>&1
+          idx=0
+          for line_no in 64 65 66 67; do
+            idx=$((idx + 1))
+            cmd="$(sed -n "${line_no}p" "$root/tools/verify_current_boundary.sh")"
+            started="$(date +%s)"
+            set +e
+            TLA_JAR="$tla_jar" bash -c "$cmd" >>"$log" 2>&1
+            rc=$?
+            set -e
+            ended="$(date +%s)"
+            echo "LAS_FORMAL_PROFILE_${idx}_RC=$rc"
+            echo "LAS_FORMAL_PROFILE_${idx}_SECONDS=$((ended - started))"
+          done
+          printf '%s' "$DIAG_RECIPIENT_CERT_B64" | base64 -d > "$RUNNER_TEMP/private-diag-recipient.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER \
+            -in "$log" \
+            -out "$RUNNER_TEMP/private-boundary.cms" \
+            "$RUNNER_TEMP/private-diag-recipient.pem"
+          rm -f "$log"
+
       - name: Run exact private boundary verifier
+        if: env.LAS_REQUEST != 'composition-formal-profile-diagnostic'
         shell: bash
         run: |
           set -euo pipefail
