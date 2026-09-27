@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-census-completeness-provenance-attacks
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a585030bfc0e4cd304ba05afb779e08e4f566482c974ac6dfec04abbf0ea0a22
+  REQUEST_MARKER: census-run-canonical-order-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ecaa072b930c91f9a8b15ec2364895fd1f5d51a0a9194fa9b1edd56d17c98cc9
 
 jobs:
   targeted:
