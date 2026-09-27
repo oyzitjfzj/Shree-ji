@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fb4e57f43ad9e914537dd2e193f5e819e7764db55412a62d7276b22d30ce2906
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e15b83c37687fbf57efdc6987a6d10cd6392bb5cd64acb85d114d42f4ba1b338
   REQUEST_MARKER: missing-result-red-rerun-1
 
 jobs:
