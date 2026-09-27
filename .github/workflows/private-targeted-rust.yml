@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 841903d4e13014c22fffc519db740d2e59f947210fa1ff0cb9b2a8c1d4bc250c
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 51f275592936a6bb250985e25d41ba80349c04d9550d022819a76a68cc5924fe
 
 jobs:
   targeted:
@@ -58,93 +58,41 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
           rustup component add --toolchain 1.98.1 rustfmt >/dev/null
 
-      - name: Diagnose private Rust gate opaquely
+      - name: Check private rustfmt
         shell: bash
         run: |
-          set +e
-          set -u
+          set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          fmt_log="$RUNNER_TEMP/fmt.log"
-          compile_log="$RUNNER_TEMP/compile.jsonl"
-          test_log="$RUNNER_TEMP/test.log"
+          log="$RUNNER_TEMP/fmt.log"
+          set +e
+          cargo +1.98.1 fmt --all -- --check >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_PRIVATE_TARGET_FMT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          exit "$rc"
 
-          cargo +1.98.1 fmt --all -- --check >"$fmt_log" 2>&1
-          fmt_rc=$?
+      - name: Compile private Rust tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/compile.jsonl"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run --message-format=json >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_PRIVATE_TARGET_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          exit "$rc"
 
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run --message-format=json >"$compile_log" 2>&1
-          compile_rc=$?
-
-          codes="$(python3 - "$compile_log" <<'PY'
-          import json, sys
-          codes=set()
-          with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
-              for line in f:
-                  try:
-                      obj=json.loads(line)
-                  except Exception:
-                      continue
-                  if obj.get("reason")!="compiler-message":
-                      continue
-                  msg=obj.get("message") or {}
-                  if msg.get("level")!="error":
-                      continue
-                  code=(msg.get("code") or {}).get("code")
-                  codes.add(code or "NO_CODE")
-          print(",".join(sorted(codes)) if codes else "NONE")
-          PY
-          )"
-
-          python3 - "$compile_log" <<'PY'
-          import hashlib, json, os, sys
-          root = os.path.abspath(os.path.join(os.environ["GITHUB_WORKSPACE"], "target"))
-          with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
-              for line in f:
-                  try:
-                      obj = json.loads(line)
-                  except Exception:
-                      continue
-                  if obj.get("reason") != "compiler-message":
-                      continue
-                  msg = obj.get("message") or {}
-                  if msg.get("level") != "error":
-                      continue
-                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
-                  spans = [x for x in (msg.get("spans") or []) if x.get("is_primary")]
-                  if not spans:
-                      print(f"LAS_PRIVATE_TARGET_ERROR_LOC=NO_SPAN:0:{code}")
-                      continue
-                  span = spans[0]
-                  path = span.get("file_name") or ""
-                  abs_path = os.path.abspath(os.path.join(root, path))
-                  try:
-                      rel = os.path.relpath(abs_path, root)
-                  except Exception:
-                      rel = path
-                  ph = hashlib.sha256(rel.encode()).hexdigest()
-                  line_no = int(span.get("line_start") or 0)
-                  mh = hashlib.sha256((msg.get("message") or "").encode()).hexdigest()
-                  print(f"LAS_PRIVATE_TARGET_ERROR_LOC={ph}:{line_no}:{code}:{mh}")
-          PY
-
-          test_rc=125
-          if [[ "$compile_rc" -eq 0 ]]; then
-            RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$test_log" 2>&1
-            test_rc=$?
-          fi
-
-          echo "LAS_PRIVATE_TARGET_FMT_RC=$fmt_rc"
-          echo "LAS_PRIVATE_TARGET_COMPILE_RC=$compile_rc"
-          echo "LAS_PRIVATE_TARGET_COMPILE_ERROR_CODES=$codes"
-          echo "LAS_PRIVATE_TARGET_TEST_RC=$test_rc"
-          echo "LAS_PRIVATE_TARGET_FMT_LOG_SHA256=$(sha256sum "$fmt_log" | awk '{print $1}')"
-          echo "LAS_PRIVATE_TARGET_COMPILE_LOG_SHA256=$(sha256sum "$compile_log" | awk '{print $1}')"
-          if [[ -s "$test_log" ]]; then
-            echo "LAS_PRIVATE_TARGET_TEST_LOG_SHA256=$(sha256sum "$test_log" | awk '{print $1}')"
-          fi
-
-          if [[ "$fmt_rc" -eq 0 && "$compile_rc" -eq 0 && "$test_rc" -eq 0 ]]; then
-            echo "LAS_PRIVATE_TARGET_RUST_RESULT=PASS"
-            exit 0
-          fi
-          echo "LAS_PRIVATE_TARGET_RUST_RESULT=FAIL"
-          exit 1
+      - name: Run private Rust tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/test.log"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_PRIVATE_TARGET_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          exit "$rc"
