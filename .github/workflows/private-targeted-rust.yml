@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e4d82dc87717da010906520f766a2e2d58c846b5097cf6e87c25f66daf454eac
-  REQUEST_MARKER: positive-census-evidence-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b5b04b91dc0cb1badd1ec4b3052cc38ecfc810cf4764cba99c785c1f0cc00e80
+  REQUEST_MARKER: formatted-positive-census-evidence-red
 
 jobs:
   targeted:
