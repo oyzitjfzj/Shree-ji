@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 54e1395363654262b7fee9e27bc1c93a60d7fc1181ff37ef2e06ccfe554ab1b2
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7df5169d6b8d4ff3fb348e4baca6087bfea1ab6af65d145777d9d7ffbbd78ab7
 
 jobs:
   targeted:
