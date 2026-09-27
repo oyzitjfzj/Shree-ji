@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 426b5a9384ebfb605cc02fe768c05656de0f6429b2f027276eda5b9e2a10ed57
-  REQUEST_MARKER: observe-semantic-positive-census-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d6a1936d0ba5f7c1178c7db32a159705321d5fe469bdfeca4bc1edcdd80a7c67
+  REQUEST_MARKER: verify-positive-census-repair
 
 jobs:
   targeted:
