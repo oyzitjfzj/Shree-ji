@@ -1,4 +1,4 @@
 TARGET_REF_HASH=c865ed2a85f2265cdac67a6910ac74a6864bd89564ae523318fa22adaff6a625
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=9bb72b1b63c8640af5c7c3b0fdd9d90836c637b34613e68ec1198e922136958f
-TARGET_INDEX=38
-REQUEST=candidate-evidence-census-isolation-probe
+TARGET_INDEX=40
+REQUEST=candidate-evidence-census-qualification-staleness-probe
