@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-qualification-restriction-determinations
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8ff9b2011ca2a6b28c4cbe6905c95b9f47ce6057c84f2bb8f678b9f7fcc57ab5
+  REQUEST_MARKER: verify-formatted-qualification-restriction-determinations
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 024564f9682804565babd5fccb8c3ad28037544a1fcf5a245041fff50e655c92
 
 jobs:
   targeted:
