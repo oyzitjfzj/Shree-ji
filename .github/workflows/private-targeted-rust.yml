@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: observe-formatted-census-run-order-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 08cd5887fef616ee3e217b1f2229267c6a0e22cd169a5790b344c07505111d0d
+  REQUEST_MARKER: verify-census-run-canonical-order-repair
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8314f886753aa9bdcae84ee6776d55632109f68135102fa7e41a196e7c13472b
 
 jobs:
   targeted:
