@@ -1,4 +1,4 @@
 TARGET_REF_HASH=c865ed2a85f2265cdac67a6910ac74a6864bd89564ae523318fa22adaff6a625
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=841903d4e13014c22fffc519db740d2e59f947210fa1ff0cb9b2a8c1d4bc250c
-TARGET_INDEX=47
-REQUEST=composition-capacity-current-census-head
+TARGET_INDEX=48
+REQUEST=composition-conflict-current-census-head
