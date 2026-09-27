@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: qualification-restriction-coverage-snapshot-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fec103c892e33f54bd4661a1d09aa727597f51fea295b38c15d6480dbc15e5ad
+  REQUEST_MARKER: qualification-restriction-coverage-snapshot-red-formatted
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 0cc3ef50ac406a1b9c95126c2b5b3160bafbd0dbd1d333c3b8b8bf4bdc2e904b
 
 jobs:
   targeted:
