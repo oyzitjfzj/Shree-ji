@@ -1,4 +1,5 @@
 name: Private exact single-file rustfmt repair
+# request: census-history-capacity-red
 
 on:
   push:
@@ -11,7 +12,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: c865ed2a85f2265cdac67a6910ac74a6864bd89564ae523318fa22adaff6a625
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: c299b9a5f5aee910ce9f73787c80bf1aba41cda60a2b3faec5e8230b76bb6944
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b1569f40ce148ac5d7f88abd47891d35b01ffdc6c8374a317dbcaf37b2875074
   EXPECTED_CHANGED_PATH_HASH: e93bb2dadc9d14151f9d08ae100d199810056b1438f7d3bdb54eba195db1d9e7
 
 jobs:
