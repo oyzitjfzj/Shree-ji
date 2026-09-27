@@ -1,0 +1,107 @@
+name: Private opaque formal diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_OPAQUE_FORMAL_DIAGNOSTIC"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: c865ed2a85f2265cdac67a6910ac74a6864bd89564ae523318fa22adaff6a625
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8314f886753aa9bdcae84ee6776d55632109f68135102fa7e41a196e7c13472b
+  EXPECTED_TLC_PROFILE_COUNT: "155"
+  TARGET_INDEX: "65"
+  DIAG_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURJekNDQWd1Z0F3SUJBZ0lVSlRyQ0tpampkUkRNZlVJQlZPOGJSUWJCclI4d0RRWUpLb1pJaHZjTkFRRUwKQlFBd0lURWZNQjBHQTFVRUF3d1dURUZUSUc5d1lYRjFaU0JtYjNKdFlXd2daR2xoWnpBZUZ3MHlOakE1TWpjeQpNekE1TUROYUZ3MHlOakE1TWpneU16QTVNRE5hTUNFeEh6QWRCZ05WQkFNTUZreEJVeUJ2Y0dGeGRXVWdabTl5CmJXRnNJR1JwWVdjd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUUMwQ3FTYXNHYjgKeGlhdTcwREw5L2dmZDdyQTRBWlVaWDB0NVFEeFY5S1lJYmwzdlFkWURpay84eXBvVmlpd1FZYUtoQU1uSlpDOApPeUh0c2hNRm0xU1hxVEpCSHBxRzJuSTF0d0EvMGhIVkpqYWVtU0xCYXp1akgzTndZVkdZSDBKdnpVcjk5dVRXCndJT0lDVHdaeVg5Wk9uTnpPeUZzMnFDSG90VEZFSk95SWRNMzhueHAreVZzQXFjRkFwTnhzRk1NVXZtSUJ4azYKcUVsdFJZNkphYTdSSmhCNU8yY09Vby9UNkl2amQ4TlpCT3NEek1vRndxRXJMWnBnNDBVdlhnbncxNmRkcWN0KwprNjdacW5IYnkyVE95Z0lzekZOS0wyZTNiRTVGUzhIWkdJa1JvTEhKNGJZaFo1Mmo2YVJDUFdzNVhxYVo4dEhlCnYvY0FZQndxMDRQRkFnTUJBQUdqVXpCUk1CMEdBMVVkRGdRV0JCU2s3NVRjRjJ4RWxKYzhsdy83MWF0L2gySHAKL1RBZkJnTlZIU01FR0RBV2dCU2s3NVRjRjJ4RWxKYzhsdy83MWF0L2gySHAvVEFQQmdOVkhSTUJBZjhFQlRBRApBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFDSWZmVm5XL0JvQmkxZDNDaDJBNExPT0llQlYwaDdYbTU2Cm5xWitGRENUTUd5eURuaTRBUk9zY085MzUyWFdaRDFZTGRyL3daZW5YelU2Y3BHVzJyUlhNMEN0eEh0VDUvOE8KTTBzNGNYT1ZTQWpZdlpVdHNHc1hYU1BUckc3ejZpK2czdjV3dHRKaFdPOHNUWFQ2RW16clpNc01nTDhvZ0JqbApwUFAxNVRTL2w3K0JXWjhDeFRHYk1tZmE4aXY1MDNqQ2JkVUVnZnByeS9zZlUweXByTUZKcHY0Z0xnQk9iSk8yCjZzOWFuOVpXbVdkbnNuZ2tFLzFZUGxGNU43a0hHV2c2ZENOVmxRd2JJUFV2cDViLzJXUElYbzYwcnEzOERoYWkKSi9YR2V1QWJsNkxjdTBJL3MzTGM2bG05bVlheGM5ZU1EZ0hHVkFrRDBBNDB1UjdTUm1IcgotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  CERT_FP: "D7:2C:13:8F:29:E5:78:2F:62:8F:B8:C8:D2:C1:83:39:F2:BA:C3:52:42:F2:2A:21:24:61:AA:6C:B6:D0:8A:83"
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"; cd "$root"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          while read -r _ ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then matched_ref="$ref"; break; fi
+          done < "$refs"
+          test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then resolved="$candidate"; break; fi
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+          test -n "$resolved"; echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(printf '%s' "$(git rev-parse HEAD)" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof
+
+      - name: Run and encrypt exact opaque diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-target"; cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" <<'PY'
+          from pathlib import Path
+          import re,sys
+          src=Path(sys.argv[1]).read_text()
+          m=re.search(r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',src,re.S)
+          if not m: raise SystemExit("map generator missing")
+          Path(sys.argv[2]).write_text(m.group(1)+"\n")
+          PY
+          map="$RUNNER_TEMP/map.tsv"; python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$map"
+          test "$(wc -l < "$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
+          record="$(sed -n "$((TARGET_INDEX + 1))p" "$map")"
+          IFS=$'\t' read -r cfg tla _d _e <<< "$record"
+          log="$RUNNER_TEMP/private.log"
+          set +e
+          (cd "$(dirname "$cfg")" && java -XX:+UseParallelGC -jar "$TLA_JAR" -workers auto -lncheck final -fp 0 -config "$(basename "$cfg")" "$(basename "$tla")") >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_OPAQUE_DIAG_INDEX=$TARGET_INDEX"
+          echo "LAS_OPAQUE_DIAG_RC=$rc"
+          printf '%s' "$DIAG_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
+          fp="$(openssl x509 -in "$RUNNER_TEMP/cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
+          test "$fp" = "$CERT_FP"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$log" -out "$RUNNER_TEMP/private.cms" "$RUNNER_TEMP/cert.pem"
+          rm -f "$log" "$map" "$RUNNER_TEMP/map.py" "$RUNNER_TEMP/cert.pem"
+          printf '%s\n' "$rc" > "$RUNNER_TEMP/rc"
+
+      - name: Upload encrypted diagnostic
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opaque-formal-diagnostic
+          path: ${{ runner.temp }}/private.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Preserve diagnostic failure state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/rc"
+          test "$(cat "$RUNNER_TEMP/rc")" -eq 0
