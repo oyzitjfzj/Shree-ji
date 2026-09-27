@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: qrc-stale-binding-mint-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5ff71724056125f6e2b9fa5b097d9b7351e10b779ee4fa73080a7da77f37c702
+  REQUEST_MARKER: qrc-stale-binding-mint-red-formatted
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ef12fe0ce0edac171b0d6f756dc2d8f5ba4618683d31940b2ee34a93c415f606
 
 jobs:
   targeted:
