@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f7d5b60f0823e9f25e204fea9281b050e83ac3ba16b215062ee8fe034f9ef005
-  REQUEST_MARKER: verify-missing-result-repair-clean-runner
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e4d82dc87717da010906520f766a2e2d58c846b5097cf6e87c25f66daf454eac
+  REQUEST_MARKER: positive-census-evidence-red
 
 jobs:
   targeted:
