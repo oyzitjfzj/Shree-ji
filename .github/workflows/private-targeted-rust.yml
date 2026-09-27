@@ -11,7 +11,7 @@ permissions:
 
 env:
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: e15b83c37687fbf57efdc6987a6d10cd6392bb5cd64acb85d114d42f4ba1b338
-  REQUEST_MARKER: missing-result-red-rerun-1
+  REQUEST_MARKER: missing-result-fmt-diagnostic-1
 
 jobs:
   targeted:
@@ -70,6 +70,17 @@ jobs:
           rc=$?
           set -e
           echo "LAS_PRIVATE_TARGET_FMT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          if [[ "$rc" -ne 0 ]]; then
+            cargo +1.98.1 fmt --all
+            git diff --numstat -- '*.rs' | while read -r add del rel; do
+              path_hash="$(printf '%s' "$rel" | sha256sum | awk '{print $1}')"
+              echo "LAS_PRIVATE_TARGET_FMT_FILE=$path_hash:$add:$del"
+            done
+            git diff --unified=0 -- '*.rs' | awk '
+              /^diff --git / { file=$4; sub(/^b\//, "", file); cmd="printf %s \"" file "\" | sha256sum | awk \'{print $1}\'"; cmd | getline hash; close(cmd) }
+              /^@@ / { print "LAS_PRIVATE_TARGET_FMT_HUNK=" hash ":" $2 ":" $3 }
+            '
+          fi
           exit "$rc"
 
       - name: Compile private Rust tests
