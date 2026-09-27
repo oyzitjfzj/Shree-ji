@@ -71,6 +71,8 @@ jobs:
           actual_proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           test "$actual_proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           echo "LAS_RUSTFMT_SNAPSHOT_PROOF=$actual_proof"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private-actual-sha"
+          chmod 600 "$RUNNER_TEMP/private-actual-sha"
           unset PRIVATE_TOKEN auth matched_sha matched_ref actual
 
       - name: Emit opaque rustfmt signature
@@ -101,3 +103,28 @@ jobs:
             git diff --unified=0 -- "$rel_path" |
               awk -v path_hash="$path_hash" '/^@@ / {print "LAS_RUSTFMT_HUNK=" path_hash ":" $2 ":" $3}'
           done
+
+          changed="$RUNNER_TEMP/rustfmt-changed-paths"
+          git diff --name-only > "$changed"
+          tar -czf "$RUNNER_TEMP/rustfmt-formatted.tar.gz" -T "$changed"
+          actual="$(cat "$RUNNER_TEMP/private-actual-sha")"
+          passphrase="$(printf 'LAS-RUSTFMT-EPHEMERAL:%s' "$actual" | sha256sum | awk '{print $1}')"
+          printf '%s' "$passphrase" > "$RUNNER_TEMP/rustfmt-passphrase"
+          chmod 600 "$RUNNER_TEMP/rustfmt-passphrase"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -pass file:"$RUNNER_TEMP/rustfmt-passphrase" \
+            -in "$RUNNER_TEMP/rustfmt-formatted.tar.gz" \
+            -out "$RUNNER_TEMP/rustfmt-formatted.enc"
+          echo "LAS_RUSTFMT_ENCRYPTED_SHA256=$(sha256sum "$RUNNER_TEMP/rustfmt-formatted.enc" | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/rustfmt-formatted.tar.gz" "$RUNNER_TEMP/rustfmt-passphrase" "$changed"
+          unset actual passphrase
+
+      - name: Upload encrypted formatted private Rust
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-rustfmt-formatted
+          path: ${{ runner.temp }}/rustfmt-formatted.enc
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
