@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ef0a83f9ae06d25cd2b72ad3d29b40f3fbed2112dae435b0f458a1f678ae5080
-  REQUEST_MARKER: verify-formatted-positive-census-repair
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 09bbb79fbc30070cbad1e93b92e9ed469a1c94e58887dd746a7b67f32cafd1a7
+  REQUEST_MARKER: verify-clean-positive-census-repair
 
 jobs:
   targeted:
