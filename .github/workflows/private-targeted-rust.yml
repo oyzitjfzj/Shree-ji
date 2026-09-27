@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: qrc-lifecycle-attacks-formatted
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e203964992656d97641e8bda081fb97cf459cfd3bd7152e3fe08dbdfdf411221
+  REQUEST_MARKER: qrc-stale-binding-mint-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5ff71724056125f6e2b9fa5b097d9b7351e10b779ee4fa73080a7da77f37c702
 
 jobs:
   targeted:
