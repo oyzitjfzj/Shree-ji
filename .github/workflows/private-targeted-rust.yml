@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: qrc-determination-source-integrity-reconstruction-red-formatted
+  REQUEST_MARKER: determination-source-integrity-red-formatted
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4507d9155d98781744638a2c0b4cf5f81e072c78f9a8ff8efccf157b3ea4e9ec
 
 jobs:
