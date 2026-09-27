@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-qrc-current-qualification-mint
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 098d54f20d23567e132c4bbf0df58bcf68144a1b579a8272183d68ffd99e57d0
+  REQUEST_MARKER: verify-formatted-qrc-current-qualification-mint
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e447732b11f328eb95fd514aa6007006b255c193a7210e3d23bdbdf0214983c1
 
 jobs:
   targeted:
