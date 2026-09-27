@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-census-history-capacity-repair
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 11ff9be5c18f98a151462274e7a10c413c62cadbca54480c432083065985d985
+  REQUEST_MARKER: census-evidence-ref-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ef338a364a0c9510f65de1dbd278aff46a2e240a4e1f8ae5baa7da854573a00f
 
 jobs:
   targeted:
