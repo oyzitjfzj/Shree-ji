@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: observe-formal-proof-assumption-semantic-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 76baf3eeb996853ccf84493c3426f20da6efcab3a5ee8b2c73a0bfdbf65bb07e
+  REQUEST_MARKER: red-formal-proof-assumption-validity-runtime-formatted
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: deb10c2e79e64918078416c0c369dd40640c76f3af20c6e281021618d2a119ee
 
 jobs:
   targeted:
