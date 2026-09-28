@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-currentness-fixture-refactor
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9650e22b501a88cd8d1edc23840e116b31fb0045fc796b1c693a9a6febca727d
+  REQUEST_MARKER: observe-edc-source-bound-snapshot-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8ae5c62dd8cfe0266e5c0a708c8e484c3466765230e261561022dcc83c06c3aa
 
 jobs:
   targeted:
