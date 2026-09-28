@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-reconstructed-claim-assessment-owner-chain
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 37758ff7bce631e28066575432cb046dfe5346fd32e9b00b2d21baeca6eafdc2
+  REQUEST_MARKER: verify-formatted-currentness-and-owner-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 685d6263dde8540d056ab9f4fc4041f5f126adaca15c01ed7186f830e2ce1841
 
 jobs:
   targeted:
