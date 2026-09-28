@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-compact-edc-snapshot-head
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 579eabfed7dee3cf2508dad77794ac01e12b7bd670bb09ea6119a1a4c5dc0287
+  REQUEST_MARKER: verify-edc-replay-capacity-attacks
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6ba2aa97b526dc2ce39f0fea2702c530d5f83fded54bca2b769b95cc72c67eee
 
 jobs:
   targeted:
