@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-generalized-edc-invariant-head
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4ff60eba6cfe0e7ae44bb24ac6f5a8b01f3856dfbc091a17002bdc391f7ab6ec
+  REQUEST_MARKER: verify-documentation-complete-edc-head
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 39eb52040db60e9365602736df506b7239a2159f5afce71ee032a31343195858
 
 jobs:
   targeted:
