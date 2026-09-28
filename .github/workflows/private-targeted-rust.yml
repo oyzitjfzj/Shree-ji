@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-authenticated-claim-evidence-warrants
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9869b247c8a6376c7494e04083e64b9a4328805a38c7c8421d9d66981fd0b026
+  REQUEST_MARKER: verify-formatted-authenticated-claim-evidence-warrants
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 224854883f7048e7a4853238e4d49230cee0ff9ab42771c0f0b74aaf02c9e486
 
 jobs:
   targeted:
