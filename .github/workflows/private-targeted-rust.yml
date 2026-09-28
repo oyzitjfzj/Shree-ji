@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-exact-authenticated-claim-evidence-warrants
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: da085de5384d089657d6e2c53b64a41a5ac37f3c58dadc29062802d3f4346df0
+  REQUEST_MARKER: red-semantic-exact-authenticated-claim-evidence-warrants
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a59568913298f160405c3d294714ac76949d41f61866b5f1cf3e669b6a14bb7e
 
 jobs:
   targeted:
