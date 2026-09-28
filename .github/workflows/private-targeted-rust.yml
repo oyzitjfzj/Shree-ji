@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-support-scoped-warrant-owner-binding
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 63f55cc3547181404a628d3d8865eddef11c2f89f33d45532e3fc36eca935d72
+  REQUEST_MARKER: verify-support-owner-opposite-direction-attack
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6050f4de92fb820c39491bf5183e13e1e41c3dd82759723de5707a3acd893206
 
 jobs:
   targeted:
