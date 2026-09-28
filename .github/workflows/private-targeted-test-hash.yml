@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-compact-source-binding-common-attack
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 30b497185b712b199c2476dabf1fa1aea93f5df7464f372c23c89ae62f157624
+  REQUEST_MARKER: verify-frame-isolated-edc-common-reauth-capacity
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6439e1bccb6cfb948737dee711ceed3b31f4d99e35cb7b779f9bf6011317e607
   EXPECTED_TEST_NAME_HASH: 85232e06d24f42d48181aa407102e9877ee7b03f08213ee7e057e4722f13a929
 
 jobs:
