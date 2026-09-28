@@ -1,5 +1,5 @@
-REQUEST=formal-proof-evidence-currentness-probe-generic-runner
+REQUEST=formal-proof-evidence-base-on-currentness-probe-head
 TARGET_REF_HASH=ed18246b31c60a9a1da564567aa7e1b227f87fc7e3ecbfb64b8905fc86beb061
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=8b5db71398022b39b9048291fae10d637ea0e8a678bf9712fd87fd950efe1253
 EXPECTED_TLC_PROFILE_COUNT=160
-TARGET_INDEX=66
+TARGET_INDEX=65
