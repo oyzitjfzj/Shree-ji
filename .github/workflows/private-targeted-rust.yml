@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: edc-separation-source-ownership-exact-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6f42eb7081d92c5b5d96179e567881bf8efe85b663a66f1b07a8d82f87d847f3
+  REQUEST_MARKER: verify-edc-separation-admission-green
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 76fd2951540bd53ddfa0eca0cf2c8db42c0850226434c3806821a36c5f1d39bf
 
 jobs:
   targeted:
