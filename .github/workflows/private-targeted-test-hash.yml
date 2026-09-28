@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-unauthenticated-rejection
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f1e0abb46ec80a130ae62e558077b3b326ec8fd6da2c6107a4c32142f45f9371
-  EXPECTED_TEST_NAME_HASH: 4bf2d9dcb5b3e15af1a7e50b7b670013c85f43ac41309853406f68c66074b745
+  REQUEST_MARKER: verify-edc-census-failure-propagation
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 57649bac8f901a1cdb419cebc6b67093e72eb2a304eb8a1723749531ef79d57f
+  EXPECTED_TEST_NAME_HASH: 8dc6b692c85cbe273748bae846403034460f2f1feebafd5e31e3b7f2712f2b48
 
 jobs:
   targeted:
