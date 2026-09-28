@@ -209,9 +209,9 @@ jobs:
           TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
             --output "$TLA_JAR" \
-            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" \
             >/dev/null 2>&1
-          echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $TLA_JAR" \
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" \
             | sha1sum --check --strict >/dev/null
 
           map_py="$RUNNER_TEMP/tlc-map.py"
