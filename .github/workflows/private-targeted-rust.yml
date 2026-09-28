@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-shared-census-test-world-cleanup
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fa419ab5b3bae5246ff4a8e56021b3e3db2ae09c3e18abe89b1944fb9cb7c83b
+  REQUEST_MARKER: verify-domain-parameterized-census-test-world
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 098838df8aab14abfad1901b7361a122bccbe1ab8967109e4a6f09aaa2fcabda
 
 jobs:
   targeted:
