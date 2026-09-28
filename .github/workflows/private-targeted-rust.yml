@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-non-support-warrant-owner-decoupling
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b76ea82fdd7377c088b3fe0077f4b05cacb0bb84f102de5339aa02a57c78eaed
+  REQUEST_MARKER: verify-support-scoped-warrant-owner-binding
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 63f55cc3547181404a628d3d8865eddef11c2f89f33d45532e3fc36eca935d72
 
 jobs:
   targeted:
