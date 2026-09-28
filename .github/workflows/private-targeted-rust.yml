@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-census-provenance-source-binding-propagation
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 536a02de12a8db3d156787738cfbba1c7e8cfd5a4382fd25fb6803d07248c361
+  REQUEST_MARKER: verify-census-provenance-source-binding-final
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 190bd1d44eea81726e606e63aaa4db8dbbd5f48ece89a33c40ec20ac59d810e1
 
 jobs:
   targeted:
