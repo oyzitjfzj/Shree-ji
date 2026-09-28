@@ -98,6 +98,89 @@ jobs:
           (cd "$(dirname "$cfg")" && java -XX:+UseParallelGC -jar "$TLA_JAR" -workers auto -lncheck final -fp 0 -config "$(basename "$cfg")" "$(basename "$tla")") >"$log" 2>&1
           rc=$?
           set -e
+
+          CFG_PATH="$cfg" LOG_PATH="$log" TLC_RC="$rc" python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+
+          log = Path(os.environ["LOG_PATH"]).read_text(encoding="utf-8", errors="replace")
+          cfg = Path(os.environ["CFG_PATH"]).read_text(encoding="utf-8", errors="replace")
+          rc = int(os.environ["TLC_RC"])
+
+          def names_for(kind):
+              target = {"inv": {"INVARIANT", "INVARIANTS"},
+                        "prop": {"PROPERTY", "PROPERTIES"}}[kind]
+              blockers = {"SPECIFICATION","CONSTANT","CONSTANTS","CONSTRAINT","CONSTRAINTS",
+                          "ACTION_CONSTRAINT","ACTION_CONSTRAINTS","INVARIANT","INVARIANTS",
+                          "PROPERTY","PROPERTIES","SYMMETRY","VIEW","CHECK_DEADLOCK",
+                          "ALIAS","POSTCONDITION"}
+              names=[]
+              active=False
+              for raw in cfg.splitlines():
+                  s=raw.strip()
+                  if not s or s.startswith("\\*"):
+                      continue
+                  parts=s.split()
+                  head=parts[0]
+                  if head in target:
+                      active=True
+                      parts=parts[1:]
+                  elif head in blockers:
+                      active=False
+                      continue
+                  if active:
+                      for token in parts:
+                          if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", token):
+                              names.append(token)
+              return names
+
+          inv=names_for("inv")
+          prop=names_for("prop")
+          kind="UNKNOWN"
+          ordinal=0
+          m=re.search(r"(?i)invariant\s+([A-Za-z_][A-Za-z0-9_]*)\s+is\s+violated", log)
+          if m:
+              kind="INVARIANT"
+              if m.group(1) in inv:
+                  ordinal=inv.index(m.group(1))+1
+          else:
+              m=re.search(r"(?i)(?:property|temporal property)\s+([A-Za-z_][A-Za-z0-9_]*)\s+is\s+violated", log)
+              if m:
+                  kind="TEMPORAL"
+                  if m.group(1) in prop:
+                      ordinal=prop.index(m.group(1))+1
+              elif "OutOfMemoryError" in log or "Java heap space" in log:
+                  kind="JVM_OOM"
+              elif "No space left on device" in log:
+                  kind="DISK_EXHAUSTION"
+              elif rc in (137,143) or re.search(r"(?m)^Killed\s*$", log):
+                  kind="PROCESS_KILLED"
+              elif re.search(r"(?i)Semantic errors:|\\*\\*\\* Errors:", log):
+                  kind="SEMANTIC"
+              elif re.search(r"(?i)TLC threw an unexpected exception|Exception in thread", log):
+                  kind="JAVA_OR_TLC_EXCEPTION"
+              elif rc == 0:
+                  kind="PASS"
+              elif re.search(r"(?i)Error:", log):
+                  kind="TLC_OTHER_ERROR"
+
+          generated=distinct=queue=0
+          progress=re.findall(
+              r"([0-9][0-9,]*) states generated, ([0-9][0-9,]*) distinct states found(?:, ([0-9][0-9,]*) states left on queue)?",
+              log)
+          if progress:
+              g,d,q=progress[-1]
+              generated=int(g.replace(",",""))
+              distinct=int(d.replace(",",""))
+              queue=int((q or "0").replace(",",""))
+
+          print(f"LAS_OPAQUE_DIAG_FAILURE_CLASS={kind}")
+          print(f"LAS_OPAQUE_DIAG_FAILED_CHECK_ORDINAL={ordinal}")
+          print(f"LAS_OPAQUE_DIAG_GENERATED={generated}")
+          print(f"LAS_OPAQUE_DIAG_DISTINCT={distinct}")
+          print(f"LAS_OPAQUE_DIAG_QUEUE={queue}")
+          PY
+
           echo "LAS_OPAQUE_DIAG_INDEX=$TARGET_INDEX"
           echo "LAS_OPAQUE_DIAG_RC=$rc"
           printf '%s' "$DIAG_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
