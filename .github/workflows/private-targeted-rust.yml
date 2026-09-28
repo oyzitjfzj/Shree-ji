@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: observe-edc-disposition-precedence-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a2c1171ef14c40836b6c7ab22ec60a7383dd342443cd450da50daf287bab86bb
+  REQUEST_MARKER: observe-formatted-edc-disposition-precedence-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ed9f29eba76dcb053d704103063aeb23698f497f8026132303aff4fe9bf7f963
 
 jobs:
   targeted:
