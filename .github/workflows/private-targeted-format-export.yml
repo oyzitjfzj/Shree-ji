@@ -113,6 +113,7 @@ jobs:
           rc=$?
           set -e
           echo "LAS_FORMATTED_CHECK_RC=$rc"
+          grep -oE 'error\[E[0-9]+\]' "$log" | sort -u | sed -E 's/error\[([^]]+)\]/LAS_FORMATTED_RUST_CODE_SAFE=\1/' || true
           grep -oE 'error\\[E[0-9]+\\]' "$log" \
             | sort -u \
             | sed -E 's/error\\[([^]]+)\\]/LAS_FORMATTED_RUST_ERROR_CODE=\\1/' || true
