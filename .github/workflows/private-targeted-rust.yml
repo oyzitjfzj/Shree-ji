@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-authenticated-claim-verifier
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d99e36f99e01f80121a864b0ed29e9bc3f825fd20e2759dbd72a4a592aa9064f
+  REQUEST_MARKER: verify-formatted-authenticated-claim-verifier
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9e526f321a38b1057e3a111605f3100eee49c2ccb97a39bbb8e2b2b7cd8a1c15
 
 jobs:
   targeted:
