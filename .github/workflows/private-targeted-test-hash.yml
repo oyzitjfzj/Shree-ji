@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: classify-edc-common-reauth-capacity
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 124ace3ccc28edea929df8f2cb66c1269af1bb245d4acba7d8813d6e67b619bd
+  REQUEST_MARKER: verify-heap-isolated-edc-common-reauth-capacity
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cfa9c4b3cd0aae4265d9a76e359a3bd054e422041ee7161ae466c191cd743e9c
   EXPECTED_TEST_NAME_HASH: 85232e06d24f42d48181aa407102e9877ee7b03f08213ee7e057e4722f13a929
 
 jobs:
