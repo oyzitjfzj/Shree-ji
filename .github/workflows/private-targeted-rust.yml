@@ -103,4 +103,14 @@ jobs:
             failed_count=$((failed_count + 1))
           done < <(sed -n -E 's/^test (.*) \.\.\. FAILED$/\1/p' "$log")
           echo "LAS_PRIVATE_TARGET_FAILED_TEST_COUNT=$failed_count"
+          if (( rc != 0 )); then
+            set +e
+            RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib common_cause_admission_binds_exact_census_owner_and_rejects_reconstruction -- --test-threads=1 >/dev/null 2>&1
+            common_rc=$?
+            RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib separation_admission_is_canonical_and_binds_exact_census_owner -- --test-threads=1 >/dev/null 2>&1
+            separation_rc=$?
+            set -e
+            echo "LAS_EDC_COMMON_CAUSE_FILTER_RC=$common_rc"
+            echo "LAS_EDC_SEPARATION_FILTER_RC=$separation_rc"
+          fi
           exit "$rc"
