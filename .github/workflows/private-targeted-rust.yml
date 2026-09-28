@@ -83,6 +83,11 @@ jobs:
           rc=$?
           set -e
           echo "LAS_PRIVATE_TARGET_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          grep -oE 'error\\[E[0-9]+\\]' "$log" | sort -u | sed -E 's/error\\[([^]]+)\\]/LAS_PRIVATE_TARGET_RUST_CODE=\\1/' || true
+          if grep -Fqi 'unresolved import' "$log"; then echo "LAS_PRIVATE_TARGET_CATEGORY_UNRESOLVED_IMPORT=YES"; fi
+          if grep -Fqi 'no method named' "$log"; then echo "LAS_PRIVATE_TARGET_CATEGORY_NO_METHOD=YES"; fi
+          if grep -Fqi 'cannot find' "$log"; then echo "LAS_PRIVATE_TARGET_CATEGORY_CANNOT_FIND=YES"; fi
+          if grep -Fqi 'could not compile' "$log"; then echo "LAS_PRIVATE_TARGET_CATEGORY_COULD_NOT_COMPILE=YES"; fi
           exit "$rc"
 
       - name: Run private Rust tests
