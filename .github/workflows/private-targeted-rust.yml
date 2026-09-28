@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-semantic-exact-authenticated-claim-assessments
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3b8e3951f1d18fa1265dd292c1e1f2dab97bf89f89a23a4040576ca75cb67b3a
+  REQUEST_MARKER: verify-authenticated-scoped-claim-assessments
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 239017d51a47246ebcd42e7bc85dd525d74b655120d8322437c3d1e7c05fda24
 
 jobs:
   targeted:
