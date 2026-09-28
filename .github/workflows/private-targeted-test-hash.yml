@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: classify-edc-currentness-snapshot-runtime
+  REQUEST_MARKER: classify-edc-snapshot-frontier-test
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: b5c96dfd38c04bad16293c3dcc5b24e8affb73c94712f18550d5aefbe52bd101
-  EXPECTED_TEST_NAME_HASH: 6bef7fdefcdf09cb30eed4fb36ed89589585478a07fb37be78170830c9b5a219
+  EXPECTED_TEST_NAME_HASH: cd36d244a7c1e8ae15bc3b8c2d6e0c8feb0f3292a0844dce44ff3ddcb1aa94e5
 
 jobs:
   targeted:
