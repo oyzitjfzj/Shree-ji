@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-domain-parameterized-census-world
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 20048d8a39aba345fac6527dd70e0d0b3ef43049b3166b51dafeb21ca9c111b0
+  REQUEST_MARKER: red-exact-authenticated-claim-evidence-warrants
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: da085de5384d089657d6e2c53b64a41a5ac37f3c58dadc29062802d3f4346df0
 
 jobs:
   targeted:
