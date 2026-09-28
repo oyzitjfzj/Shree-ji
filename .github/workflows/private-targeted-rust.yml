@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-split-separation-tests-formatted
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4d4ef80523f9707689ecf8d78b582ea6df7da91ef81887283fa643f107b73bb7
+  REQUEST_MARKER: observe-edc-disposition-precedence-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a2c1171ef14c40836b6c7ab22ec60a7383dd342443cd450da50daf287bab86bb
 
 jobs:
   targeted:
