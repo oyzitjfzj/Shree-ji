@@ -1,3 +1,3 @@
-REQUEST=verify-edc-formal-baseline-before-runtime
-EXPECTED_PRIVATE_SNAPSHOT_PROOF=9daae29132b0ac2d2a5c04db2bca6a6236a3fbea7ea261456b6ded0aafac60b1
-TARGET_INDEX=62
+REQUEST=verify-integrated-custody-profile
+EXPECTED_PRIVATE_SNAPSHOT_PROOF=edab3d61f6bbfe333ab13d70358f992a7355176d4489fe051fb9ac7aebf9e3aa
+TARGET_INDEX=65
