@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-frame-isolated-edc-common-reauth-capacity
+  REQUEST_MARKER: verify-frame-isolated-edc-separation-reauth-capacity
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6439e1bccb6cfb948737dee711ceed3b31f4d99e35cb7b779f9bf6011317e607
-  EXPECTED_TEST_NAME_HASH: 85232e06d24f42d48181aa407102e9877ee7b03f08213ee7e057e4722f13a929
+  EXPECTED_TEST_NAME_HASH: d91b1fda479cf08090f161d709101dc26ca740b8e89035250703d88c842fe9fc
 
 jobs:
   targeted:
