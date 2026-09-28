@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-split-claim-assessment-registry-attack-matrix
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 64b516ba905b6f1971818ccc348cf6242f5523227bf73defa336254cc695429d
+  REQUEST_MARKER: verify-formatted-split-claim-assessment-registry-attacks
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 51ad4103c08002f8d100fe945d43c900a32ba6d6415a0dfd219ded169940f10e
 
 jobs:
   targeted:
