@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: edc-separation-diagnostic
+  REQUEST_MARKER: edc-separation-diagnostic-v2
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 76fd2951540bd53ddfa0eca0cf2c8db42c0850226434c3806821a36c5f1d39bf
   EXPECTED_TEST_NAME_HASH: 6bef7fdefcdf09cb30eed4fb36ed89589585478a07fb37be78170830c9b5a219
 
@@ -86,6 +86,12 @@ jobs:
           set -e
           echo "LAS_TARGET_TEST_RC=$rc"
           echo "LAS_TARGET_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          if grep -Fqi 'overflowed its stack' "$log"; then echo "LAS_TARGET_STACK_OVERFLOW=YES"; fi
+          if grep -Fqi 'SIGABRT' "$log"; then echo "LAS_TARGET_SIGABRT=YES"; fi
+          if grep -Fqi 'signal: 6' "$log"; then echo "LAS_TARGET_SIGNAL6=YES"; fi
+          if grep -Fqi "process didn't exit successfully" "$log"; then echo "LAS_TARGET_PROCESS_ABORT=YES"; fi
+          if grep -Fqi 'panicked at' "$log"; then echo "LAS_TARGET_PANIC_PRESENT=YES"; fi
+          if grep -Fqi 'assertion' "$log"; then echo "LAS_TARGET_ASSERTION_PRESENT=YES"; fi
           panic="$(grep -m1 -E 'panicked at ' "$log" || true)"
           if [[ -n "$panic" ]]; then
             location="$(printf '%s' "$panic" | grep -oE '[^[:space:]]+:[0-9]+:[0-9]+' | tail -1 || true)"
