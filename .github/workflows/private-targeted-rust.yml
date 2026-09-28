@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-strengthened-edc-formal-head-rust
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 601db74c390b386d393473d333b2067528fad53289769f5ace03b88cf7108459
+  REQUEST_MARKER: verify-edc-separation-provenance-exact-head
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 47a35294bc24456bc403f72941edc3c15379381e813f6afe8ac9e2b05841f2bc
 
 jobs:
   targeted:
