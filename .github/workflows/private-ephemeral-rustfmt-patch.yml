@@ -19,7 +19,7 @@ jobs:
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
           PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          EXPECTED_PRIVATE_SNAPSHOT_PROOF: 220974be824675dd850a22ff834a5baf0ac78d16b0d7fbaa5bce93465fb8a140
+          EXPECTED_PRIVATE_SNAPSHOT_PROOF: c58c7c3e8ae7c2699d83c9ef5e9352ecd0cf60e8f4923a83caaaef2999e8ae18
         run: |
           set -euo pipefail
           echo "::add-mask::$PRIVATE_REPOSITORY"
@@ -61,6 +61,7 @@ jobs:
             src/defence_evolution/mod.rs \
             src/defence_evolution/evidence_dependence_common_cause.rs \
             src/defence_evolution/evidence_dependence_common_cause_tests.rs \
+            src/defence_evolution/evidence_verifier.rs \
             > "$RUNNER_TEMP/rustfmt.patch"
           test -s "$RUNNER_TEMP/rustfmt.patch"
           printf '%s' "$RECIPIENT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
