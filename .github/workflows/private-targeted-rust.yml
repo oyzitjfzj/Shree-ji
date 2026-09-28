@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: edc-trust-role-separation-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: bab67983ba733eb13190926a8c8b6f3cb84c82a26e9e33d745bb069f6026236c
+  REQUEST_MARKER: edc-trust-role-separation-red-formatted
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3061677746e017212644e499b7bdd1e453529ef31e6623cf84477cb5740e2d3f
 
 jobs:
   targeted:
