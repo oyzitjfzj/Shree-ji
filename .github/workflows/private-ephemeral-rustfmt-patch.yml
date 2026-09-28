@@ -59,12 +59,14 @@ jobs:
           cargo +1.98.1 fmt --all
           git diff --unified=0 --no-ext-diff -- \
             src/defence_evolution/mod.rs \
+            src/defence_evolution/candidate_evidence_census.rs \
             src/defence_evolution/evidence_dependence_common_cause.rs \
             src/defence_evolution/evidence_dependence_common_cause_tests.rs \
             src/defence_evolution/evidence_verifier.rs \
             | grep '^@@' | cut -d' ' -f2-3 | sed 's/^/LAS_FMT_HUNK=/'
           git diff --no-ext-diff --binary -- \
             src/defence_evolution/mod.rs \
+            src/defence_evolution/candidate_evidence_census.rs \
             src/defence_evolution/evidence_dependence_common_cause.rs \
             src/defence_evolution/evidence_dependence_common_cause_tests.rs \
             src/defence_evolution/evidence_verifier.rs \
