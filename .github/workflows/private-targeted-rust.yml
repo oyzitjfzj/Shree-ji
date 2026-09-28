@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-claim-local-assessment-currentness
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: c4e4fb4e8f497576c49dcb7aeb8464874a61ddb33e12072c6148b153d92eb8b8
+  REQUEST_MARKER: red-semantic-claim-local-assessment-currentness
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 40dd3344803877299108b89e9dcf5ec859a25bd07bcbc4acdd99bdafce1cf85f
 
 jobs:
   targeted:
