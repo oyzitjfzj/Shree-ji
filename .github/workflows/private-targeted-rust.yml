@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-documentation-complete-edc-head
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 39eb52040db60e9365602736df506b7239a2159f5afce71ee032a31343195858
+  REQUEST_MARKER: red-claim-evidence-trust-role-separation
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 28b070269bd6b59622281dd1dfc8b74d933d83dd7435614101394aeb1338061f
 
 jobs:
   targeted:
