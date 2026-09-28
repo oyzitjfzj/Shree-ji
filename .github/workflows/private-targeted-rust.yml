@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-edc-disposition-attacks
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cc709a4f11cc107042a1ed2f9d3aaba7abb647c321b2f17783b62287d9b038c8
+  REQUEST_MARKER: verify-rustfmt-edc-disposition-attacks
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 0cbda14d5dc5ba664c0f247e0c6164c1bb805cab89a6738a07a7f87dea93fe10
 
 jobs:
   targeted:
