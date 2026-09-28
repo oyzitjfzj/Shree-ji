@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-support-owner-opposite-attack
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3de08dbedcef931af429b627e7d4b142779497cfe5743909a1ecd46f7f7272f9
+  REQUEST_MARKER: red-resident-claim-evidence-invariant-audits
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: faee1fd27b8f62096981ac7095a711e7dd6d8942a4d2f401f0bd77ff23e77c5a
 
 jobs:
   targeted:
