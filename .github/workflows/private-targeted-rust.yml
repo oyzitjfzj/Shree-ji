@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-sticky-determination-source-integrity-latch
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3e01d124f5bd0eecdf6c2a2aa11797d81e49df28ab66ab7dbad3c88cf9c3cf93
+  REQUEST_MARKER: determination-registry-substitution-red-formatted
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a8146d7588c9e8c70f802f930b9c9e92f0334348eec81360a35ed4779dd47525
 
 jobs:
   targeted:
