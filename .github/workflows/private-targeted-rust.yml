@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: edc-census-owner-binding-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 220974be824675dd850a22ff834a5baf0ac78d16b0d7fbaa5bce93465fb8a140
+  REQUEST_MARKER: edc-census-owner-binding-formatted-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6936f28d0ba093aa318ec03983f0ea18a2603a2eb9a9344e352eb731f1b477a6
 
 jobs:
   targeted:
