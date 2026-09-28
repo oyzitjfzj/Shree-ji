@@ -1,5 +1,5 @@
-REQUEST=formal-proof-assumption-validity-final-runtime-head
+REQUEST=formal-proof-assumption-isolation-final-runtime-head
 TARGET_REF_HASH=4198bc824a87c494f0d27a2e97c8ddd7e4232fdf6fd0ee9be0be47b5912045f9
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=3b075954cb7c025b4aec555ef3bf474cc43c8e0b8f90b86c31190ada6d5a99a3
 EXPECTED_TLC_PROFILE_COUNT=168
-TARGET_INDEX=67
+TARGET_INDEX=69
