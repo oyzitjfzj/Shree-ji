@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-authenticated-scoped-assessments
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 52aff8670032a27c5ef40d64e704f322459ae286eb957f870995ba888f9e9f6b
+  REQUEST_MARKER: red-source-bound-claim-assessment-registry
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8eabf354631d84cbbf3fea686b9ae01ea89234079ec443a96f231406da82429b
 
 jobs:
   targeted:
