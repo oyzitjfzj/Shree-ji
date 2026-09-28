@@ -121,6 +121,17 @@ jobs:
             exit 0
           fi
 
+          fail_count=0
+          while IFS= read -r failed; do
+            [[ -n "$failed" ]] || continue
+            fail_count=$((fail_count + 1))
+            echo "LAS_PRE_TLC_FAILED_CHECK_HASH=$(printf '%s' "$failed" | sha256sum | awk '{print $1}')"
+          done < <(sed -n 's/^FAILED_CHECK=//p' "$private_log")
+          echo "LAS_PRE_TLC_FAILED_CHECK_COUNT=$fail_count"
+          pass_count="$(sed -n 's/^PASS=//p' "$private_log" | tail -n 1 || true)"
+          fail_total="$(sed -n 's/^FAIL=//p' "$private_log" | tail -n 1 || true)"
+          [[ -z "$pass_count" ]] || echo "LAS_PRE_TLC_PASS_COUNT=$pass_count"
+          [[ -z "$fail_total" ]] || echo "LAS_PRE_TLC_FAIL_COUNT=$fail_total"
           echo "LAS_PRE_TLC_STAGE_RESULT=FAIL"
           exit 1
 
