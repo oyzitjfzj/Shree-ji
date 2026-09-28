@@ -142,6 +142,10 @@ jobs:
           echo "LAS_FAST_FMT_CHECK_RC=$fmt_check_rc"
           echo "LAS_FAST_FMT_APPLY_RC=$fmt_apply_rc"
           echo "LAS_FAST_FMT_CHANGED_COUNT=$(wc -l <"$bundle/rustfmt-paths.txt" | tr -d ' ')"
+          while IFS= read -r fmt_path; do
+            [[ -n "$fmt_path" ]] || continue
+            echo "LAS_FAST_FMT_PATH_HASH=$(printf '%s' "$fmt_path" | sha256sum | awk '{print $1}')"
+          done < "$bundle/rustfmt-paths.txt"
           echo "LAS_FAST_CHECK_ALL_FEATURES_RC=$check_all_rc"
           echo "LAS_FAST_TESTS_ALL_FEATURES_RC=$tests_all_rc"
           echo "LAS_CLIPPY_DEFAULT_SHA256=$(sha256sum "$bundle/default.log" | awk '{print $1}')"
