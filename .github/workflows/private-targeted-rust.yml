@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: census-buffer-independence-formatted
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 570de79bbd22556797419fa0a92f8f19d0d020a90177cd5d45da5ed24c3d9f47
+  REQUEST_MARKER: verify-qrc-custody-integrated-head
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: edab3d61f6bbfe333ab13d70358f992a7355176d4489fe051fb9ac7aebf9e3aa
 
 jobs:
   targeted:
