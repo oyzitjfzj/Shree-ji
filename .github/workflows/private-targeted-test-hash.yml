@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: edc-separation-diagnostic-v2
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 76fd2951540bd53ddfa0eca0cf2c8db42c0850226434c3806821a36c5f1d39bf
+  REQUEST_MARKER: edc-separation-stack-diagnostic-v3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4c369e48bf1e527e57e14d96b8aeb2c6ec42240b5099cc4a027d9c89d3163a01
   EXPECTED_TEST_NAME_HASH: 6bef7fdefcdf09cb30eed4fb36ed89589585478a07fb37be78170830c9b5a219
 
 jobs:
