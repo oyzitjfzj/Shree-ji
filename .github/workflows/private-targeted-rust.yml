@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-assumption-validity-runtime-formatted
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: deb10c2e79e64918078416c0c369dd40640c76f3af20c6e281021618d2a119ee
+  REQUEST_MARKER: verify-formal-proof-assumption-trust-auth-green
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e2857295a56c62dc7cd7092b24f4eac64494f94fc137d332a985fae7b41684db
 
 jobs:
   targeted:
