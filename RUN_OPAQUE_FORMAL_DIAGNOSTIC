@@ -1,2 +1,3 @@
-qrc base opaque diagnostic
-request=6
+REQUEST=verify-qrc-base-after-determination-registry-lineage-repair
+EXPECTED_PRIVATE_SNAPSHOT_PROOF=a60d0717a031d121b48b1de5e21b7b2676a6cc6a20247895c3d8c5214de276f7
+TARGET_INDEX=71
