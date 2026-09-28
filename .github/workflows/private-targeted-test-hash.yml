@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-frame-isolated-edc-separation-reauth-capacity
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6439e1bccb6cfb948737dee711ceed3b31f4d99e35cb7b779f9bf6011317e607
-  EXPECTED_TEST_NAME_HASH: d91b1fda479cf08090f161d709101dc26ca740b8e89035250703d88c842fe9fc
+  REQUEST_MARKER: measure-edc-footprint
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 68304309d29d859f096ab1a29d8a9a52843de1cbeea2354f3e1683df0f6d1c9a
+  EXPECTED_TEST_NAME_HASH: d0b908185d9dec79c237906791efcc3313dd0c039387efd08d117a9ffec81e3f
 
 jobs:
   targeted:
@@ -81,11 +81,12 @@ jobs:
 
           log="$RUNNER_TEMP/target-test.log"
           set +e
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib "$selected" -- --exact --test-threads=1 >"$log" 2>&1
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib "$selected" -- --exact --nocapture --test-threads=1 >"$log" 2>&1
           rc=$?
           set -e
           echo "LAS_TARGET_TEST_RC=$rc"
           echo "LAS_TARGET_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          grep '^LAS_EDC_SIZE_' "$log" || true
           if grep -Fqi 'overflowed its stack' "$log"; then echo "LAS_TARGET_STACK_OVERFLOW=YES"; fi
           if grep -Fqi 'SIGABRT' "$log"; then echo "LAS_TARGET_SIGABRT=YES"; fi
           if grep -Fqi 'signal: 6' "$log"; then echo "LAS_TARGET_SIGNAL6=YES"; fi
