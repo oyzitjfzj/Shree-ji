@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formal-proof-assumption-owner
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 0a35c31951e7a2be29d38d679b11f462e05a87f42bae2635f4825caf2db1103d
+  REQUEST_MARKER: verify-formatted-formal-proof-assumption-validity-runtime
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: df9cfaa4d44a0c46195531e370c69c45b5b86f4b1f0baf7ca24ac1aab347580b
 
 jobs:
   targeted:
