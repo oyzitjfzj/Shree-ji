@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-currentness-and-owner-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 685d6263dde8540d056ab9f4fc4041f5f126adaca15c01ed7186f830e2ce1841
+  REQUEST_MARKER: verify-exact-claim-assessment-owner-chain
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7a9f0536c56c1e750851a0e05b165641c2ee6b5c267f2cbae68f67cc3286c492
 
 jobs:
   targeted:
