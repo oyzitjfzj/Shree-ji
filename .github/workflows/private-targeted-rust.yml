@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-hardened-claim-currentness-precedence
+  REQUEST_MARKER: red-hardened-claim-local-assessment-currentness
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: bcaf5494b319597893a06ddf395974fbc033884b26e0d04fc0a68230b5978497
 
 jobs:
