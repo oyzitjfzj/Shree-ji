@@ -34,23 +34,38 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            fetch -q --depth=200 origin '+refs/heads/*:refs/remotes/origin/*'
+          refs="$RUNNER_TEMP/private-target-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
           actual=""
           while IFS= read -r oid; do
             [[ -n "$oid" ]] || continue
             proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
             if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$actual"
               actual="$oid"
-              break
             fi
-          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
           test -n "$actual"
+          git merge-base --is-ancestor "$actual" FETCH_HEAD
           echo "::add-mask::$actual"
           git checkout -q --detach "$actual"
           test -z "$(git status --porcelain --untracked-files=no)"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           echo "LAS_PRIVATE_TARGET_SNAPSHOT_PROOF=$proof"
-          unset PRIVATE_TOKEN auth
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref actual proof
 
       - name: Install exact Rust
         shell: bash
