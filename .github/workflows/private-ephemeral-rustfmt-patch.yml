@@ -62,7 +62,7 @@ jobs:
             src/defence_evolution/evidence_dependence_common_cause.rs \
             src/defence_evolution/evidence_dependence_common_cause_tests.rs \
             src/defence_evolution/evidence_verifier.rs \
-            | grep '^@@' | sed -E 's/^(@@ [^@]+ @@).*/LAS_FMT_HUNK=\\1/'
+            | grep '^@@' | cut -d' ' -f2-3 | sed 's/^/LAS_FMT_HUNK=/'
           git diff --no-ext-diff --binary -- \
             src/defence_evolution/mod.rs \
             src/defence_evolution/evidence_dependence_common_cause.rs \
