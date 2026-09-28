@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-common-cause-provenance-head
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 473efc90331b8e1a58dba81d70a0dcaa1d49b0c0833377ed4efc079b1de3c9a1
+  REQUEST_MARKER: verify-edc-provenance-guards-current-head
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ee01044dea522e665b9b12f9553975860b9066b875ede6db8670c16322235ee0
 
 jobs:
   targeted:
