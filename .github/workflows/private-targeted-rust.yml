@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-determination-registry-lineage-repair
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3d7736d92fc24bef4556b73b1fb99792bb3408058982d17979b1f18dd23b29dc
+  REQUEST_MARKER: verify-formatted-determination-registry-lineage-repair
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a60d0717a031d121b48b1de5e21b7b2676a6cc6a20247895c3d8c5214de276f7
 
 jobs:
   targeted:
