@@ -1,3 +1,3 @@
-REQUEST=claim-assessment-missing-result-support-red
-EXPECTED_PRIVATE_SNAPSHOT_PROOF=9214b24cd26cbccbce57cdb5de8f763f6368d10f05c1dbd661cc347eca86d782
+REQUEST=claim-assessment-missing-result-support-green
+EXPECTED_PRIVATE_SNAPSHOT_PROOF=cf49d43c1176e697b6dda14677a108bb609a7f06688bee1515137ef8debb7800
 TARGET_INDEX=43
