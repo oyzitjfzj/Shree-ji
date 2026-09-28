@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-source-bound-immutable-warrant-registry
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 17f115ed431c24a44acb68a98eaeb6b0c3dff47f194eeff7cb61cd62b187be74
+  REQUEST_MARKER: verify-formatted-source-bound-warrant-registry
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8b0cc93c3c8d45b8a40555c359651813a527eed05b896448048383350d40ad39
 
 jobs:
   targeted:
