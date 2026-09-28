@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-invariant-audit-after-helper-generalization
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4ff60eba6cfe0e7ae44bb24ac6f5a8b01f3856dfbc091a17002bdc391f7ab6ec
-  EXPECTED_TEST_NAME_HASH: 0e0bb7909cc5d6d4216db0b3197e09f5155b57c018c8918e673ab74d10880da5
+  REQUEST_MARKER: diagnose-claim-assessment-registry-exact-test
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: bc0bb93e4d446e93be6e8245b666e31360b95ff1019a5a038481e531874b5676
+  EXPECTED_TEST_NAME_HASH: 185e38afd3677f6c1c5cf1686a5f6feef41eb98515a91e65f0e5d5d89021ea74
 
 jobs:
   targeted:
