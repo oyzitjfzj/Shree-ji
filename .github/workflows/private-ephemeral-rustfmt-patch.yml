@@ -19,7 +19,7 @@ jobs:
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
           PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          EXPECTED_PRIVATE_SNAPSHOT_PROOF: d9e7bcf27d3cce9e35c053befaa6d9c1e73d0970fae10d5c11012048f6f962a9
+          EXPECTED_PRIVATE_SNAPSHOT_PROOF: 885cdc474246a8b59d248c9ddd3f38fef3d54c611118d2ab1293c6d85f59f5f0
         run: |
           set -euo pipefail
           echo "::add-mask::$PRIVATE_REPOSITORY"
@@ -57,6 +57,12 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
           rustup component add --toolchain 1.98.1 rustfmt >/dev/null
           cargo +1.98.1 fmt --all
+          git diff --unified=0 --no-ext-diff -- \
+            src/defence_evolution/mod.rs \
+            src/defence_evolution/evidence_dependence_common_cause.rs \
+            src/defence_evolution/evidence_dependence_common_cause_tests.rs \
+            src/defence_evolution/evidence_verifier.rs \
+            | grep '^@@' | sed -E 's/^(@@ [^@]+ @@).*/LAS_FMT_HUNK=\\1/'
           git diff --no-ext-diff --binary -- \
             src/defence_evolution/mod.rs \
             src/defence_evolution/evidence_dependence_common_cause.rs \
