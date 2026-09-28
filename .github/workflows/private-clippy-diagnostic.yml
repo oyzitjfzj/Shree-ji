@@ -167,6 +167,46 @@ jobs:
             fi
             lint="$(grep -m1 -oE 'clippy::[A-Za-z0-9_-]+' "$log" || true)"
             [[ -z "$lint" ]] || echo "LAS_CLIPPY_${key}_LINT=$lint"
+
+            CLIPPY_VARIANT_KEY="$key" CLIPPY_LOG="$log" python3 - <<'PY'
+          import hashlib, os, re
+          from pathlib import Path
+
+          key = os.environ["CLIPPY_VARIANT_KEY"]
+          lines = Path(os.environ["CLIPPY_LOG"]).read_text(
+              encoding="utf-8", errors="replace"
+          ).splitlines()
+          findings = []
+          for index, line in enumerate(lines):
+              match = re.match(r"\s*-->\s+(.+):(\d+):(\d+)\s*$", line)
+              if not match:
+                  continue
+              path, line_no, col_no = match.groups()
+              lint = ""
+              for nearby in lines[index : min(len(lines), index + 16)]:
+                  lint_match = re.search(r"clippy::[A-Za-z0-9_-]+", nearby)
+                  if lint_match:
+                      lint = lint_match.group(0)
+                      break
+              if not lint:
+                  continue
+              path_hash = hashlib.sha256(path.encode()).hexdigest()
+              findings.append((path_hash, line_no, col_no, lint))
+
+          seen = set()
+          ordinal = 0
+          for finding in findings:
+              if finding in seen:
+                  continue
+              seen.add(finding)
+              ordinal += 1
+              path_hash, line_no, col_no, lint = finding
+              print(
+                  f"LAS_CLIPPY_{key}_FINDING_{ordinal}="
+                  f"{path_hash}:{line_no}:{col_no}:{lint}"
+              )
+          print(f"LAS_CLIPPY_{key}_FINDING_COUNT={ordinal}")
+          PY
           done
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/clippy-private.tgz" .
