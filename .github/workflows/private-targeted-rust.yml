@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-claim-owner-bindings-after-interface-fix
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7af675879b78938f3903b681039c151a9eaa345b147d70f3ad350cc211e8e599
+  REQUEST_MARKER: verify-claim-owner-bindings-rustfmt-clean
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 375c80309afc72640ed96861744b7c81c2b119045f389e89e3eae49dbdad2346
 
 jobs:
   targeted:
