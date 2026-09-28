@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formal-proof-assumption-verifier-attacks-exact-branch
-  TARGET_REF_HASH: 4198bc824a87c494f0d27a2e97c8ddd7e4232fdf6fd0ee9be0be47b5912045f9
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d38428cb1be7133f8dacf5d6f9851964621c6bed521c5b8fb97ba55660304d36
+  REQUEST_MARKER: red-formal-proof-evidence-trust-auth-roles
+  TARGET_REF_HASH: 7b471966444844a972317463fd449d9eb7a56a45e17ac2bd7fb2a4fbe095ae5f
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7c2a66964d2c34da437c914325ee447b1dd2ebc954f1833b43b1034ffc8347f3
 
 jobs:
   targeted:
