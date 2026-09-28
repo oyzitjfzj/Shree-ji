@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-separation-stack-safe-green
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4c369e48bf1e527e57e14d96b8aeb2c6ec42240b5099cc4a027d9c89d3163a01
+  REQUEST_MARKER: verify-edc-separation-heap-isolated-green
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 01080bb5e3c548ffa292d4b6c1af5188de321ddc5dac0dd556b797774aa647d3
 
 jobs:
   targeted:
