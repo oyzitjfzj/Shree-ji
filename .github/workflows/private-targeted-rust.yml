@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-current-head-claim-assessment-currentness
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: aeb4aee939a254a4124425c734793bfd5c9028d8d0c47c41691a7497c04e5eb4
+  REQUEST_MARKER: red-reconstructed-claim-assessment-owner-chain
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 37758ff7bce631e28066575432cb046dfe5346fd32e9b00b2d21baeca6eafdc2
 
 jobs:
   targeted:
