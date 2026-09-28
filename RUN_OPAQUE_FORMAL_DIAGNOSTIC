@@ -1,3 +1,3 @@
-REQUEST=red-edc-census-bound-snapshot-clean-state-tuple
-EXPECTED_PRIVATE_SNAPSHOT_PROOF=1a60c2f6646cce13a516473bab6436890aa2134b2bf8ebeb3d1934055b44eaf5
+REQUEST=verify-census-bound-edc-snapshot-formal
+EXPECTED_PRIVATE_SNAPSHOT_PROOF=8af126bbd46ed9b61ecb90328d5dc9701b910b74908ef2380f2bb0ff373b98b6
 TARGET_INDEX=62
