@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-qrc-custody-integrated-head
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: edab3d61f6bbfe333ab13d70358f992a7355176d4489fe051fb9ac7aebf9e3aa
+  REQUEST_MARKER: edc-trust-role-separation-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: bab67983ba733eb13190926a8c8b6f3cb84c82a26e9e33d745bb069f6026236c
 
 jobs:
   targeted:
