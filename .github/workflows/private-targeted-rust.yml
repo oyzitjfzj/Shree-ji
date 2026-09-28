@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-verifier-isolation-head
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 07b8a85f9fe0c81fb1865947c426d942af2c12241da5e501920b576494fcaf83
+  REQUEST_MARKER: verify-formatted-edc-verifier-isolation-head
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 533a4d214e419812e21d49ce2d8c971697e5ff53aba0ce99177eca9314644612
 
 jobs:
   targeted:
