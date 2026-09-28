@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-frame-isolated-current-head
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6439e1bccb6cfb948737dee711ceed3b31f4d99e35cb7b779f9bf6011317e607
+  REQUEST_MARKER: verify-current-edc-instrumented-head
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 68304309d29d859f096ab1a29d8a9a52843de1cbeea2354f3e1683df0f6d1c9a
 
 jobs:
   targeted:
