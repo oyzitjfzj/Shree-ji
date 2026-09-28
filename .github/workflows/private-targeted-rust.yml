@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-edc-separation-provenance-head
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 029b906cc1008e762944b4cb528ee245abd9dea142fbc18d60bd94f45a9eb57e
+  REQUEST_MARKER: verify-edc-current-head-after-provenance-probe
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5d70821a03ab07203d6abce7b7b243f9a5af33fa3f749875fa9de345ef0d9a22
 
 jobs:
   targeted:
