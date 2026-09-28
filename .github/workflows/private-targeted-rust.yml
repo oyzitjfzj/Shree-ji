@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-resident-claim-evidence-invariant-audits
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f7c7d7e9fcea200fce78cab91fb771e4c72344b6f75201593607f7e131d0eab7
+  REQUEST_MARKER: verify-formatted-resident-claim-evidence-invariant-audits
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 23eccd8c24a3ce4016449aa2ef398d56574770ab020e2b4bdfcf9ff13ad53351
 
 jobs:
   targeted:
