@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: attack-edc-disposition-fail-closed-semantics
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 269b63af810a43d60ec1a42e4730982fc0cb9a511eaf7cdb99f88bdeb0c4e03f
+  REQUEST_MARKER: verify-formatted-edc-disposition-attacks
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cc709a4f11cc107042a1ed2f9d3aaba7abb647c321b2f17783b62287d9b038c8
 
 jobs:
   targeted:
