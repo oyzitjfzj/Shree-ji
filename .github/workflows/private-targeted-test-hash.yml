@@ -1,0 +1,99 @@
+name: Private targeted test by opaque hash
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-targeted-test-hash.yml"
+
+permissions:
+  contents: read
+
+env:
+  REQUEST_MARKER: edc-separation-diagnostic
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 76fd2951540bd53ddfa0eca0cf2c8db42c0850226434c3806821a36c5f1d39bf
+  EXPECTED_TEST_NAME_HASH: 6bef7fdefcdf09cb30eed4fb36ed89589585478a07fb37be78170830c9b5a219
+
+jobs:
+  targeted:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact hidden private head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=250 origin '+refs/heads/*:refs/remotes/origin/*'
+          actual=""
+          while IFS= read -r oid; do
+            [[ -n "$oid" ]] || continue
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              actual="$oid"
+              break
+            fi
+          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          test -n "$actual"
+          echo "::add-mask::$actual"
+          git checkout -q --detach "$actual"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_TARGET_TEST_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth
+
+      - name: Run exact hidden test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          list="$RUNNER_TEMP/test-list"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --list >"$list" 2>&1
+          selected=""
+          while IFS= read -r line; do
+            case "$line" in
+              *": test")
+                name="${line%: test}"
+                suffix="${name##*::}"
+                h="$(printf '%s' "$suffix" | sha256sum | awk '{print $1}')"
+                if [[ "$h" = "$EXPECTED_TEST_NAME_HASH" ]]; then
+                  test -z "$selected"
+                  selected="$name"
+                fi
+                ;;
+            esac
+          done < "$list"
+          rm -f "$list"
+          test -n "$selected"
+          echo "::add-mask::$selected"
+
+          log="$RUNNER_TEMP/target-test.log"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib "$selected" -- --exact --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_TARGET_TEST_RC=$rc"
+          echo "LAS_TARGET_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          panic="$(grep -m1 -E 'panicked at ' "$log" || true)"
+          if [[ -n "$panic" ]]; then
+            location="$(printf '%s' "$panic" | grep -oE '[^[:space:]]+:[0-9]+:[0-9]+' | tail -1 || true)"
+            if [[ -n "$location" ]]; then
+              pathpart="${location%:*:*}"
+              rest="${location#"$pathpart":}"
+              echo "LAS_TARGET_PANIC_PATH_HASH=$(printf '%s' "$pathpart" | sha256sum | awk '{print $1}')"
+              echo "LAS_TARGET_PANIC_LINECOL=$rest"
+            fi
+          fi
+          exit 0
