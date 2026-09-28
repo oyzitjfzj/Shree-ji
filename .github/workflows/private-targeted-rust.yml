@@ -96,4 +96,11 @@ jobs:
           rc=$?
           set -e
           echo "LAS_PRIVATE_TARGET_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          failed_count=0
+          while IFS= read -r test_name; do
+            [[ -n "$test_name" ]] || continue
+            echo "LAS_PRIVATE_TARGET_FAILED_TEST_SHA256=$(printf '%s' "$test_name" | sha256sum | awk '{print $1}')"
+            failed_count=$((failed_count + 1))
+          done < <(sed -n -E 's/^test (.*) \.\.\. FAILED$/\1/p' "$log")
+          echo "LAS_PRIVATE_TARGET_FAILED_TEST_COUNT=$failed_count"
           exit "$rc"
