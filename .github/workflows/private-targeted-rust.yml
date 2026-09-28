@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-source-bound-immutable-warrant-registry
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3a15b5fa514d0180397cb17a16b4007e4592ba82925da481156da991176c79d1
+  REQUEST_MARKER: red-semantic-source-bound-warrant-registry
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 81f715c253b907dcc9c754a490c524624c5cdfad35b4bd51b4d21f7416d1f521
 
 jobs:
   targeted:
