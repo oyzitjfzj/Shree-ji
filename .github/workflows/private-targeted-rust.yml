@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-assumption-trust-roles
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 30396bb22272b3277373413ab7ae4fc6ba9c3cd2a43833fc4b20fc2cc6ebb5b7
+  REQUEST_MARKER: red-formal-proof-assumption-validity-runtime
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5781d736978449737dcb300469b6001e765bc87eb263b6a916df7994eb6257ed
 
 jobs:
   targeted:
