@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-resident-invariant-audit-green
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6375a4b6d73d271fba3475ee0e48e902c9a6632d6a3fd1edc46d295477b0d022
+  REQUEST_MARKER: verify-edc-invariant-audit-after-helper-generalization
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4ff60eba6cfe0e7ae44bb24ac6f5a8b01f3856dfbc091a17002bdc391f7ab6ec
   EXPECTED_TEST_NAME_HASH: 0e0bb7909cc5d6d4216db0b3197e09f5155b57c018c8918e673ab74d10880da5
 
 jobs:
