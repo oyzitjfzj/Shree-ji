@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-rustfmt-clean-edc-currentness-snapshots
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b5c96dfd38c04bad16293c3dcc5b24e8affb73c94712f18550d5aefbe52bd101
+  REQUEST_MARKER: verify-edc-compact-snapshot-head
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 03dc64744229ce46489fed2022898324250a319ce51f61a868921e9fe58b9b83
 
 jobs:
   targeted:
