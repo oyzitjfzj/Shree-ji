@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-support-owner-opposite-direction-attack
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6050f4de92fb820c39491bf5183e13e1e41c3dd82759723de5707a3acd893206
+  REQUEST_MARKER: verify-formatted-support-owner-opposite-attack
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3de08dbedcef931af429b627e7d4b142779497cfe5743909a1ecd46f7f7272f9
 
 jobs:
   targeted:
