@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-bounded-claim-registry
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 596c81015df672ed3d8cb0fb26cb28575562455c58a560da4948e636bd7911a3
+  REQUEST_MARKER: verify-shared-receiver-owned-census-test-world
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6e5ab3aa02eb573841f6200141c12d88971f7e943d49a80955cc5d7447be82a1
 
 jobs:
   targeted:
