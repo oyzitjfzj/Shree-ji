@@ -1,3 +1,3 @@
-REQUEST=verify-edc-canonical-profile-current-head
-EXPECTED_PRIVATE_SNAPSHOT_PROOF=5d70821a03ab07203d6abce7b7b243f9a5af33fa3f749875fa9de345ef0d9a22
+REQUEST=verify-edc-common-provenance-canonical-current-head
+EXPECTED_PRIVATE_SNAPSHOT_PROOF=ee01044dea522e665b9b12f9553975860b9066b875ede6db8670c16322235ee0
 TARGET_INDEX=62
