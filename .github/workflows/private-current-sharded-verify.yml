@@ -14,16 +14,17 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec8549d81919146ca4a6c590ae0acad8597bc424ce183c3f0db9e752c4597525
-  EXPECTED_VERIFIER_BLOB: 9a5d693b83a47f9f9aef1f8a266049e8fd8e0c65
-  EXPECTED_TLC_PROFILE_COUNT: "129"
+  TARGET_REF_HASH: b577ca9e7ecab0860b60be4baceb21ff635a30d04ad87849c57673e4b0946f20
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 39eb52040db60e9365602736df506b7239a2159f5afce71ee032a31343195858
+  EXPECTED_VERIFIER_BLOB: 9f4b3b02c936d5af877f0cfe7c1ebc46f4bb5774
+  EXPECTED_TLC_PROFILE_COUNT: "158"
   TLC_SHARD_COUNT: "32"
 
 jobs:
   pre_tlc:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact private active head
+      - name: Checkout exact hidden private revision
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -40,17 +41,40 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            fetch -q --depth=1 origin refs/heads/work/assurance-core
-          git checkout -q --detach FETCH_HEAD
 
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          resolved_sha=""
+          while read -r candidate; do
+            candidate_proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$candidate_proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved_sha"
+              resolved_sha="$candidate"
+            fi
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+
+          test -n "$resolved_sha"
+          echo "::add-mask::$resolved_sha"
+          git merge-base --is-ancestor "$resolved_sha" FETCH_HEAD
+          git checkout -q --detach "$resolved_sha"
           actual="$(git rev-parse HEAD)"
-          echo "::add-mask::$actual"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
           git checkout -q -B verify-target "$actual"
-          unset PRIVATE_TOKEN auth
+          unset PRIVATE_TOKEN auth matched_ref resolved_sha actual candidate candidate_proof
 
           echo "LAS_PRE_TLC_SNAPSHOT_PROOF=$proof"
           echo "LAS_PRE_TLC_VERIFIER_BLOB=$EXPECTED_VERIFIER_BLOB"
@@ -109,7 +133,7 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact private active head
+      - name: Checkout exact hidden private revision
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -126,16 +150,39 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
-            fetch -q --depth=1 origin refs/heads/work/assurance-core
-          git checkout -q --detach FETCH_HEAD
 
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          resolved_sha=""
+          while read -r candidate; do
+            candidate_proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$candidate_proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved_sha"
+              resolved_sha="$candidate"
+            fi
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+
+          test -n "$resolved_sha"
+          echo "::add-mask::$resolved_sha"
+          git merge-base --is-ancestor "$resolved_sha" FETCH_HEAD
+          git checkout -q --detach "$resolved_sha"
           actual="$(git rev-parse HEAD)"
-          echo "::add-mask::$actual"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
-          unset PRIVATE_TOKEN auth
+          unset PRIVATE_TOKEN auth matched_ref resolved_sha actual candidate candidate_proof
 
           echo "LAS_TLC_SHARD_SNAPSHOT_PROOF=$proof"
 
