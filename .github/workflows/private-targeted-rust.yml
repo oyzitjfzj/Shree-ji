@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-claim-assessment-owner-chain
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: aa3de88ad291b9540ef3f2ea791936bbd94d7eca5d6f6a03635ba1eb487fb19c
+  REQUEST_MARKER: verify-exact-claim-owner-bindings-formatted
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f6eacd81b1c4935fe1456443f7792ef0bfd75676401551fea71bdc2994e0118b
 
 jobs:
   targeted:
