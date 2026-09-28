@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-separation-provenance-conflict
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 47a35294bc24456bc403f72941edc3c15379381e813f6afe8ac9e2b05841f2bc
+  REQUEST_MARKER: verify-formatted-edc-separation-provenance-conflict
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 029b906cc1008e762944b4cb528ee245abd9dea142fbc18d60bd94f45a9eb57e
   EXPECTED_TEST_NAME_HASH: c71967c12b66312ff0322093c18b0f7a60c54837de5871e13514fcfbed6b0232
 
 jobs:
