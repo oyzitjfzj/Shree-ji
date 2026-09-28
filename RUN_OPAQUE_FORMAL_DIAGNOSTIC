@@ -1,3 +1,3 @@
-REQUEST=verify-edc-separation-provenance-formal-current-head
-EXPECTED_PRIVATE_SNAPSHOT_PROOF=029b906cc1008e762944b4cb528ee245abd9dea142fbc18d60bd94f45a9eb57e
-TARGET_INDEX=62
+REQUEST=verify-edc-provenance-targeted-profile
+EXPECTED_PRIVATE_SNAPSHOT_PROOF=5d70821a03ab07203d6abce7b7b243f9a5af33fa3f749875fa9de345ef0d9a22
+TARGET_INDEX=63
