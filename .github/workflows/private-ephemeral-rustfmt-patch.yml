@@ -19,7 +19,7 @@ jobs:
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
           PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          EXPECTED_PRIVATE_SNAPSHOT_PROOF: c58c7c3e8ae7c2699d83c9ef5e9352ecd0cf60e8f4923a83caaaef2999e8ae18
+          EXPECTED_PRIVATE_SNAPSHOT_PROOF: d9e7bcf27d3cce9e35c053befaa6d9c1e73d0970fae10d5c11012048f6f962a9
         run: |
           set -euo pipefail
           echo "::add-mask::$PRIVATE_REPOSITORY"
@@ -67,6 +67,36 @@ jobs:
           printf '%s' "$RECIPIENT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$RUNNER_TEMP/rustfmt.patch"             -out "$RUNNER_TEMP/rustfmt.patch.cms"             "$RUNNER_TEMP/cert.pem"
           echo "LAS_FMT_PATCH_SHA256=$(sha256sum "$RUNNER_TEMP/rustfmt.patch" | awk '{print $1}')"
+
+      - name: Diagnose formatted private compile and encrypt log
+        shell: bash
+        env:
+          RECIPIENT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVPekNDQXFPZ0F3SUJBZ0lVZk10RytLRnp5bjg3SFV4Sjlzczk4cThGMTBZd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0xURXJNQ2tHQTFVRUF3d2lURUZUSUVWRVF5QmxjR2hsYldWeVlXd2djblZ6ZEdadGRDQnlaV05sYVhabApjakFlRncweU5qQTVNamd3TXpJNE5EQmFGdzB5TmpBNU1qa3dNekk0TkRCYU1DMHhLekFwQmdOVkJBTU1Ja3hCClV5QkZSRU1nWlhCb1pXMWxjbUZzSUhKMWMzUm1iWFFnY21WalpXbDJaWEl3Z2dHaU1BMEdDU3FHU0liM0RRRUIKQVFVQUE0SUJqd0F3Z2dHS0FvSUJnUUNyNTRlZkxsdDBxYm1jbjFlbXNrbUtoZzdxY0Jhalo2cWRqMmRtR1NzcwpudE0ycVAxbDBFVGhxYUhsazd5U3BrQzJObDFDeDJybys2Rm5GSUEzNW4rcVdRY3c0ZEdXelNFM25vNEd1TVVDCmVOME9NZERoSU1ua2JhN2RIRy9Qcis2UTArTVBydWNPUG4zUXllODd0eU43RVlZZnRnMkxlSlNHbW9NZ2lGc2EKSE5IY3NoL0huMlUwalpNTk1jMmdvS294MkN2RFovcTJaQmRYUEt2QXp6Ung1SU9kQmJScXJuK051bWpGQTU5QQp4VmV4ZDNBS3MzTmN6NkF4Sko4TmhEckdULzFqckZRUVMwTmJpM0RZVUg1eWxxb0lpbFBrVXZTSmFWc3Ewc09KCkE5RHp0Q0wvOVFHdFZad3FkcGdtN3NVSDJvUTJCWm80TzhCOGVncVZ5SU9tWkl5NVhqTDZzMXpyRFZmbGdPNW0Kcnl5L1l1RHpLYjNuQ3NvdEZjaHlMV3BwTkV5bkVJK3Z6dDV0c0RuRlFFSmlPTjUxNURqOUdCZzNDWjVTOVFpeAptek84ZjNhRE9mME0vMlNzZmorZGtwc1d6ZHEybll2SnRTZTduV1N2cWdwYjBzZzlsTFd4T3ZSdmFvZzZPZW1ECkJTU2src1pjczRCMWxGWEFUWmgzc1NzQ0F3RUFBYU5UTUZFd0hRWURWUjBPQkJZRUZFcmFYYStVYW5IdXU5My8KWG05R0pJWXVFTUxxTUI4R0ExVWRJd1FZTUJhQUZFcmFYYStVYW5IdXU5My9YbTlHSklZdUVNTHFNQThHQTFVZApFd0VCL3dRRk1BTUJBZjh3RFFZSktvWklodmNOQVFFTEJRQURnZ0dCQUhZaWNFRUYybExwZHhSK0NNKzVvN05xClBvYWFFM2JlVVJycEkyMkgvZ25NNkJTU25rVzBJdnZEbzVHWFFhdFB1L0gyTm9BakxoTFpYNTdXL1lDdGdzNHgKbjFiSHNra1NzQi9UbmcxelA3NUVpc0E3RXVEd01QVFlMeXVLYmdZeGZTMjlSTHliWUE5ak1Lc21Za0lvZEF0YQpLS082MFFQRFVLRnl2WUJrSHN1WFdGclhDNXI2NXpxYzVGaGJqaDVTTlRKcDdZYjFTZTA5ZW15a1FWNWh6ZWlnCmR2d2oycjRCNVJtekk3ZUlmQWRxYU9sWVg1N3NqbTNlRkZUV0lHaGVvT2FSaFN1UFhVZzl0NkYvTVIySnZ6MHYKdjlvL3RILzA4S3hGY3pHbTFjTTF4L0NiLy9CT3I3RkdjWHphRG1yRVFzWUVSbk96Sm9KTjM5WGVXaWNHUEduTwozNGNXbzJXMDlweTBJclpIdEFRNG13Y1JueDdnWkd6NzE5NVBGSkxmUVA3a1JvV29NOWJNK1hPVUdMNjl0Qi9JClZIVFNXdmRYT0llVTV3MEVGblBSQXlRem9kVXpUazhQcUZqT1dJYkl5Skd1MWdBNWVLNkZTSFVYdXo4N0RKRjIKbVFIeWpWamRrQm5CbEFhQVBVcktSK0UrS0xFQkxabFNwYTBiQjhqTHRnPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          log="$RUNNER_TEMP/formatted-compile.log"
+          set +e
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run --message-format=json >"$log" 2>&1
+          rc=$?
+          set -e
+          printf '%s' "$RECIPIENT_CERT_B64" | base64 -d > "$RUNNER_TEMP/compile-cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER \
+            -in "$log" \
+            -out "$RUNNER_TEMP/formatted-compile.cms" \
+            "$RUNNER_TEMP/compile-cert.pem"
+          echo "LAS_FMT_COMPILE_RC=$rc"
+          echo "LAS_FMT_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/compile-cert.pem" "$log"
+
+      - name: Upload encrypted formatted compile diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-formatted-compile
+          path: ${{ runner.temp }}/formatted-compile.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
 
       - name: Upload encrypted patch
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
