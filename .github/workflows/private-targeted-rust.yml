@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-cec-source-fence-green
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: c8c27af746dd8dc6b894000120ac6a455550389605507a2ef5771a6b102b05e8
+  REQUEST_MARKER: edc-census-owner-binding-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 220974be824675dd850a22ff834a5baf0ac78d16b0d7fbaa5bce93465fb8a140
 
 jobs:
   targeted:
