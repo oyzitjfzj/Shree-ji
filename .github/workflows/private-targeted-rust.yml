@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-all-conflict-family-resident-invariant-audits
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 23dcd8909642b993acbe79f3259c2e524167f3a3efe6471c0e71199d5158ce5a
+  REQUEST_MARKER: red-candidate-provenance-source-bound-currentness
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9d7bcdcba691577699f1eeb8a386d1e30725ec6a9c9c4ab511a1bf4a3f2a016f
 
 jobs:
   targeted:
