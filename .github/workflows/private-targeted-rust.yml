@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: determination-registry-substitution-red-formatted
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a8146d7588c9e8c70f802f930b9c9e92f0334348eec81360a35ed4779dd47525
+  REQUEST_MARKER: verify-determination-registry-lineage-repair
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3d7736d92fc24bef4556b73b1fb99792bb3408058982d17979b1f18dd23b29dc
 
 jobs:
   targeted:
