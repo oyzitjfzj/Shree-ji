@@ -19,7 +19,7 @@ jobs:
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
           PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4fe00fbd464bbbc698deb3e78db6f8c747187b2735e26b23d152e2e8db592e49
+          EXPECTED_PRIVATE_SNAPSHOT_PROOF: 278376e00a74c11eaaced68a3fce8f09bc002671c8e8ef5748e552379a57b051
         run: |
           set -euo pipefail
           echo "::add-mask::$PRIVATE_REPOSITORY"
