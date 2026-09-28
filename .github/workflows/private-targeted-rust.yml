@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-claim-local-assessment-currentness
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f3b46d3c76c1f7e43cce8e48343c198bc4df2a46fe66ccd230f3426cce7c2929
+  REQUEST_MARKER: verify-current-head-claim-assessment-currentness
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: aeb4aee939a254a4124425c734793bfd5c9028d8d0c47c41691a7497c04e5eb4
 
 jobs:
   targeted:
