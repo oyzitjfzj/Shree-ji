@@ -14,7 +14,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ec6b2b5c9230bc99be76624ee1de930731132b9c9be32b904bcd421b92fabac3
+  TARGET_REF_HASH: b577ca9e7ecab0860b60be4baceb21ff635a30d04ad87849c57673e4b0946f20
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 39eb52040db60e9365602736df506b7239a2159f5afce71ee032a31343195858
 
 jobs:
   clippy:
@@ -36,15 +37,39 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin refs/heads/work/assurance-core
-          git checkout -q --detach FETCH_HEAD
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          resolved_sha=""
+          while read -r candidate; do
+            candidate_proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$candidate_proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved_sha"
+              resolved_sha="$candidate"
+            fi
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+          test -n "$resolved_sha"
+          git merge-base --is-ancestor "$resolved_sha" FETCH_HEAD
+          git checkout -q --detach "$resolved_sha"
+
           actual="$(git rev-parse HEAD)"
           echo "::add-mask::$actual"
           printf '%s' "$actual" > "$RUNNER_TEMP/private_snapshot_sha"
           proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
           echo "LAS_CLIPPY_SNAPSHOT_PROOF=$proof"
           test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
-          unset PRIVATE_TOKEN auth
+          unset PRIVATE_TOKEN auth matched_ref resolved_sha candidate candidate_proof actual
 
       - name: Run strict Clippy and encrypt diagnostics
         shell: bash
@@ -123,6 +148,26 @@ jobs:
           echo "LAS_CLIPPY_LINUX_SHA256=$(sha256sum "$bundle/linux.log" | awk '{print $1}')"
           echo "LAS_CLIPPY_ROOT_FFI_SHA256=$(sha256sum "$bundle/root-ffi.log" | awk '{print $1}')"
           echo "LAS_CLIPPY_ALL_FEATURES_SHA256=$(sha256sum "$bundle/all-features.log" | awk '{print $1}')"
+
+          for variant in default linux root-ffi all-features; do
+            log="$bundle/$variant.log"
+            key="$(printf '%s' "$variant" | tr '[:lower:]-' '[:upper:]_')"
+            first_error="$(grep -m1 '^error:' "$log" || true)"
+            if [[ -n "$first_error" ]]; then
+              normalized="$(printf '%s' "$first_error" | sed -E 's#(/[^ ]+)+#<PATH>#g')"
+              echo "LAS_CLIPPY_${key}_FIRST_ERROR_HASH=$(printf '%s' "$normalized" | sha256sum | awk '{print $1}')"
+            fi
+            arrow="$(grep -m1 -E '^[[:space:]]*-->[[:space:]]+.*:[0-9]+:[0-9]+' "$log" || true)"
+            if [[ -n "$arrow" ]]; then
+              loc="$(printf '%s' "$arrow" | sed -E 's/^[[:space:]]*-->[[:space:]]+//')"
+              pathpart="$(printf '%s' "$loc" | sed -E 's/:[0-9]+:[0-9]+$//')"
+              linecol="$(printf '%s' "$loc" | sed -E 's/^.*:([0-9]+:[0-9]+)$/\1/')"
+              echo "LAS_CLIPPY_${key}_PATH_HASH=$(printf '%s' "$pathpart" | sha256sum | awk '{print $1}')"
+              echo "LAS_CLIPPY_${key}_LINECOL=$linecol"
+            fi
+            lint="$(grep -m1 -oE 'clippy::[A-Za-z0-9_-]+' "$log" || true)"
+            [[ -z "$lint" ]] || echo "LAS_CLIPPY_${key}_LINT=$lint"
+          done
 
           tar -C "$bundle" -czf "$RUNNER_TEMP/clippy-private.tgz" .
           cat > "$RUNNER_TEMP/recipient-cert.pem" <<'EOF_CERT'
