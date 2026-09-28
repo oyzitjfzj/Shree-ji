@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-heap-owned-census-fixture-formatted
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d1ec737807221f11fdf1c60b26a232f95bb37df3c7ebd94d15e804ab0bd42ea1
+  REQUEST_MARKER: verify-edc-split-separation-tests
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 278376e00a74c11eaaced68a3fce8f09bc002671c8e8ef5748e552379a57b051
 
 jobs:
   targeted:
