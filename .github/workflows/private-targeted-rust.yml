@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-candidate-provenance-source-bound-currentness
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3098d060c52ef478fd802484b79ad60718510dc6a8d470c62e75bcba1a2c7702
+  REQUEST_MARKER: verify-formatted-candidate-provenance-source-currentness
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d42e333a93031d10847b9b08360a335526d0536fc9d3c768037be2635ac854c6
 
 jobs:
   targeted:
