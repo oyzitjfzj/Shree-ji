@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-bounded-immutable-claim-registry
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a1984153089650a32e7da6e955d7a5812c55f4198a91bbbdff168826be0d6236
+  REQUEST_MARKER: verify-bounded-immutable-claim-registry
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3eefb8ece2a08aa71b68075a859bf0d47a8da7ce71c49c08bca6e54f49aecfab
 
 jobs:
   targeted:
