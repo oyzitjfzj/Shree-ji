@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formatted-formal-proof-assumption-verifier-attacks
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9403bd829fb2adebd7dbadf6119d843a880bf09649aba113e1d0639b072c2640
+  REQUEST_MARKER: verify-formal-proof-assumption-verifier-attacks
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d38428cb1be7133f8dacf5d6f9851964621c6bed521c5b8fb97ba55660304d36
 
 jobs:
   targeted:
