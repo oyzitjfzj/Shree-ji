@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: census-evidence-canonical-encoding-red-formatted
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 98ff053ae8d645d3ee910202201eeb71fac0db6f45ad0667f5aa8af8cabdd8c8
+  REQUEST_MARKER: verify-census-evidence-canonical-encoding
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: da185e3c48b73ded7fb40ae3484a9d10456f98cfd78685d95b83dc777ade9b85
 
 jobs:
   targeted:
