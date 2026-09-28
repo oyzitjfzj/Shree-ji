@@ -81,12 +81,11 @@ jobs:
 
           log="$RUNNER_TEMP/target-test.log"
           set +e
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib "$selected" -- --exact --nocapture --test-threads=1 >"$log" 2>&1
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib "$selected" -- --exact --test-threads=1 >"$log" 2>&1
           rc=$?
           set -e
           echo "LAS_TARGET_TEST_RC=$rc"
           echo "LAS_TARGET_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          grep '^LAS_EDC_SIZE_' "$log" || true
           if grep -Fqi 'overflowed its stack' "$log"; then echo "LAS_TARGET_STACK_OVERFLOW=YES"; fi
           if grep -Fqi 'SIGABRT' "$log"; then echo "LAS_TARGET_SIGABRT=YES"; fi
           if grep -Fqi 'signal: 6' "$log"; then echo "LAS_TARGET_SIGNAL6=YES"; fi
