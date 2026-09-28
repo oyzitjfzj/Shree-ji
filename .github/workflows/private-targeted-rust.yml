@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: observe-edc-source-bound-snapshot-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8ae5c62dd8cfe0266e5c0a708c8e484c3466765230e261561022dcc83c06c3aa
+  REQUEST_MARKER: observe-formatted-edc-snapshot-red
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b6048f1325a0982b8ee7336b4d0e1b532dd17b899f9b7dd7e572ab86eed71700
 
 jobs:
   targeted:
