@@ -1,3 +1,3 @@
-REQUEST=formal-proof-evidence-currentness-probe
+REQUEST=formal-proof-evidence-currentness-probe-rerun
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=8b5db71398022b39b9048291fae10d637ea0e8a678bf9712fd87fd950efe1253
 TARGET_INDEX=66
