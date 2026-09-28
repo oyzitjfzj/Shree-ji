@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: census-canonical-buffer-independence-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6798afcb157bb8e415bb06f8d00f5d237dd544aa2042ea9b4211960ee946cce1
+  REQUEST_MARKER: census-buffer-independence-formatted
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 570de79bbd22556797419fa0a92f8f19d0d020a90177cd5d45da5ed24c3d9f47
 
 jobs:
   targeted:
