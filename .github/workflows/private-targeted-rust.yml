@@ -84,6 +84,41 @@ jobs:
           set -e
           echo "LAS_PRIVATE_TARGET_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           grep -oE 'error\\[E[0-9]+\\]' "$log" | sort -u | sed -E 's/error\\[([^]]+)\\]/LAS_PRIVATE_TARGET_RUST_CODE=\\1/' || true
+          python3 - "$log" "$GITHUB_WORKSPACE/target" <<'PY'
+          import hashlib, json, os, sys
+          log_path, root = sys.argv[1], os.path.realpath(sys.argv[2])
+          seen = set()
+          with open(log_path, encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
+                  spans = [s for s in (msg.get("spans") or []) if s.get("is_primary")]
+                  if not spans:
+                      key = (code, "NO_SPAN", 0, 0)
+                      if key not in seen:
+                          seen.add(key)
+                          print(f"LAS_PRIVATE_TARGET_CARGO_ERROR={code}:NO_SPAN:0:0")
+                      continue
+                  for span in spans:
+                      filename = str(span.get("file_name") or "")
+                      absolute = os.path.realpath(os.path.join(root, filename)) if not os.path.isabs(filename) else os.path.realpath(filename)
+                      rel = os.path.relpath(absolute, root).replace(os.sep, "/") if absolute == root or absolute.startswith(root + os.sep) else "<EXTERNAL>"
+                      path_hash = hashlib.sha256(rel.encode()).hexdigest()
+                      line = int(span.get("line_start") or 0)
+                      col = int(span.get("column_start") or 0)
+                      key = (code, path_hash, line, col)
+                      if key not in seen:
+                          seen.add(key)
+                          print(f"LAS_PRIVATE_TARGET_CARGO_ERROR={code}:{path_hash}:{line}:{col}")
+          PY
           if grep -Fqi 'unresolved import' "$log"; then echo "LAS_PRIVATE_TARGET_CATEGORY_UNRESOLVED_IMPORT=YES"; fi
           if grep -Fqi 'no method named' "$log"; then echo "LAS_PRIVATE_TARGET_CATEGORY_NO_METHOD=YES"; fi
           if grep -Fqi 'cannot find' "$log"; then echo "LAS_PRIVATE_TARGET_CATEGORY_CANNOT_FIND=YES"; fi
