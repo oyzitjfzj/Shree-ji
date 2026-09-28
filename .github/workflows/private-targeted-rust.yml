@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-trust-role-separation-repair
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8546e6a8b8df9cb6dd7781ab5cccd4ac0beb34e75d22c88974f3adfa3719674d
+  REQUEST_MARKER: verify-edc-trust-role-repair-fixture
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f8d154b4b874836404e6a901278468de1f3d5acc3e33899370f85f7c01f5fc69
 
 jobs:
   targeted:
