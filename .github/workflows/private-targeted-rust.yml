@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-source-bound-claim-assessment-registry
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 46ac69ebade9f877ea2bbd5f9710ff0bc6e681a04c323fc93dc50dd5b1dfdbe2
+  REQUEST_MARKER: verify-formatted-source-bound-claim-assessment-registry
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: bc0bb93e4d446e93be6e8245b666e31360b95ff1019a5a038481e531874b5676
 
 jobs:
   targeted:
