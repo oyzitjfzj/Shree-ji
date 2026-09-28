@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-edc-compact-snapshot-history
+  REQUEST_MARKER: verify-edc-snapshot-capacity-after-compaction
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 03dc64744229ce46489fed2022898324250a319ce51f61a868921e9fe58b9b83
-  EXPECTED_TEST_NAME_HASH: d0b908185d9dec79c237906791efcc3313dd0c039387efd08d117a9ffec81e3f
+  EXPECTED_TEST_NAME_HASH: 8eb3f621c041ce97b7398faf4c5118942e625ff1e757ca4c949528902ec56d9c
 
 jobs:
   targeted:
