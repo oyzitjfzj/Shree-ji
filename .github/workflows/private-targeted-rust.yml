@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: classify-edc-resident-invariant-audit-red
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 082c23430ea2a817f53a7787b52b6bc1aaba9e1ddd1fb2418a40bd87a48f600a
+  REQUEST_MARKER: verify-edc-invariant-audit-formatted-head
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 317ed69f70b4435891a13e2b00c8e74db8957f7bc5c782da5c9c8b5eddf0b04b
 
 jobs:
   targeted:
