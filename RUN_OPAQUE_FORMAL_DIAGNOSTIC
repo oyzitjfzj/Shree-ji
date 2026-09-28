@@ -1,3 +1,3 @@
-REQUEST=red-edc-separation-provenance-domain-shape
-EXPECTED_PRIVATE_SNAPSHOT_PROOF=e15da8b71c089af24011be2187c0828d059e7b57b3261331a5a9baf7ae8d8864
+REQUEST=red-edc-separation-provenance-cardinality
+EXPECTED_PRIVATE_SNAPSHOT_PROOF=216cad59a6505fc1ac2f44a6ec1fa6b2efa9fc4fd3dfb9825c6a34a002413f1d
 TARGET_INDEX=62
