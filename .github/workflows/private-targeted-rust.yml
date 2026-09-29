@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-use-policy-owner
+  REQUEST_MARKER: red-formal-proof-use-policy-owner-formatted
   TARGET_REF_HASH: bb124b87c0f07adee1d16cb20a26d14854ec5cafb6a5a0fdeae86b69f1a3a306
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5df66cf729dbab8ca899bdcb775788365b5da4220d5ec71d6f4444389fb16ec5
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: c3381d517c052f37bdab9613648950c4cc43fb700d3a482195ea9360e310b041
 
 jobs:
   targeted:
