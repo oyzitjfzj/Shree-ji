@@ -1,4 +1,4 @@
 TARGET_REF_HASH=7b471966444844a972317463fd449d9eb7a56a45e17ac2bd7fb2a4fbe095ae5f
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=665440ca9f3eaf73993816cae5b52e2caf9b83ca356809d1b659709eaef9a931
-TARGET_INDEX=73
-REQUEST=formal-proof-upstream-fault-exact-runtime-head
+TARGET_INDEX=74
+REQUEST=formal-proof-reauth-exact-runtime-head
