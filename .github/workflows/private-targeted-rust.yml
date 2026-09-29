@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-challenge-canonical-identity
+  REQUEST_MARKER: red-formal-proof-challenge-canonical-compile
   TARGET_REF_HASH: 7b471966444844a972317463fd449d9eb7a56a45e17ac2bd7fb2a4fbe095ae5f
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 18fef748c426003303a4e165bd069d6cf7752e63c5fded14983f4b52960a9dde
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8025f708a46b18f6d8f88069bd444ce1f61c2ebd8ec6fc314daa771dda8bcb64
 
 jobs:
   targeted:
