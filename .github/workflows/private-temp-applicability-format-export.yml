@@ -113,6 +113,7 @@ jobs:
           tar -czf "$RUNNER_TEMP/formatted.tar.gz" -T "$changed"
           git diff --no-ext-diff --binary -- $(cat "$changed") > "$RUNNER_TEMP/formatted.patch"
           test -s "$RUNNER_TEMP/formatted.patch"
+          git diff --unified=0 -- $(cat "$changed") | grep '^@@' | sed 's/^/LAS_APP_FMT_HUNK=/'
           printf '%s' "$FORMAT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$RUNNER_TEMP/formatted.tar.gz" -out "$RUNNER_TEMP/formatted.cms" "$RUNNER_TEMP/cert.pem"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$RUNNER_TEMP/formatted.patch" -out "$RUNNER_TEMP/formatted.patch.cms" "$RUNNER_TEMP/cert.pem"
