@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: reverify-formal-proof-use-policy-owner
+  REQUEST_MARKER: verify-formal-proof-use-policy-owner-after-rustfmt
   TARGET_REF_HASH: bb124b87c0f07adee1d16cb20a26d14854ec5cafb6a5a0fdeae86b69f1a3a306
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7904c8fa9312540aa23ef2692ea128c77e52b1bba0c10dab9803f2cf2349e3ff
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5c66631e2bb2aa3e7b7587f94e49f7b1bc6725cf0229d570f74d41cdf5af5969
 
 jobs:
   targeted:
