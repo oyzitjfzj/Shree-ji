@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: observe-formal-proof-applicability-red
+  REQUEST_MARKER: verify-formal-proof-applicability-runtime
   TARGET_REF_HASH: 79bd231453eb80f391d2ce44a9267195e9b1dfaf4e37c6f424b80db51290642a
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9dc96b3bcfd7c05190a89f39b02b21c4f1941497a643ff4e29b7954f3409dcda
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 12dd5877b9d72dbe8bdece138156934c2b19e3044925b5cffca6006f94338cbf
 
 jobs:
   targeted:
