@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formal-proof-applicability-runtime-production-safe-source-checks
+  REQUEST_MARKER: verify-formal-proof-applicability-runtime-source-helper-cleanup
   TARGET_REF_HASH: 79bd231453eb80f391d2ce44a9267195e9b1dfaf4e37c6f424b80db51290642a
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6d286051a8cf7f1291dfe9276cec44615aab9176d19eac24fa4b72207aea1e4a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 29fcb8a81a48471ef9f979cd536816cd7506d0b453bacc5700e4b5ae18a6e9c0
 
 jobs:
   targeted:
