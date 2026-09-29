@@ -69,11 +69,12 @@ jobs:
           echo "::add-mask::$actual"
           test "$actual" = "$matched_sha"
           actual_proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          echo "LAS_RUSTFMT_HEAD_PROOF=$actual_proof"
           test "$actual_proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           echo "LAS_RUSTFMT_SNAPSHOT_PROOF=$actual_proof"
           printf '%s' "$actual" > "$RUNNER_TEMP/private-actual-sha"
           chmod 600 "$RUNNER_TEMP/private-actual-sha"
-          unset PRIVATE_TOKEN auth matched_sha matched_ref actual
+          unset PRIVATE_TOKEN auth matched_sha matched_ref actual actual_proof
 
       - name: Emit opaque rustfmt signature
         shell: bash
