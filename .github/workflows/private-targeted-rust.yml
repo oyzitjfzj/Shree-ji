@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formal-proof-applicability-deduped-rustfmt-head
+  REQUEST_MARKER: verify-formal-proof-applicability-e168-head
   TARGET_REF_HASH: 79bd231453eb80f391d2ce44a9267195e9b1dfaf4e37c6f424b80db51290642a
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6cd6a55a7a8ac0a2a45ef721988835d696b0f35d09271861f88faa3bdf0bda83
 
