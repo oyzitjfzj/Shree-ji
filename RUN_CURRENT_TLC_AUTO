@@ -1,4 +1,4 @@
 TARGET_REF_HASH=79bd231453eb80f391d2ce44a9267195e9b1dfaf4e37c6f424b80db51290642a
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=29fcb8a81a48471ef9f979cd536816cd7506d0b453bacc5700e4b5ae18a6e9c0
-TARGET_INDEX=70
-REQUEST=formal-proof-authorization-applicability-cleanup-exact-head
+TARGET_INDEX=71
+REQUEST=formal-proof-capacity-applicability-cleanup-exact-head
