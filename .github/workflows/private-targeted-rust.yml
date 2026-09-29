@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-positive-use-source-history-hardening
+  REQUEST_MARKER: red-positive-use-mixed-upstream-owner-history
   TARGET_REF_HASH: 280bc7afabbd9eae7c080694142f82448e75497153f2221762d3f4b188886284
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f9eeb962a15a799faae27c45c6a3ab2405c5c8f1454b4f50f61123b647551c98
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b8ee30ef7badee4b2ab9602ec8b69a4a3dc15286b2682bc9002e8e92c5f8633f
 
 jobs:
   targeted:
