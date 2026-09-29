@@ -1,4 +1,4 @@
 TARGET_REF_HASH=79bd231453eb80f391d2ce44a9267195e9b1dfaf4e37c6f424b80db51290642a
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=6d286051a8cf7f1291dfe9276cec44615aab9176d19eac24fa4b72207aea1e4a
-TARGET_INDEX=70
-REQUEST=formal-proof-authorization-production-safe-applicability-head
+TARGET_INDEX=71
+REQUEST=formal-proof-capacity-production-safe-applicability-head
