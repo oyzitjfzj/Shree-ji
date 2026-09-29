@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-check-registry
+  REQUEST_MARKER: verify-formal-proof-check-registry-green
   TARGET_REF_HASH: 7b471966444844a972317463fd449d9eb7a56a45e17ac2bd7fb2a4fbe095ae5f
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 810124032e8c244464b93104b103c17499f47ca9836c1de7640fbb906f3ed459
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 386904a8ce54508743b9e02f8263b399215bfc0bc81a4f3a3a5d3d1ba03c8de2
 
 jobs:
   targeted:
