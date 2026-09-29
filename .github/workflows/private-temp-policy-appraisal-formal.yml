@@ -11,14 +11,14 @@ permissions:
 
 env:
   TARGET_REF_HASH: 89a4144b3ae57768e73379175432792165aff1526ffef09cc2c8824ba15c76a9
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7337082c03e3b6f55e542fe56f4281df97f267a2988e619ff9a7b10143ddf3c6
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9e1643d83349b2d1ac978df4187d8f635497547513888445cdf8738518a4ab00
 
 jobs:
   formal:
     strategy:
       fail-fast: false
       matrix:
-        index: [75, 76, 77, 78, 79, 80, 81]
+        index: [75, 76, 77, 78, 79, 80, 81, 82]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -107,9 +107,9 @@ jobs:
           python3 "$RUNNER_TEMP/map.py" "$ROOT" >"$TLC_MAP"
           count="$(wc -l <"$TLC_MAP" | tr -d ' ')"
           echo "LAS_POLICY_FORMAL_PROFILE_COUNT=$count"
-          test "$count" -eq 175
+          test "$count" -eq 176
           test "$TARGET_INDEX" -ge 75
-          test "$TARGET_INDEX" -le 81
+          test "$TARGET_INDEX" -le 82
           test "$TARGET_INDEX" -lt "$count"
           line="$(sed -n "$((TARGET_INDEX + 1))p" "$TLC_MAP")"
           IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
