@@ -1,0 +1,156 @@
+name: Temporary Formal Proof policy appraisal exact matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-temp-policy-appraisal-formal.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 89a4144b3ae57768e73379175432792165aff1526ffef09cc2c8824ba15c76a9
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 74eb6a52e32d65e61f59a0fefe891742cced74ce89294b1b1c177a500797e798
+
+jobs:
+  formal:
+    strategy:
+      fail-fast: false
+      matrix:
+        index: [75, 76, 77, 78]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          resolved_sha=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved_sha"
+              resolved_sha="$candidate"
+            fi
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+          test -n "$resolved_sha"
+          git merge-base --is-ancestor "$resolved_sha" FETCH_HEAD
+          git checkout -q --detach "$resolved_sha"
+          actual="$(git rev-parse HEAD)"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_POLICY_FORMAL_SNAPSHOT_PROOF=$proof"
+          unset PRIVATE_TOKEN auth matched_ref matched_sha resolved_sha actual candidate proof
+
+      - name: Run exact canonical formal profile
+        shell: bash
+        env:
+          TARGET_INDEX: ${{ matrix.index }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             -o "$TLA_JAR" "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" "$RUNNER_TEMP/run-fn.sh" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          map_match = re.search(
+              r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',
+              src, re.S)
+          if not map_match:
+              raise SystemExit("canonical TLC map generator not found")
+          Path(sys.argv[2]).write_text(map_match.group(1) + "\n", encoding="utf-8")
+          fn_match = re.search(
+              r'(run_tlc_profile\(\) \{.*?\n\})\n\nwhile IFS=\$\'\\t\' read -r cfg tla deadlock expectation; do',
+              src, re.S)
+          if not fn_match:
+              raise SystemExit("canonical TLC runner not found")
+          Path(sys.argv[3]).write_text(fn_match.group(1) + "\n", encoding="utf-8")
+          PY
+          TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" >"$TLC_MAP"
+          count="$(wc -l <"$TLC_MAP" | tr -d ' ')"
+          echo "LAS_POLICY_FORMAL_PROFILE_COUNT=$count"
+          test "$TARGET_INDEX" -ge 75
+          test "$TARGET_INDEX" -le 78
+          test "$TARGET_INDEX" -lt "$count"
+          line="$(sed -n "$((TARGET_INDEX + 1))p" "$TLC_MAP")"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
+          test -n "$cfg"
+          test -n "$tla"
+          case "$cfg" in
+            spec/defence_evolution/FormalProofPolicyAppraisal*.cfg) ;;
+            *) echo "LAS_POLICY_FORMAL_SCOPE=FAIL"; exit 3 ;;
+          esac
+          log="$RUNNER_TEMP/tlc-private.log"
+          set +e
+          (
+            set -euo pipefail
+            TMP="$RUNNER_TEMP/tlc-private"
+            PASS=0
+            FAIL=0
+            FAILED=()
+            mkdir -p "$TMP"
+            source "$RUNNER_TEMP/run-fn.sh"
+            run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
+            test "$FAIL" -eq 0
+          ) >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_POLICY_FORMAL_INDEX=$TARGET_INDEX"
+          echo "LAS_POLICY_FORMAL_RC=$rc"
+          python3 - "$log" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+          matches = re.findall(
+              r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue',
+              text)
+          if matches:
+              g,d,q=matches[-1]
+              print("LAS_POLICY_FORMAL_GENERATED="+g.replace(",",""))
+              print("LAS_POLICY_FORMAL_DISTINCT="+d.replace(",",""))
+              print("LAS_POLICY_FORMAL_QUEUE="+q.replace(",",""))
+          if rc := re.findall(r'Error: ([^\n]+)', text):
+              import hashlib
+              print("LAS_POLICY_FORMAL_ERROR_SHA256="+hashlib.sha256(rc[-1].encode()).hexdigest())
+          PY
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_POLICY_FORMAL_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_POLICY_FORMAL_RESULT=FAIL"
+          exit 1
