@@ -121,7 +121,18 @@ jobs:
           if [[ -n "$first_error" ]]; then
             normalized="$(printf '%s' "$first_error" | sed -E 's#(/[^ ]+)+#<PATH>#g')"
             echo "LAS_FORMATTED_FIRST_ERROR_HASH=$(printf '%s' "$normalized" | sha256sum | awk '{print $1}')"
+            safe_template="$(printf '%s' "$first_error" | python3 -c 'import re,sys; s=sys.stdin.read(); s=re.sub(r"\x1b\\[[0-9;]*m","",s); s=re.sub(r"(/[^ :]+)+","<PATH>",s); s=re.sub(r"\x60[^\x60]+\x60","<ID>",s); s=re.sub(r"\x27[^\x27]+\x27","<ID>",s); s=re.sub(r"\x22[^\x22]+\x22","<STR>",s); s=re.sub(r"\\b[0-9a-fA-F]{8,}\\b","<HEX>",s); s=re.sub(r"\\b[0-9]+\\b","<N>",s); s=re.sub(r"\\s+"," ",s).strip(); print(s)')"
+            echo "LAS_FORMATTED_FIRST_ERROR_TEMPLATE=$safe_template"
           fi
+          if grep -Fqi 'failed to run custom build command' "$log"; then echo "LAS_FORMATTED_CATEGORY_CUSTOM_BUILD=YES"; fi
+          if grep -Fqi 'failed to select a version' "$log"; then echo "LAS_FORMATTED_CATEGORY_VERSION_SELECT=YES"; fi
+          if grep -Fqi 'requires rustc' "$log"; then echo "LAS_FORMATTED_CATEGORY_RUST_VERSION=YES"; fi
+          if grep -Fqi 'linking with' "$log"; then echo "LAS_FORMATTED_CATEGORY_LINKER=YES"; fi
+          if grep -Fqi 'never used' "$log"; then echo "LAS_FORMATTED_CATEGORY_NEVER_USED=YES"; fi
+          if grep -Fqi 'never read' "$log"; then echo "LAS_FORMATTED_CATEGORY_NEVER_READ=YES"; fi
+          if grep -Fqi 'unused variable' "$log"; then echo "LAS_FORMATTED_CATEGORY_UNUSED_VARIABLE=YES"; fi
+          if grep -Fqi 'does not need to be mutable' "$log"; then echo "LAS_FORMATTED_CATEGORY_UNUSED_MUT=YES"; fi
+          if grep -Fqi 'this lint expectation is unfulfilled' "$log"; then echo "LAS_FORMATTED_CATEGORY_UNFULFILLED_LINT=YES"; fi
           if grep -Fqi 'unresolved import' "$log"; then echo "LAS_FORMATTED_CATEGORY_UNRESOLVED_IMPORT=YES"; fi
           if grep -Fqi 'cannot find' "$log"; then echo "LAS_FORMATTED_CATEGORY_CANNOT_FIND=YES"; fi
           if grep -Fqi 'could not compile' "$log"; then echo "LAS_FORMATTED_CATEGORY_COULD_NOT_COMPILE=YES"; fi
