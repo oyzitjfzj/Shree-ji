@@ -18,8 +18,15 @@ jobs:
   formal:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    outputs:
+      recovered: ${{ steps.recover.outputs.recovered }}
+      profile_count: ${{ steps.run_formal.outputs.profile_count }}
+      pass_count: ${{ steps.run_formal.outputs.pass_count }}
+      fail_count: ${{ steps.run_formal.outputs.fail_count }}
+      private_log_sha256: ${{ steps.run_formal.outputs.private_log_sha256 }}
     steps:
       - name: Recover exact private revisions opaquely
+        id: recover
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -63,9 +70,11 @@ jobs:
           printf '%s' "$head" > "$RUNNER_TEMP/head"
           echo "LAS_PRIVATE_FORMAL_BASE_PROOF=$EXPECTED_BASE_PROOF"
           echo "LAS_PRIVATE_FORMAL_HEAD_PROOF=$EXPECTED_HEAD_PROOF"
+          echo "recovered=1" >> "$GITHUB_OUTPUT"
           unset PRIVATE_TOKEN auth
 
       - name: Run exact changed canonical formal profiles
+        id: run_formal
         shell: bash
         run: |
           set -euo pipefail
@@ -140,7 +149,13 @@ jobs:
           loop_rc=$?
           set -e
 
-          echo "LAS_PRIVATE_FORMAL_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          private_log_sha256="$(sha256sum "$log" | awk '{print $1}')"
+          echo "profile_count=$count" >> "$GITHUB_OUTPUT"
+          echo "pass_count=$PASS" >> "$GITHUB_OUTPUT"
+          echo "fail_count=$FAIL" >> "$GITHUB_OUTPUT"
+          echo "private_log_sha256=$private_log_sha256" >> "$GITHUB_OUTPUT"
+
+          echo "LAS_PRIVATE_FORMAL_LOG_SHA256=$private_log_sha256"
           echo "LAS_PRIVATE_FORMAL_PASS_COUNT=$PASS"
           echo "LAS_PRIVATE_FORMAL_FAIL_COUNT=$FAIL"
           if [[ "$loop_rc" -eq 0 && "$FAIL" -eq 0 && "$PASS" -eq "$count" ]]; then
@@ -164,6 +179,11 @@ jobs:
         shell: bash
         env:
           FORMAL_RESULT: ${{ needs.formal.result }}
+          RECOVERED: ${{ needs.formal.outputs.recovered }}
+          PROFILE_COUNT: ${{ needs.formal.outputs.profile_count }}
+          PASS_COUNT: ${{ needs.formal.outputs.pass_count }}
+          FAIL_COUNT: ${{ needs.formal.outputs.fail_count }}
+          PRIVATE_LOG_SHA256: ${{ needs.formal.outputs.private_log_sha256 }}
         run: |
           set -euo pipefail
 
@@ -172,12 +192,28 @@ jobs:
             result=PASS
           fi
 
+          phase="unknown"
+          if [[ "$RECOVERED" != "1" ]]; then
+            phase="recovery"
+          elif [[ -z "$PROFILE_COUNT" ]]; then
+            phase="pre_profile"
+          elif [[ -n "$FAIL_COUNT" && "$FAIL_COUNT" != "0" ]]; then
+            phase="formal_profile"
+          elif [[ "$FORMAL_RESULT" == "success" ]]; then
+            phase="complete"
+          fi
+
           cat > LAS_CHANGED_FORMAL_RESULT.json <<EOF
           {
             "schema": "las-public-changed-formal-verification-v1",
             "base_snapshot_proof": "$EXPECTED_BASE_PROOF",
             "head_snapshot_proof": "$EXPECTED_HEAD_PROOF",
             "formal_job": "$FORMAL_RESULT",
+            "phase": "$phase",
+            "profile_count": "$PROFILE_COUNT",
+            "pass_count": "$PASS_COUNT",
+            "fail_count": "$FAIL_COUNT",
+            "private_log_sha256": "$PRIVATE_LOG_SHA256",
             "result": "$result"
           }
           EOF
