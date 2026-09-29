@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-evidence-trust-auth-roles
+  REQUEST_MARKER: red-formal-proof-evidence-trust-auth-roles-compile
   TARGET_REF_HASH: 7b471966444844a972317463fd449d9eb7a56a45e17ac2bd7fb2a4fbe095ae5f
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7c2a66964d2c34da437c914325ee447b1dd2ebc954f1833b43b1034ffc8347f3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7766cc0e4be57fb4bab7cecdea69bb2c80047c3aab62253ddf6f9e2f6ce75287
 
 jobs:
   targeted:
