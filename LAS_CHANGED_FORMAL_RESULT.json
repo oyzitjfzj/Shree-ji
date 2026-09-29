@@ -1,0 +1,7 @@
+{
+  "schema": "las-public-changed-formal-verification-v1",
+  "base_snapshot_proof": "07d38f99f554c5e61942d28deb7b1884a03f909bf694db9e14d7ab7ba5644fce",
+  "head_snapshot_proof": "28681edf3e00826d64f3a238cf6ebdac5185771ba1767d78d62a6418f141c17c",
+  "formal_job": "failure",
+  "result": "FAIL"
+}
