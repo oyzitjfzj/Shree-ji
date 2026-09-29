@@ -7,6 +7,7 @@
   "profile_count": "5",
   "pass_count": "3",
   "fail_count": "2",
-  "private_log_sha256": "a743539a187d03ce39c9a7079a3b4d8ea6cc8792301e5333ca1c5e751e11b018",
+  "failed_ordinals": "3,4",
+  "private_log_sha256": "ca8244bb2b1461b9852cdb2fe01c5adf35b90a20c63aff83fd90c9476d3250fd",
   "result": "FAIL"
 }
