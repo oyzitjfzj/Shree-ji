@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: reverify-positive-use-typed-source-view
+  REQUEST_MARKER: verify-positive-use-conflict-currentness
   TARGET_REF_HASH: 280bc7afabbd9eae7c080694142f82448e75497153f2221762d3f4b188886284
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e9a79a71b69496327f38154503909de920fffb70238da1346d169d99b0869e04
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e90c54ec935b16e7a4b55b497d90807dc290e4558338b93f98a44acb7ba0f0be
 
 jobs:
   targeted:
