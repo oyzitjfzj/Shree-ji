@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formal-proof-challenge-registry
+  REQUEST_MARKER: verify-formal-proof-challenge-source-fencing
   TARGET_REF_HASH: 7b471966444844a972317463fd449d9eb7a56a45e17ac2bd7fb2a4fbe095ae5f
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9a4370d94c02e1770aca18b5778b3719c7c40d94b0ad91cbbe0115d4a4f85d9c
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 494ee9c1810f18f52f3b9557de42e5566c9898a9e923f221ba43d491ea514490
 
 jobs:
   targeted:
