@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: green-formal-proof-appraisal-exact-body-authentication
-  TARGET_REF_HASH: 1f930104975079a9d2a62d7b1fb860d20965682ba71294e2e9bd2ed888ad5fb5
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: eb661c54b3da1cab0530fa1e41a5a522a8b660a6af056d86381d6207b87006f3
+  REQUEST_MARKER: red-formal-proof-appraisal-owner-registry-invalidation
+  TARGET_REF_HASH: a3e09b480a1afe5027ee44ec7d11fe14ad43a7212d9fa1d73438a1f17389c82c
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f552c77b2de64c24d0e4155890ddec37908d9ab3941384e68586a60315382606
 
 jobs:
   targeted:
