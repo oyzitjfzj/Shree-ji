@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formal-proof-applicability-hardened-rustfmt
+  REQUEST_MARKER: verify-formal-proof-applicability-deduped-head
   TARGET_REF_HASH: 79bd231453eb80f391d2ce44a9267195e9b1dfaf4e37c6f424b80db51290642a
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b9347334e8c0cc50336f44dd5eb11d8c698d01a1b50e5e5f30db0756eab25925
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7952a427bbb5ff8dc20d4c31001fe301bbc9df14f3a0c9439740ebdfd9798d7a
 
 jobs:
   targeted:
