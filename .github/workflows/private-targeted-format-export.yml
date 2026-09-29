@@ -94,13 +94,21 @@ jobs:
             esac
           done < "$changed"
           git diff --check
+          git diff --binary -- '*.rs' > "$RUNNER_TEMP/rustfmt.diff"
+          test -s "$RUNNER_TEMP/rustfmt.diff"
           tar -czf "$RUNNER_TEMP/formatted.tar.gz" -T "$changed"
           printf '%s' "$FORMAT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
           fp="$(openssl x509 -in "$RUNNER_TEMP/cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)"
           test "$fp" = "$FORMAT_CERT_FINGERPRINT"
-          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$RUNNER_TEMP/formatted.tar.gz"             -out "$RUNNER_TEMP/formatted.cms" "$RUNNER_TEMP/cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER \
+            -in "$RUNNER_TEMP/formatted.tar.gz" \
+            -out "$RUNNER_TEMP/formatted.cms" "$RUNNER_TEMP/cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER \
+            -in "$RUNNER_TEMP/rustfmt.diff" \
+            -out "$RUNNER_TEMP/rustfmt-diff.cms" "$RUNNER_TEMP/cert.pem"
           echo "LAS_TARGETED_FORMAT_EXPORT_FILES=$(wc -l < "$changed" | tr -d ' ')"
           echo "LAS_TARGETED_FORMAT_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.cms" | awk '{print $1}')"
+          echo "LAS_TARGETED_FORMAT_DIFF_SHA256=$(sha256sum "$RUNNER_TEMP/rustfmt-diff.cms" | awk '{print $1}')"
 
       - name: Diagnose formatted private compile without accepting formatting
         shell: bash
@@ -161,6 +169,15 @@ jobs:
         with:
           name: encrypted-formatted-check
           path: ${{ runner.temp }}/formatted-check.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload encrypted rustfmt diff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-targeted-format-diff
+          path: ${{ runner.temp }}/rustfmt-diff.cms
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
