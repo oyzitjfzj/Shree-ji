@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formal-proof-check-verifier-green-final
+  REQUEST_MARKER: verify-formal-proof-check-verifier-exact-metadata
   TARGET_REF_HASH: 7b471966444844a972317463fd449d9eb7a56a45e17ac2bd7fb2a4fbe095ae5f
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7ab1732434b3b3094fe7d753536fe5d5ef0108aa5f54aeea1c69f68a1276c074
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b7691b3ebf7136f74b4790a08c9bdf3090a91c4105c898a8ba07d5f741b90061
 
 jobs:
   targeted:
