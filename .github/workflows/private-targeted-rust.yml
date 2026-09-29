@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-appraisal-auth-separation-formatted
+  REQUEST_MARKER: red-formal-proof-appraisal-auth-separated
   TARGET_REF_HASH: 0574183024b57f5b96f260d09134abef99fc73b3af5327dbef5e76a5bf0c834d
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ebe4e751bdd5b1a4c82104b59d8f400f2c4d2bceabb47d5e7fec8adaf4c366f3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b32d978e1d9aebe139020f511bd77430fe009384edebeffbccaa078225ea115f
 
 jobs:
   targeted:
