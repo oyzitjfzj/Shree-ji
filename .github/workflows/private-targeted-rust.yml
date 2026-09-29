@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-appraisal-owner-registry-invalidation
+  REQUEST_MARKER: green-formal-proof-appraisal-owner-validity
   TARGET_REF_HASH: a3e09b480a1afe5027ee44ec7d11fe14ad43a7212d9fa1d73438a1f17389c82c
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f552c77b2de64c24d0e4155890ddec37908d9ab3941384e68586a60315382606
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cc7134bef3b23c4a092f62cbd99d367d0473164b96621944c91d1d71cae6f5b1
 
 jobs:
   targeted:
