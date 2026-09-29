@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: green-formal-proof-checker-appraisal-body
+  REQUEST_MARKER: green-formal-proof-checker-appraisal-body-formatted
   TARGET_REF_HASH: f8a9897eb04df048e5e7998a3632e416457cf9232c896394bd9a80699626826a
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 159328e45f153209c51ff88b0672d951d81986724968580771a471092e8d1e78
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 95ec9988fff055f6b7084e9762e6586b08505a0394618f2524680bcd69519c69
 
 jobs:
   targeted:
