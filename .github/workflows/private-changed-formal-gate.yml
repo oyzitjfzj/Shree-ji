@@ -18,16 +18,8 @@ jobs:
   formal:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
-    outputs:
-      recovered: ${{ steps.recover.outputs.recovered }}
-      profile_count: ${{ steps.run_formal.outputs.profile_count }}
-      pass_count: ${{ steps.run_formal.outputs.pass_count }}
-      fail_count: ${{ steps.run_formal.outputs.fail_count }}
-      failed_ordinals: ${{ steps.run_formal.outputs.failed_ordinals }}
-      private_log_sha256: ${{ steps.run_formal.outputs.private_log_sha256 }}
     steps:
       - name: Recover exact private revisions opaquely
-        id: recover
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -71,11 +63,9 @@ jobs:
           printf '%s' "$head" > "$RUNNER_TEMP/head"
           echo "LAS_PRIVATE_FORMAL_BASE_PROOF=$EXPECTED_BASE_PROOF"
           echo "LAS_PRIVATE_FORMAL_HEAD_PROOF=$EXPECTED_HEAD_PROOF"
-          echo "recovered=1" >> "$GITHUB_OUTPUT"
           unset PRIVATE_TOKEN auth
 
       - name: Run exact changed canonical formal profiles
-        id: run_formal
         shell: bash
         run: |
           set -euo pipefail
@@ -142,107 +132,17 @@ jobs:
           FAILED=()
           source "$RUNNER_TEMP/run-fn.sh"
 
-          failed_ordinals=""
-          ordinal=0
           set +e
-          while IFS=
-            echo "LAS_PRIVATE_CHANGED_FORMAL_RESULT=PASS"
-            exit 0
-          fi
-          echo "LAS_PRIVATE_CHANGED_FORMAL_RESULT=FAIL"
-          exit 1
-
-  report:
-    if: always()
-    needs: [formal]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout public control shell
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Record non-sensitive changed-formal result
-        shell: bash
-        env:
-          FORMAL_RESULT: ${{ needs.formal.result }}
-          RECOVERED: ${{ needs.formal.outputs.recovered }}
-          PROFILE_COUNT: ${{ needs.formal.outputs.profile_count }}
-          PASS_COUNT: ${{ needs.formal.outputs.pass_count }}
-          FAIL_COUNT: ${{ needs.formal.outputs.fail_count }}
-          FAILED_ORDINALS: ${{ needs.formal.outputs.failed_ordinals }}
-          PRIVATE_LOG_SHA256: ${{ needs.formal.outputs.private_log_sha256 }}
-        run: |
-          set -euo pipefail
-
-          result=FAIL
-          if [[ "$FORMAL_RESULT" == "success" ]]; then
-            result=PASS
-          fi
-
-          phase="unknown"
-          if [[ "$RECOVERED" != "1" ]]; then
-            phase="recovery"
-          elif [[ -z "$PROFILE_COUNT" ]]; then
-            phase="pre_profile"
-          elif [[ "$FAIL_COUNT" != "0" && -n "$FAIL_COUNT" ]]; then
-            phase="formal_profile"
-          elif [[ "$FORMAL_RESULT" == "success" ]]; then
-            phase="complete"
-          fi
-
-          cat > LAS_CHANGED_FORMAL_RESULT.json <<EOF
-          {
-            "schema": "las-public-changed-formal-verification-v1",
-            "base_snapshot_proof": "$EXPECTED_BASE_PROOF",
-            "head_snapshot_proof": "$EXPECTED_HEAD_PROOF",
-            "formal_job": "$FORMAL_RESULT",
-            "phase": "$phase",
-            "profile_count": "$PROFILE_COUNT",
-            "pass_count": "$PASS_COUNT",
-            "fail_count": "$FAIL_COUNT",
-            "failed_ordinals": "$FAILED_ORDINALS",
-            "private_log_sha256": "$PRIVATE_LOG_SHA256",
-            "result": "$result"
-          }
-          EOF
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add LAS_CHANGED_FORMAL_RESULT.json
-          if ! git diff --cached --quiet; then
-            git commit -m "Record changed formal verification result"
-            git push origin HEAD:main
-          fi
-
-          echo "LAS_CHANGED_FORMAL_RESULT=$result"
-          [[ "$result" == "PASS" ]]
-\t' read -r cfg tla deadlock expectation; do
+          while IFS=$'\t' read -r cfg tla deadlock expectation; do
             [[ -n "$cfg" && -n "$tla" ]] || continue
-            before_fail="$FAIL"
             run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
-            if (( FAIL > before_fail )); then
-              if [[ -n "$failed_ordinals" ]]; then
-                failed_ordinals+=","
-              fi
-              failed_ordinals+="$ordinal"
-            fi
-            ordinal=$((ordinal + 1))
           done < "$selected" >"$log" 2>&1
           loop_rc=$?
           set -e
 
-          private_log_sha256="$(sha256sum "$log" | awk '{print $1}')"
-          echo "profile_count=$count" >> "$GITHUB_OUTPUT"
-          echo "pass_count=$PASS" >> "$GITHUB_OUTPUT"
-          echo "fail_count=$FAIL" >> "$GITHUB_OUTPUT"
-          echo "failed_ordinals=$failed_ordinals" >> "$GITHUB_OUTPUT"
-          echo "private_log_sha256=$private_log_sha256" >> "$GITHUB_OUTPUT"
-
-          echo "LAS_PRIVATE_FORMAL_LOG_SHA256=$private_log_sha256"
+          echo "LAS_PRIVATE_FORMAL_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_PRIVATE_FORMAL_PASS_COUNT=$PASS"
           echo "LAS_PRIVATE_FORMAL_FAIL_COUNT=$FAIL"
-          echo "LAS_PRIVATE_FORMAL_FAILED_ORDINALS=$failed_ordinals"
           if [[ "$loop_rc" -eq 0 && "$FAIL" -eq 0 && "$PASS" -eq "$count" ]]; then
             echo "LAS_PRIVATE_CHANGED_FORMAL_RESULT=PASS"
             exit 0
