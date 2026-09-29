@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-checker-appraisal-body
+  REQUEST_MARKER: red-formal-proof-checker-appraisal-body-formatted
   TARGET_REF_HASH: f8a9897eb04df048e5e7998a3632e416457cf9232c896394bd9a80699626826a
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b19d1172acf02f79dc21f5c1375ba41e06907d63419bbb196cf880e74fca02de
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6832b93bb4031aebb5645905406874785b9d6f902883f42de1143b449453102a
 
 jobs:
   targeted:
