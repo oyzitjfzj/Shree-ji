@@ -80,7 +80,36 @@ jobs:
           rc=$?
           set -e
           echo "LAS_APP_FORMATTED_COMPILE_RC=$rc"
-          grep -oE 'error\\[E[0-9]+\\]' "$RUNNER_TEMP/compile.jsonl" | sort -u | sed -E 's/error\\[([^]]+)\\]/LAS_APP_FORMATTED_RUST_CODE=\\1/' || true
+          python3 - "$RUNNER_TEMP/compile.jsonl" <<'PY'
+          import json, sys
+          codes = set()
+          kinds = set()
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code")
+                  if code:
+                      codes.add(code)
+                  rendered = (msg.get("message") or "").lower()
+                  if "unresolved import" in rendered:
+                      kinds.add("UNRESOLVED_IMPORT")
+                  if "cannot find" in rendered:
+                      kinds.add("CANNOT_FIND")
+                  if "no method named" in rendered:
+                      kinds.add("NO_METHOD")
+          for code in sorted(codes):
+              print(f"LAS_APP_FORMATTED_RUST_CODE={code}")
+          for kind in sorted(kinds):
+              print(f"LAS_APP_FORMATTED_CATEGORY={kind}")
+          PY
           tar -czf "$RUNNER_TEMP/formatted.tar.gz" -T "$changed"
           printf '%s' "$FORMAT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$RUNNER_TEMP/formatted.tar.gz" -out "$RUNNER_TEMP/formatted.cms" "$RUNNER_TEMP/cert.pem"
