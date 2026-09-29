@@ -1,0 +1,97 @@
+name: Temporary private applicability format export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-temp-applicability-format-export.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 79bd231453eb80f391d2ce44a9267195e9b1dfaf4e37c6f424b80db51290642a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9dc96b3bcfd7c05190a89f39b02b21c4f1941497a643ff4e29b7954f3409dcda
+  FORMAT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVLekNDQXBPZ0F3SUJBZ0lVZWl4OFpxaWFiSmcxNVN4eEM1eUdLOHRFVEdvd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0pURWpNQ0VHQTFVRUF3d2FURUZUSUhCeWFYWmhkR1VnWm05eWJXRjBJR2hoYm1SdlptWXdIaGNOTWpZdwpPVEk1TURNeE1UTTFXaGNOTWpZd09UTXdNRE14TVRNMVdqQWxNU013SVFZRFZRUUREQnBNUVZNZ2NISnBkbUYwClpTQm1iM0p0WVhRZ2FHRnVaRzltWmpDQ0FhSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnR1BBRENDQVlvQ2dnR0IKQU0vT05iK01IaWcxN3dicXc0L0liNFJEeGlHUXNuZVh6YjJrS0dhT2grSFZVMjdKU0MzMHFiT3J4d3VDbHZyMgpMdEIzSDUwYVl1c21wRkI0bE1rNWZLaDlpdE1Qb3hMUUNXVGFYdWllcmVFb1lBanVKb2MwUTNGMHhDT09SVW5zCmtUMnhaNkI0Y00zbzRVVzQvS3hiVHBPRGZwMkNCNm0rNUdGeE9BOG54T2VzdkREUWI3Uk0rUkZBaHNjbGlGTVIKUWdZbC9kWDdiV0w1Y0I3NFh2OS9DUCt1VldjNmE2MTk0VUxOektJekNQd1FRNTd1NzdoSFNpYjd4MDVzbTd0ZQpaTGVyTEdlb29ya1JBalc1bVV0Sm1aWDM2Q1pqMTZGQW1TNm82dFg1WENXTHpIQXVST096NUd1R1I1cmRxQ2htCkFCVGxyQmpUK01OZ294L29vVXJnQ1NBVDc1YUI2NVJrV2Z1eWFycmVEaDZ6dUFkanpGYzlUYXhLdEl0UUM0Ty8KWWF5TkRIbWVRMDc4K0JDMTZkeFpldUdMZ0pQNU5aWGxPSDFhL05rMDE5WkYvbUx6OXhwREtrbGJFZGREYzA4dwpwVUJ5VWFpUlIxYjh0ajJGY2lZYndoUzJNQWR6dFdHUmJsNW5nSlNWTWd5SmRCN1hsRi9YVEdWb1FZU2NNZmg5CmNRSURBUUFCbzFNd1VUQWRCZ05WSFE0RUZnUVVTYmF3Qk5qeVBjS1o4MDZ2RC9kMUJGNWlXWXN3SHdZRFZSMGoKQkJnd0ZvQVVTYmF3Qk5qeVBjS1o4MDZ2RC9kMUJGNWlXWXN3RHdZRFZSMFRBUUgvQkFVd0F3RUIvekFOQmdrcQpoa2lHOXcwQkFRc0ZBQU9DQVlFQXRobGZBNFRoMjVTUFFndkxHYjAzQUVpL2ZkN2ZBY2dsNEdsZ2tVNnpwSWpzCkVTV3p0YitNVE9vSXBQR29OWityb1Bxc2ZxVmhiUVNCbE5YNXdwbFBqa2puL2NISHJCL1ZINkxLRVVFRU1iT3AKM0pmbWkwS0w1bUg0REtLMDNFcUMzWjRPaXFDemZzc1kvVXNFdEJZOWx5WW9xUStEL0U4bEszVU55ZlBSUE5BUgp5dTAyYXhtMkJmN01UelVwZWluTk9EQ1dIdjBlbDJrSThXV240MXU3U0tSN010YUp5UmNaNlZ2MnpscEQ1K0dzCjdmS3h1Y05nbTMwRXBwRXJMTzBTUE1JM2xyUmk4VnU0WkZFQmRGVmlCamF5TXJ2M2ZuRlZ5K1l3eS8vN1pnNUMKMUw0QW9meUFYcW43RElTU1I5WVJya2J6bHRLeGNiYW9wUXZnYWZkL1BwU2VIWUV6RmhyRjY0anJwMUFROUJEeAo2dFJ5VEVMalpnSnpqcDhRdU5wUmdzMjM0RkFwTGMrVGMxbGFxUEFqNHdlT0RzWWtHZlAwb1VTOFdPbE05bHBsCk9jdEhmcEhoa1N0NDFFUHZtWUxqVEZycVg1VmxLN0drWW5ZSEZPK3hjMHhHa3l3cmFDazZpazVFSDRwQm55RG0KT3NzSjFaTGloUHo1YTdHTTFIRVYKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done < "$refs"
+          test -n "$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach FETCH_HEAD
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$matched_sha"
+          proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth
+
+      - name: Format exact Rust and diagnose semantic RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          changed="$RUNNER_TEMP/changed"
+          git diff --name-only > "$changed"
+          test -s "$changed"
+          while IFS= read -r path; do
+            case "$path" in
+              *.rs) ;;
+              *) exit 2 ;;
+            esac
+          done < "$changed"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run --message-format=json >"$RUNNER_TEMP/compile.jsonl" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_APP_FORMATTED_COMPILE_RC=$rc"
+          grep -oE 'error\\[E[0-9]+\\]' "$RUNNER_TEMP/compile.jsonl" | sort -u | sed -E 's/error\\[([^]]+)\\]/LAS_APP_FORMATTED_RUST_CODE=\\1/' || true
+          tar -czf "$RUNNER_TEMP/formatted.tar.gz" -T "$changed"
+          printf '%s' "$FORMAT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$RUNNER_TEMP/formatted.tar.gz" -out "$RUNNER_TEMP/formatted.cms" "$RUNNER_TEMP/cert.pem"
+          echo "LAS_APP_FORMATTED_FILES=$(wc -l < "$changed" | tr -d ' ')"
+          echo "LAS_APP_FORMATTED_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.cms" | awk '{print $1}')"
+
+      - name: Upload encrypted formatted source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-applicability-formatted
+          path: ${{ runner.temp }}/formatted.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
