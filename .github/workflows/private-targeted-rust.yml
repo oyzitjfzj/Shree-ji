@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: green-formal-proof-appraisal-auth-exact-rustfmt
+  REQUEST_MARKER: green-formal-proof-appraisal-auth-separation
   TARGET_REF_HASH: 0574183024b57f5b96f260d09134abef99fc73b3af5327dbef5e76a5bf0c834d
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 38a07d99f82ba747535647cc32950fb30576799d2ead3ba5877251b173f2e175
 
