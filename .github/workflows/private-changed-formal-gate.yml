@@ -23,6 +23,7 @@ jobs:
       profile_count: ${{ steps.run_formal.outputs.profile_count }}
       pass_count: ${{ steps.run_formal.outputs.pass_count }}
       fail_count: ${{ steps.run_formal.outputs.fail_count }}
+      failed_ordinals: ${{ steps.run_formal.outputs.failed_ordinals }}
       private_log_sha256: ${{ steps.run_formal.outputs.private_log_sha256 }}
     steps:
       - name: Recover exact private revisions opaquely
@@ -141,10 +142,20 @@ jobs:
           FAILED=()
           source "$RUNNER_TEMP/run-fn.sh"
 
+          failed_ordinals=""
+          ordinal=0
           set +e
           while IFS=$'\t' read -r cfg tla deadlock expectation; do
             [[ -n "$cfg" && -n "$tla" ]] || continue
+            before_fail="$FAIL"
             run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
+            if (( FAIL > before_fail )); then
+              if [[ -n "$failed_ordinals" ]]; then
+                failed_ordinals+=","
+              fi
+              failed_ordinals+="$ordinal"
+            fi
+            ordinal=$((ordinal + 1))
           done < "$selected" >"$log" 2>&1
           loop_rc=$?
           set -e
@@ -153,11 +164,13 @@ jobs:
           echo "profile_count=$count" >> "$GITHUB_OUTPUT"
           echo "pass_count=$PASS" >> "$GITHUB_OUTPUT"
           echo "fail_count=$FAIL" >> "$GITHUB_OUTPUT"
+          echo "failed_ordinals=$failed_ordinals" >> "$GITHUB_OUTPUT"
           echo "private_log_sha256=$private_log_sha256" >> "$GITHUB_OUTPUT"
 
           echo "LAS_PRIVATE_FORMAL_LOG_SHA256=$private_log_sha256"
           echo "LAS_PRIVATE_FORMAL_PASS_COUNT=$PASS"
           echo "LAS_PRIVATE_FORMAL_FAIL_COUNT=$FAIL"
+          echo "LAS_PRIVATE_FORMAL_FAILED_ORDINALS=$failed_ordinals"
           if [[ "$loop_rc" -eq 0 && "$FAIL" -eq 0 && "$PASS" -eq "$count" ]]; then
             echo "LAS_PRIVATE_CHANGED_FORMAL_RESULT=PASS"
             exit 0
@@ -183,6 +196,7 @@ jobs:
           PROFILE_COUNT: ${{ needs.formal.outputs.profile_count }}
           PASS_COUNT: ${{ needs.formal.outputs.pass_count }}
           FAIL_COUNT: ${{ needs.formal.outputs.fail_count }}
+          FAILED_ORDINALS: ${{ needs.formal.outputs.failed_ordinals }}
           PRIVATE_LOG_SHA256: ${{ needs.formal.outputs.private_log_sha256 }}
         run: |
           set -euo pipefail
@@ -213,6 +227,7 @@ jobs:
             "profile_count": "$PROFILE_COUNT",
             "pass_count": "$PASS_COUNT",
             "fail_count": "$FAIL_COUNT",
+            "failed_ordinals": "$FAILED_ORDINALS",
             "private_log_sha256": "$PRIVATE_LOG_SHA256",
             "result": "$result"
           }
