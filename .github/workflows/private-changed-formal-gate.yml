@@ -24,6 +24,7 @@ jobs:
       pass_count: ${{ steps.run_formal.outputs.pass_count }}
       fail_count: ${{ steps.run_formal.outputs.fail_count }}
       failed_ordinals: ${{ steps.run_formal.outputs.failed_ordinals }}
+      failure_classes: ${{ steps.run_formal.outputs.failure_classes }}
       private_log_sha256: ${{ steps.run_formal.outputs.private_log_sha256 }}
     steps:
       - name: Recover exact private revisions opaquely
@@ -143,17 +144,114 @@ jobs:
           source "$RUNNER_TEMP/run-fn.sh"
 
           failed_ordinals=""
+          failure_classes=""
           ordinal=0
           set +e
-          while IFS=$'\t' read -r cfg tla deadlock expectation; do
+          while IFS=
+
+          echo "LAS_PRIVATE_FORMAL_LOG_SHA256=$private_log_sha256"
+          echo "LAS_PRIVATE_FORMAL_PASS_COUNT=$PASS"
+          echo "LAS_PRIVATE_FORMAL_FAIL_COUNT=$FAIL"
+          echo "LAS_PRIVATE_FORMAL_FAILED_ORDINALS=$failed_ordinals"
+          if [[ "$loop_rc" -eq 0 && "$FAIL" -eq 0 && "$PASS" -eq "$count" ]]; then
+            echo "LAS_PRIVATE_CHANGED_FORMAL_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_PRIVATE_CHANGED_FORMAL_RESULT=FAIL"
+          exit 1
+
+  report:
+    if: always()
+    needs: [formal]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout public control shell
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Record non-sensitive changed-formal result
+        shell: bash
+        env:
+          FORMAL_RESULT: ${{ needs.formal.result }}
+          RECOVERED: ${{ needs.formal.outputs.recovered }}
+          PROFILE_COUNT: ${{ needs.formal.outputs.profile_count }}
+          PASS_COUNT: ${{ needs.formal.outputs.pass_count }}
+          FAIL_COUNT: ${{ needs.formal.outputs.fail_count }}
+          FAILED_ORDINALS: ${{ needs.formal.outputs.failed_ordinals }}
+          FAILURE_CLASSES: ${{ needs.formal.outputs.failure_classes }}
+          PRIVATE_LOG_SHA256: ${{ needs.formal.outputs.private_log_sha256 }}
+        run: |
+          set -euo pipefail
+
+          result=FAIL
+          if [[ "$FORMAL_RESULT" == "success" ]]; then
+            result=PASS
+          fi
+
+          phase="unknown"
+          if [[ "$RECOVERED" != "1" ]]; then
+            phase="recovery"
+          elif [[ -z "$PROFILE_COUNT" ]]; then
+            phase="pre_profile"
+          elif [[ -n "$FAIL_COUNT" && "$FAIL_COUNT" != "0" ]]; then
+            phase="formal_profile"
+          elif [[ "$FORMAL_RESULT" == "success" ]]; then
+            phase="complete"
+          fi
+
+          cat > LAS_CHANGED_FORMAL_RESULT.json <<EOF
+          {
+            "schema": "las-public-changed-formal-verification-v1",
+            "base_snapshot_proof": "$EXPECTED_BASE_PROOF",
+            "head_snapshot_proof": "$EXPECTED_HEAD_PROOF",
+            "formal_job": "$FORMAL_RESULT",
+            "phase": "$phase",
+            "profile_count": "$PROFILE_COUNT",
+            "pass_count": "$PASS_COUNT",
+            "fail_count": "$FAIL_COUNT",
+            "failed_ordinals": "$FAILED_ORDINALS",
+            "failure_classes": "$FAILURE_CLASSES",
+            "private_log_sha256": "$PRIVATE_LOG_SHA256",
+            "result": "$result"
+          }
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add LAS_CHANGED_FORMAL_RESULT.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record changed formal verification result"
+            git push origin HEAD:main
+          fi
+
+          echo "LAS_CHANGED_FORMAL_RESULT=$result"
+          [[ "$result" == "PASS" ]]
+\t' read -r cfg tla deadlock expectation; do
             [[ -n "$cfg" && -n "$tla" ]] || continue
             before_fail="$FAIL"
             run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
             if (( FAIL > before_fail )); then
               if [[ -n "$failed_ordinals" ]]; then
                 failed_ordinals+=","
+                failure_classes+=","
               fi
               failed_ordinals+="$ordinal"
+
+              profile_log="$TMP/tlc-$(echo "$cfg" | tr '/.' '__').log"
+              failure_class="OTHER"
+              if grep -Eiq 'parse error|semantic error|Parsing or semantic analysis failed|SANY.*error' "$profile_log"; then
+                failure_class="PARSE_SEMANTIC"
+              elif grep -Eiq 'Invariant .* is violated|invariant.*violat' "$profile_log"; then
+                failure_class="INVARIANT"
+              elif grep -Eiq 'Temporal properties.*violat|temporal property.*violat|liveness.*violat' "$profile_log"; then
+                failure_class="TEMPORAL"
+              elif grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|exit code 137|Java heap space' "$profile_log"; then
+                failure_class="RESOURCE"
+              elif grep -Eiq 'TLC threw an unexpected exception|RuntimeException|StackOverflowError' "$profile_log"; then
+                failure_class="ENGINE"
+              fi
+              failure_classes+="$ordinal:$failure_class"
             fi
             ordinal=$((ordinal + 1))
           done < "$selected" >"$log" 2>&1
@@ -165,6 +263,7 @@ jobs:
           echo "pass_count=$PASS" >> "$GITHUB_OUTPUT"
           echo "fail_count=$FAIL" >> "$GITHUB_OUTPUT"
           echo "failed_ordinals=$failed_ordinals" >> "$GITHUB_OUTPUT"
+          echo "failure_classes=$failure_classes" >> "$GITHUB_OUTPUT"
           echo "private_log_sha256=$private_log_sha256" >> "$GITHUB_OUTPUT"
 
           echo "LAS_PRIVATE_FORMAL_LOG_SHA256=$private_log_sha256"
