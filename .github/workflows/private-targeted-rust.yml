@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: red-formal-proof-facet-set-contract-formatted
+  REQUEST_MARKER: green-formal-proof-facet-set-contract
   TARGET_REF_HASH: 25f274c61336b0f2c9b7001f33f8f54483918786b7b4e249ec1d1798e076f9dd
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1a9b1844f82a8bb87ba93344c1b05861deba46984cd0e4316e5ee2a60d7c843c
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 63da0166593ff1b3d264c10d8e4e5867be067b2d14da8db52f4f4aa0c42693e4
 
 jobs:
   targeted:
