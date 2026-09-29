@@ -111,16 +111,29 @@ jobs:
               print(f"LAS_APP_FORMATTED_CATEGORY={kind}")
           PY
           tar -czf "$RUNNER_TEMP/formatted.tar.gz" -T "$changed"
+          git diff --no-ext-diff --binary -- $(cat "$changed") > "$RUNNER_TEMP/formatted.patch"
+          test -s "$RUNNER_TEMP/formatted.patch"
           printf '%s' "$FORMAT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
           openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$RUNNER_TEMP/formatted.tar.gz" -out "$RUNNER_TEMP/formatted.cms" "$RUNNER_TEMP/cert.pem"
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER -in "$RUNNER_TEMP/formatted.patch" -out "$RUNNER_TEMP/formatted.patch.cms" "$RUNNER_TEMP/cert.pem"
           echo "LAS_APP_FORMATTED_FILES=$(wc -l < "$changed" | tr -d ' ')"
           echo "LAS_APP_FORMATTED_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.cms" | awk '{print $1}')"
+          echo "LAS_APP_FORMATTED_PATCH_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.patch.cms" | awk '{print $1}')"
 
       - name: Upload encrypted formatted source
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: encrypted-applicability-formatted
           path: ${{ runner.temp }}/formatted.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload encrypted rustfmt patch
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-applicability-rustfmt-patch
+          path: ${{ runner.temp }}/formatted.patch.cms
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
