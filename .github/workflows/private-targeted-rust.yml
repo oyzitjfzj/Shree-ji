@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-formal-proof-applicability-runtime-source-helper-cleanup
+  REQUEST_MARKER: verify-formal-proof-applicability-adversarial-coverage
   TARGET_REF_HASH: 79bd231453eb80f391d2ce44a9267195e9b1dfaf4e37c6f424b80db51290642a
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 29fcb8a81a48471ef9f979cd536816cd7506d0b453bacc5700e4b5ae18a6e9c0
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4c2b480f3d57e00c3d37c26c957d23562a6e17182e8464f8f88bd0484d1cf1bb
 
 jobs:
   targeted:
