@@ -91,15 +91,13 @@ jobs:
           component_missing=0
           grep -Eiq 'cargo-clippy.*not installed|clippy.*not installed|component.*clippy.*unavailable' "$log" && component_missing=1
           echo "LAS_STRICT_CLIPPY_COMPONENT_MISSING=$component_missing"
-          while IFS=
-          [[ "$rc" -eq 0 ]]
-\t' read -r lint file line; do
+          jq -Rr 'fromjson?
+            | select(.reason=="compiler-message" and .message.code.code!=null and (.message.level=="error" or .message.level=="warning"))
+            | [.message.code.code, (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].line_start)]
+            | @tsv' "$log" > "$RUNNER_TEMP/clippy-diags.tsv"
+          while IFS="$(printf '\011')" read -r lint file line; do
             [[ -n "$lint" && -n "$file" && -n "$line" ]] || continue
-            echo "LAS_STRICT_CLIPPY_DIAG=$lint:$(printf '%s' "$file" | sha256sum | awk '{print $1}'):$line"
-          done < <(
-            jq -Rr 'fromjson?
-              | select(.reason=="compiler-message" and .message.code.code!=null and (.message.level=="error" or .message.level=="warning"))
-              | [.message.code.code, (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].line_start)]
-              | @tsv' "$log"
-          )
+            path_hash="$(printf '%s' "$file" | sha256sum | awk '{print $1}')"
+            echo "LAS_STRICT_CLIPPY_DIAG=$lint:$path_hash:$line"
+          done < "$RUNNER_TEMP/clippy-diags.tsv"
           [[ "$rc" -eq 0 ]]
