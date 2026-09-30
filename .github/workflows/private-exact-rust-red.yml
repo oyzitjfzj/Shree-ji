@@ -1,0 +1,76 @@
+name: Opaque exact Rust RED gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-exact-rust-red.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_HEAD_PROOF: 483a3dafda505441fb34724d92b5f9aa7e131df09bbd2b18bd2d64c723819647
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_HEAD_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_RUST_RED_RECOVERY=PASS"
+
+      - name: Require expected compile RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/rust-red.private.log"
+          set +e
+          cargo test --lib --no-run >"$log" 2>&1
+          rc=$?
+          set -e
+
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          e0599_count="$(grep -c 'error\[E0599\]' "$log" || true)"
+          other_error_codes="$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | grep -v 'E0599' | wc -l | tr -d ' ')"
+
+          echo "LAS_RUST_RED_LOG_SHA256=$digest"
+          echo "LAS_RUST_RED_E0599_COUNT=$e0599_count"
+          echo "LAS_RUST_RED_OTHER_CODE_COUNT=$other_error_codes"
+
+          if [[ "$rc" -ne 0 && "$e0599_count" -gt 0 && "$other_error_codes" -eq 0 ]]; then
+            echo "LAS_RUST_RED_RESULT=EXPECTED_RED"
+            exit 0
+          fi
+          echo "LAS_RUST_RED_RESULT=UNEXPECTED"
+          exit 1
