@@ -65,6 +65,31 @@ jobs:
           set -euo pipefail
           cd target
           log="$RUNNER_TEMP/rust-test.private.log"
+          set +e
           cargo test --lib >"$log" 2>&1
-          echo "LAS_RUST_SLICE_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          echo "LAS_RUST_SLICE_TEST=PASS"
+          rc=$?
+          set -e
+
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          error_codes="$(grep -Eo 'error\\[E[0-9]{4}\\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+          error_code_count="$(grep -Eo 'error\\[E[0-9]{4}\\]' "$log" | sort -u | wc -l | tr -d ' ' || true)"
+          class="OTHER"
+          if grep -q 'could not compile' "$log"; then
+            class="COMPILE"
+          elif grep -q 'test result: FAILED' "$log"; then
+            class="TEST"
+          elif [[ "$rc" -eq 0 ]]; then
+            class="PASS"
+          fi
+
+          echo "LAS_RUST_SLICE_TEST_LOG_SHA256=$digest"
+          echo "LAS_RUST_SLICE_TEST_CLASS=$class"
+          echo "LAS_RUST_SLICE_TEST_ERROR_CODE_COUNT=$error_code_count"
+          echo "LAS_RUST_SLICE_TEST_ERROR_CODES=$error_codes"
+
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_RUST_SLICE_TEST=PASS"
+            exit 0
+          fi
+          echo "LAS_RUST_SLICE_TEST=FAIL"
+          exit 1
