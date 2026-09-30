@@ -91,7 +91,16 @@ jobs:
             while IFS= read -r failed_name; do
               [[ -n "$failed_name" ]] || continue
               echo "LAS_RUST_SLICE_FAILED_TEST_HASH=$(printf '%s' "$failed_name" | sha256sum | awk '{print $1}')"
-            done < <(sed -n -E 's/^    ([^[:space:]].*)$/\1/p' "$log" | sort -u)
+            done < <(
+              awk '
+                /^failures:$/ {capture=1; next}
+                capture && /^test result:/ {capture=0}
+                capture && /^    [A-Za-z0-9_]+(::[A-Za-z0-9_]+)+$/ {
+                  sub(/^    /, "")
+                  print
+                }
+              ' "$log" | sort -u
+            )
           fi
 
           if [[ "$rc" -eq 0 ]]; then
