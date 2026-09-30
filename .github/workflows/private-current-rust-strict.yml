@@ -115,3 +115,5 @@ jobs:
             echo "LAS_STRICT_CLIPPY_DIAG=$lint:$path_hash:$line"
           done < "$RUNNER_TEMP/clippy-diags.tsv"
           [[ "$rc" -eq 0 ]]
+
+# BASELINE_TRIGGER_STRICT_1F6F
