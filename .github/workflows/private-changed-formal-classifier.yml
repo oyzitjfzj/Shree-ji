@@ -130,10 +130,8 @@ jobs:
 
           classify_log() {
             local file="$1"
-            if grep -Eiq 'parse error|parsing error|Parse Error' "$file"; then
-              printf 'PARSE'
-            elif grep -Eiq 'semantic error|Semantic errors|Parsing or semantic analysis failed|SANY.*error' "$file"; then
-              printf 'SEMANTIC'
+            if grep -Eiq 'parse error|semantic error|Parsing or semantic analysis failed|SANY.*error' "$file"; then
+              printf 'PARSE_SEMANTIC'
             elif grep -Eiq 'Invariant .* is violated|invariant.*violat' "$file"; then
               printf 'INVARIANT'
             elif grep -Eiq 'Temporal properties.*violat|temporal property.*violat|liveness.*violat' "$file"; then
@@ -162,27 +160,9 @@ jobs:
             profile_log="$TMP/tlc-$(echo "$cfg" | tr '/.' '__').log"
             test -s "$profile_log"
             class="$(classify_log "$profile_log")"
-            location="$(python3 - "$profile_log" <<'PY'
-import re, sys
-text=open(sys.argv[1],encoding="utf-8",errors="replace").read()
-patterns=[
-    r'line\s+(\d+)\s*,\s*col\s+(\d+)',
-    r'line\s+(\d+)\s*,\s*column\s+(\d+)',
-    r'at line\s+(\d+).*?column\s+(\d+)',
-]
-for p in patterns:
-    m=re.search(p,text,re.I|re.S)
-    if m:
-        print(f"{m.group(1)}:{m.group(2)}")
-        break
-else:
-    print("NONE")
-PY
-)"
             digest="$(sha256sum "$profile_log" | awk '{print $1}')"
             echo "LAS_OPAQUE_FORMAL_ORDINAL=$ordinal"
             echo "LAS_OPAQUE_FORMAL_CLASS=$class"
-            echo "LAS_OPAQUE_FORMAL_LOCATION=$location"
             echo "LAS_OPAQUE_FORMAL_LOG_SHA256=$digest"
           done
 
