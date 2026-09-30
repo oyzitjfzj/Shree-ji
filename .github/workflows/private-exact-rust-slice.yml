@@ -126,6 +126,8 @@ jobs:
             echo "LAS_RUST_SLICE_SERIAL_RC=$serial_rc"
             echo "LAS_RUST_SLICE_SERIAL_STACK_OVERFLOW_COUNT=$(grep -Eic 'stack overflow|has overflowed its stack' "$serial_log" || true)"
             echo "LAS_RUST_SLICE_SERIAL_SIGNAL_TOKENS=$(grep -Eo 'signal: [0-9]+' "$serial_log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+            last_stage="$(grep -Eo 'LAS_STACK_STAGE=[0-9]+' "$serial_log" | tail -n1 | cut -d= -f2 || true)"
+            echo "LAS_RUST_SLICE_SERIAL_LAST_STAGE=$last_stage"
             python3 - "$serial_log" <<'PY'
           import hashlib, re, sys
           data=open(sys.argv[1], encoding="utf-8", errors="replace").read()
