@@ -87,7 +87,7 @@ jobs:
           cd target/spec/defence_evolution
           log="$RUNNER_TEMP/tlc.private.log"
           set +e
-          java -XX:+UseParallelGC -jar "$TLA_JAR" -workers 1 -lncheck final -fp 0             -config ClaimFormalProofAssessment.cfg ClaimFormalProofAssessment.tla >"$log" 2>&1
+          java -XX:+UseParallelGC -jar "$TLA_JAR" -workers auto -lncheck final -fp 0             -config ClaimFormalProofAssessment.cfg ClaimFormalProofAssessment.tla >"$log" 2>&1
           rc=$?
           set -e
           echo "LAS_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
