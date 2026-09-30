@@ -1,13 +1,13 @@
 {
   "schema": "las-public-changed-formal-verification-v1",
-  "base_snapshot_proof": "4ac20a9d4a774668797310d8b74924405443fbf85d8d229619bc0c180665c25e",
-  "head_snapshot_proof": "37956d7039eb83237da409ae1bde9d8bde0e57dfaefda7fc061c5f49310b65d5",
-  "formal_job": "failure",
-  "phase": "formal_profile",
-  "profile_count": "4",
-  "pass_count": "3",
-  "fail_count": "1",
-  "failed_ordinals": "0",
-  "private_log_sha256": "83d80e8c2e2c3fd789ceff2795f32ab1c208d45dc2884201bd2b101fa3a17130",
-  "result": "FAIL"
+  "base_snapshot_proof": "6b064b73ed2b0a7f7af700c36cf0c3a951cf7813f4290978498752e982096308",
+  "head_snapshot_proof": "c3ceac9f176693a8fcc22996ad953564069d734a73b1b998983802ddb54f4b1f",
+  "formal_job": "success",
+  "phase": "complete",
+  "profile_count": "1",
+  "pass_count": "1",
+  "fail_count": "0",
+  "failed_ordinals": "",
+  "private_log_sha256": "cf766e785b63ba6a1ec8d47d5581d66fad207e311f7182b2beeaa1d989483f85",
+  "result": "PASS"
 }
