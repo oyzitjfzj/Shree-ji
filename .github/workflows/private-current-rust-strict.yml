@@ -86,7 +86,7 @@ jobs:
           echo "LAS_STRICT_CLIPPY_RC=$rc"
           echo "LAS_STRICT_CLIPPY_ERROR_CODES=$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
           echo "LAS_STRICT_CLIPPY_WARNING_COUNT=$(grep -c '^error:' "$log" || true)"
-          diag="$(jq -c 'select(.reason=="compiler-message" and .message.code.code!=null and (.message.level=="error" or .message.level=="warning"))' "$log" | head -n1 || true)"
+          diag="$(jq -Rrc 'fromjson? | select(.reason=="compiler-message" and .message.code.code!=null and (.message.level=="error" or .message.level=="warning"))' "$log" | head -n1 || true)"
           if [[ -n "$diag" ]]; then
             lint="$(printf '%s' "$diag" | jq -r '.message.code.code')"
             file="$(printf '%s' "$diag" | jq -r '.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name')"
