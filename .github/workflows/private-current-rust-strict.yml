@@ -75,15 +75,37 @@ jobs:
             | select(.reason=="compiler-message" and .message.level=="error")
             | [(.message.code.code // "NONE"), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name // ""), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].line_start // 0)]
             | @tsv' "$log" | head -n 1 > "$RUNNER_TEMP/check-first-error.tsv"
-          jq -Rr 'fromjson?
-            | select(.reason=="compiler-message" and .message.code.code=="dead_code")
-            | [(.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name // ""), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].line_start // 0)]
-            | @tsv' "$log" | sort -u > "$RUNNER_TEMP/check-dead-diags.tsv"
-          while IFS="$(printf '\011')" read -r file line; do
-            [[ -n "$file" && -n "$line" ]] || continue
-            path_hash="$(printf '%s' "$file" | sha256sum | awk '{print $1}')"
-            echo "LAS_STRICT_DEAD_DIAG=$path_hash:$line"
-          done < "$RUNNER_TEMP/check-dead-diags.tsv"
+          python3 - "$log" <<'PY'
+          import hashlib, json, sys
+          seen=set()
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj=json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason")!="compiler-message":
+                      continue
+                  msg=obj.get("message") or {}
+                  code=(msg.get("code") or {}).get("code")
+                  if code!="dead_code":
+                      continue
+                  spans=msg.get("spans") or []
+                  primary=[s for s in spans if s.get("is_primary")]
+                  ordered=primary+spans
+                  if not ordered:
+                      continue
+                  span=ordered[0]
+                  file=str(span.get("file_name") or "")
+                  line=int(span.get("line_start") or 0)
+                  if not file or not line:
+                      continue
+                  item=(hashlib.sha256(file.encode()).hexdigest(), line)
+                  seen.add(item)
+          print(f"LAS_STRICT_DEAD_DIAG_UNIQUE_COUNT={len(seen)}")
+          for path_hash,line in sorted(seen):
+              print(f"LAS_STRICT_DEAD_DIAG={path_hash}:{line}")
+          PY
           while IFS="$(printf '\011')" read -r code file line; do
             [[ -n "$code" ]] || continue
             if [[ -n "$file" ]]; then
