@@ -74,7 +74,7 @@ jobs:
           jq -Rr 'fromjson?
             | select(.reason=="compiler-message" and .message.level=="error")
             | [(.message.code.code // "NONE"), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name // ""), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].line_start // 0)]
-            | @tsv' "$log" | head -n 1 > "$RUNNER_TEMP/check-first-error.tsv"
+            | @tsv' "$log" | sed -n '1p' > "$RUNNER_TEMP/check-first-error.tsv"
           python3 - "$log" <<'PY'
           import hashlib, json, sys
           seen=set()
