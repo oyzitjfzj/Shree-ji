@@ -125,6 +125,24 @@ jobs:
             )
           fi
 
+          if [[ "$class" == "TEST" ]]; then
+            python3 - "$log" <<'PY'
+          import hashlib, re, sys
+          seen=set()
+          pat=re.compile(r"panicked at ([^:\n]+(?:/[^:\n]+)*\.rs):(\d+):(\d+):")
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+              for line in fh:
+                  m=pat.search(line)
+                  if not m:
+                      continue
+                  path, line_no, col=m.group(1), int(m.group(2)), int(m.group(3))
+                  seen.add((hashlib.sha256(path.encode()).hexdigest(), line_no, col))
+          print(f"LAS_RUST_SLICE_PANIC_LOC_COUNT={len(seen)}")
+          for path_hash,line_no,col in sorted(seen):
+              print(f"LAS_RUST_SLICE_PANIC_LOC={path_hash}:{line_no}:{col}")
+          PY
+          fi
+
           if [[ "$rc" -eq 0 ]]; then
             echo "LAS_RUST_SLICE_TEST=PASS"
             exit 0
