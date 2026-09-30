@@ -10,14 +10,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-sharded-verify-20260930a
+  group: current-sharded-verify-20260930b
   cancel-in-progress: false
 
 env:
   TARGET_REF_HASH: b587fbc656c0704d0cc24c2ac6c9ae3379b90fbc47db45f0bb293a1251e4c645
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 40172043ef22cdeb28b150f70663d22a7bbdb5f9752445d40de6133f39c5fa83
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 63c44fdcb40b87b1432b99032bbb62c3d5da5a6688ccc56adfb7f200198d96a4
   EXPECTED_VERIFIER_BLOB: 9f4b3b02c936d5af877f0cfe7c1ebc46f4bb5774
-  EXPECTED_TLC_PROFILE_COUNT: "178"
+  EXPECTED_TLC_PROFILE_COUNT: "180"
   TLC_SHARD_COUNT: "32"
 
 jobs:
