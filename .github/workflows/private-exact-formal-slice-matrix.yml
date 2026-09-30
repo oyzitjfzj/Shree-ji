@@ -1,0 +1,146 @@
+name: Private exact formal slice matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-exact-formal-slice-matrix.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: b587fbc656c0704d0cc24c2ac6c9ae3379b90fbc47db45f0bb293a1251e4c645
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 17fe0eec60ab7f42f37c341af69c3c5cd324a715f6938eea93dc2143440bd733
+
+jobs:
+  formal:
+    strategy:
+      fail-fast: false
+      matrix:
+        index: [51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Recover exact hidden private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            p="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$p" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+          test -n "$resolved"
+          git merge-base --is-ancestor "$resolved" FETCH_HEAD
+          git checkout -q --detach "$resolved"
+          actual="$(git rev-parse HEAD)"
+          actual_proof="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          test "$actual_proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "::add-mask::$actual"
+          echo "LAS_FORMAL_SLICE_SNAPSHOT_PROOF=$actual_proof"
+          unset PRIVATE_TOKEN auth matched_ref resolved actual candidate p
+
+      - name: Run exact canonical formal profile
+        shell: bash
+        env:
+          TARGET_INDEX: ${{ matrix.index }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" "$RUNNER_TEMP/run-fn.sh" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          mm = re.search(r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{', src, re.S)
+          if not mm:
+              raise SystemExit("canonical TLC map generator not found")
+          Path(sys.argv[2]).write_text(mm.group(1) + "\n", encoding="utf-8")
+          fm = re.search(r'(run_tlc_profile\(\) \{.*?\n\})\n\nwhile IFS=\$\'\\t\' read -r cfg tla deadlock expectation; do', src, re.S)
+          if not fm:
+              raise SystemExit("canonical TLC runner not found")
+          Path(sys.argv[3]).write_text(fm.group(1) + "\n", encoding="utf-8")
+          PY
+          grep -Fx '  local args=(-workers auto -lncheck final -fp 0)' "$RUNNER_TEMP/run-fn.sh" >/dev/null
+
+          map="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" >"$map"
+          count="$(wc -l <"$map" | tr -d ' ')"
+          test "$TARGET_INDEX" -ge 0
+          test "$TARGET_INDEX" -lt "$count"
+          line="$(sed -n "$((TARGET_INDEX + 1))p" "$map")"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
+          test -n "$cfg"
+          test -n "$tla"
+
+          log="$RUNNER_TEMP/tlc-private.log"
+          set +e
+          (
+            set -euo pipefail
+            TMP="$RUNNER_TEMP/tlc-private"
+            PASS=0
+            FAIL=0
+            FAILED=()
+            mkdir -p "$TMP"
+            source "$RUNNER_TEMP/run-fn.sh"
+            run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation"
+            test "$FAIL" -eq 0
+          ) >"$log" 2>&1
+          rc=$?
+          set -e
+
+          echo "LAS_FORMAL_SLICE_INDEX=$TARGET_INDEX"
+          echo "LAS_FORMAL_SLICE_RC=$rc"
+          python3 - "$log" <<'PY'
+          import re, sys
+          text=open(sys.argv[1],encoding="utf-8",errors="replace").read()
+          matches=re.findall(r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue',text)
+          if matches:
+              g,d,q=matches[-1]
+              print("LAS_FORMAL_SLICE_GENERATED="+g.replace(",",""))
+              print("LAS_FORMAL_SLICE_DISTINCT="+d.replace(",",""))
+              print("LAS_FORMAL_SLICE_QUEUE="+q.replace(",",""))
+          depth=re.findall(r'Search depth of complete state graph is ([0-9]+)',text)
+          if depth:
+              print("LAS_FORMAL_SLICE_DEPTH="+depth[-1])
+          PY
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_FORMAL_SLICE_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_FORMAL_SLICE_RESULT=FAIL"
+          exit 1
