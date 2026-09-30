@@ -1,0 +1,68 @@
+name: Opaque exact Rust format classifier
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-exact-rustfmt-classifier.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_HEAD_PROOF: 6efdc335a7603dac81af7f32d4e47ba4da0234a96e13ff21b257ff5bdc421db5
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_HEAD_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_RUSTFMT_CLASSIFIER_RECOVERY=PASS"
+
+      - name: Emit only opaque rustfmt diff metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo fmt --all
+          changed="$RUNNER_TEMP/rustfmt-changed"
+          git diff --name-only -- '*.rs' | sort > "$changed"
+          count="$(wc -l < "$changed" | tr -d ' ')"
+          echo "LAS_RUSTFMT_CHANGED_FILE_COUNT=$count"
+          while IFS= read -r file; do
+            [[ -n "$file" ]] || continue
+            path_hash="$(printf '%s' "$file" | sha256sum | awk '{print $1}')"
+            echo "LAS_RUSTFMT_PATH_HASH=$path_hash"
+            git diff --unified=0 -- "$file" \
+              | sed -n -E 's/^@@ -([0-9]+)(,[0-9]+)? \+([0-9]+)(,[0-9]+)? @@.*/LAS_RUSTFMT_HUNK=\1\2:\3\4/p'
+          done < "$changed"
+          echo "LAS_RUSTFMT_CLASSIFIER=PASS"
