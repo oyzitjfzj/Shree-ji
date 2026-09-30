@@ -41,7 +41,7 @@ jobs:
               test -z "$resolved"
               resolved="$oid"
             fi
-          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          done < <(git rev-list --all --max-count=4096 | sort -u)
           test -n "$resolved"
           echo "::add-mask::$resolved"
           git checkout -q --detach "$resolved"
