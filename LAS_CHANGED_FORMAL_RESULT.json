@@ -2,12 +2,12 @@
   "schema": "las-public-changed-formal-verification-v1",
   "base_snapshot_proof": "4ac20a9d4a774668797310d8b74924405443fbf85d8d229619bc0c180665c25e",
   "head_snapshot_proof": "481658b91d05ba10eaf95beccedcaa1ceee37a307a080b8e69f399cd87463d31",
-  "formal_job": "cancelled",
-  "phase": "recovery",
-  "profile_count": "",
-  "pass_count": "",
-  "fail_count": "",
+  "formal_job": "success",
+  "phase": "complete",
+  "profile_count": "5",
+  "pass_count": "5",
+  "fail_count": "0",
   "failed_ordinals": "",
-  "private_log_sha256": "",
-  "result": "FAIL"
+  "private_log_sha256": "a0563438e264e22cf482cd6a0164e37f7c246ab349e21a737b5642125b9f4f17",
+  "result": "PASS"
 }
