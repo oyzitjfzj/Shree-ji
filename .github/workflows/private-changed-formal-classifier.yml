@@ -130,8 +130,10 @@ jobs:
 
           classify_log() {
             local file="$1"
-            if grep -Eiq 'parse error|semantic error|Parsing or semantic analysis failed|SANY.*error' "$file"; then
-              printf 'PARSE_SEMANTIC'
+            if grep -Eiq 'parse error|parsing error|Parse Error' "$file"; then
+              printf 'PARSE'
+            elif grep -Eiq 'semantic error|Semantic errors|Parsing or semantic analysis failed|SANY.*error' "$file"; then
+              printf 'SEMANTIC'
             elif grep -Eiq 'Invariant .* is violated|invariant.*violat' "$file"; then
               printf 'INVARIANT'
             elif grep -Eiq 'Temporal properties.*violat|temporal property.*violat|liveness.*violat' "$file"; then
@@ -160,9 +162,12 @@ jobs:
             profile_log="$TMP/tlc-$(echo "$cfg" | tr '/.' '__').log"
             test -s "$profile_log"
             class="$(classify_log "$profile_log")"
+            location="$(grep -Eio 'line[[:space:]]+[0-9]+[[:space:]]*,[[:space:]]*(col|column)[[:space:]]+[0-9]+' "$profile_log" | head -n 1 | sed -E 's/[^0-9]+/:/g; s/^://; s/:$//' || true)"
+            [[ -n "$location" ]] || location="NONE"
             digest="$(sha256sum "$profile_log" | awk '{print $1}')"
             echo "LAS_OPAQUE_FORMAL_ORDINAL=$ordinal"
             echo "LAS_OPAQUE_FORMAL_CLASS=$class"
+            echo "LAS_OPAQUE_FORMAL_LOCATION=$location"
             echo "LAS_OPAQUE_FORMAL_LOG_SHA256=$digest"
           done
 
