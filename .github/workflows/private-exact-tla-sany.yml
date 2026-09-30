@@ -1,0 +1,79 @@
+name: Opaque exact TLA SANY diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-exact-tla-sany.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_HEAD_PROOF: 09b53d99c8f805576bd40f229fec3b4aea499cf05f2b19251984d288c5a0c44e
+
+jobs:
+  sany:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1024 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_HEAD_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=8192 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_SANY_RECOVERY=PASS"
+
+      - name: Parse exact formal module without source disclosure
+        shell: bash
+        run: |
+          set -euo pipefail
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3             --output "$TLA_JAR"             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"             >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR"             | sha1sum --check --strict >/dev/null
+          cd target/spec/defence_evolution
+          log="$RUNNER_TEMP/sany.private.log"
+          set +e
+          java -cp "$TLA_JAR" tla2sany.SANY ClaimFormalProofAssessment.tla >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_SANY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_SANY_RC=$rc"
+          kind="UNKNOWN"
+          grep -Eiq 'parse error' "$log" && kind="PARSE"
+          grep -Eiq 'lexical error' "$log" && kind="LEXICAL"
+          grep -Eiq 'semantic error' "$log" && kind="SEMANTIC"
+          grep -Eiq 'cannot find|not found' "$log" && kind="RESOLUTION"
+          locator="$(grep -Eio 'line[[:space:]]+[0-9]+([^0-9]+)(column|col)[[:space:]]+[0-9]+' "$log" | head -n1 || true)"
+          if [[ -z "$locator" ]]; then
+            locator="$(grep -Eio 'line[[:space:]]+[0-9]+,[[:space:]]*col[[:space:]]+[0-9]+' "$log" | head -n1 || true)"
+          fi
+          locator="$(printf '%s' "$locator" | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9 ,:')"
+          echo "LAS_SANY_KIND=$kind"
+          echo "LAS_SANY_LOCATOR=${locator:-NONE}"
+          [[ "$rc" -eq 0 ]]
