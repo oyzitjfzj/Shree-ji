@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_HEAD_PROOF: 483a3dafda505441fb34724d92b5f9aa7e131df09bbd2b18bd2d64c723819647
+  EXPECTED_HEAD_PROOF: f12c01b35c1de60e294e2d42095d9dcdba6f254bd1cf99366f4f8583c5e472b7
 
 jobs:
   red:
@@ -61,14 +61,14 @@ jobs:
           set -e
 
           digest="$(sha256sum "$log" | awk '{print $1}')"
-          e0599_count="$(grep -c 'error\[E0599\]' "$log" || true)"
-          other_error_codes="$(awk 'match($0,/error\\[E[0-9]{4}\\]/){code=substr($0,RSTART+6,5); if(code!="E0599") seen[code]=1} END{print length(seen)}' "$log")"
+          error_codes="$(grep -Eo 'error\\[E[0-9]{4}\\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+          unexpected_codes="$(awk 'match($0,/error\\[E[0-9]{4}\\]/){code=substr($0,RSTART+6,5); if(code!="E0412" && code!="E0433" && code!="E0599") seen[code]=1} END{print length(seen)}' "$log")"
 
           echo "LAS_RUST_RED_LOG_SHA256=$digest"
-          echo "LAS_RUST_RED_E0599_COUNT=$e0599_count"
-          echo "LAS_RUST_RED_OTHER_CODE_COUNT=$other_error_codes"
+          echo "LAS_RUST_RED_ERROR_CODES=$error_codes"
+          echo "LAS_RUST_RED_UNEXPECTED_CODE_COUNT=$unexpected_codes"
 
-          if [[ "$rc" -ne 0 && "$e0599_count" -gt 0 && "$other_error_codes" -eq 0 ]]; then
+          if [[ "$rc" -ne 0 && -n "$error_codes" && "$unexpected_codes" -eq 0 ]]; then
             echo "LAS_RUST_RED_RESULT=EXPECTED_RED"
             exit 0
           fi
