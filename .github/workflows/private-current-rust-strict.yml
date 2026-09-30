@@ -1,0 +1,82 @@
+name: Opaque current Rust strict gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-current-rust-strict.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_HEAD_PROOF: 577fb1d4a21bd3821b20a0ca20333f5ac058dc0544e16c7987db30d635f994d7
+
+jobs:
+  strict:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_HEAD_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=4096 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_STRICT_RECOVERY=PASS"
+
+      - name: Strict cargo check
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/check.private.log"
+          set +e
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_STRICT_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_STRICT_CHECK_RC=$rc"
+          echo "LAS_STRICT_CHECK_DEAD_CODE_COUNT=$(grep -ci 'dead_code' "$log" || true)"
+          echo "LAS_STRICT_CHECK_UNUSED_COUNT=$(grep -ci 'unused' "$log" || true)"
+          echo "LAS_STRICT_CHECK_ERROR_CODES=$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+          [[ "$rc" -eq 0 ]]
+
+      - name: Strict clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/clippy.private.log"
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_STRICT_CLIPPY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_STRICT_CLIPPY_RC=$rc"
+          echo "LAS_STRICT_CLIPPY_ERROR_CODES=$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+          echo "LAS_STRICT_CLIPPY_WARNING_COUNT=$(grep -c '^error:' "$log" || true)"
+          [[ "$rc" -eq 0 ]]
