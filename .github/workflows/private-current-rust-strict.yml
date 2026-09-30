@@ -9,9 +9,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: private-rust-strict-current
+  cancel-in-progress: true
+
 env:
   # RED_PROOF_TO_CLAIM_SOURCE_PROJECTION
-  EXPECTED_HEAD_PROOF: 9491e8bfc36e0e4df0f99975c7c029f36058a71b3f2bd032e7eb8b651f75ba2e
+  EXPECTED_HEAD_PROOF: 81c25c57421baf538e82ad96dcdfcdc806f01b678cf596f365b27f3cd6211786
 
 jobs:
   strict:
