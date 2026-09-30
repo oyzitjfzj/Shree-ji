@@ -55,7 +55,7 @@ jobs:
           cd target
           log="$RUNNER_TEMP/check.private.log"
           set +e
-          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >"$log" 2>&1
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --message-format=json >"$log" 2>&1
           rc=$?
           set -e
           echo "LAS_STRICT_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
@@ -63,6 +63,13 @@ jobs:
           echo "LAS_STRICT_CHECK_DEAD_CODE_COUNT=$(grep -ci 'dead_code' "$log" || true)"
           echo "LAS_STRICT_CHECK_UNUSED_COUNT=$(grep -ci 'unused' "$log" || true)"
           echo "LAS_STRICT_CHECK_ERROR_CODES=$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+          diag="$(grep -m1 '"code":{"code":"dead_code"' "$log" || true)"
+          if [[ -n "$diag" ]]; then
+            file="$(printf '%s' "$diag" | jq -r '.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name')"
+            line="$(printf '%s' "$diag" | jq -r '.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].line_start')"
+            echo "LAS_STRICT_DEAD_PATH_HASH=$(printf '%s' "$file" | sha256sum | awk '{print $1}')"
+            echo "LAS_STRICT_DEAD_LINE=$line"
+          fi
           [[ "$rc" -eq 0 ]]
 
       - name: Strict clippy
