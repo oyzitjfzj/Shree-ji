@@ -19,7 +19,7 @@ jobs:
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
           PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          EXPECTED_PRIVATE_SNAPSHOT_PROOF: 40e0f65a1a6ecaa9903464c3cde7dbefe94c67b73b5727e4e82d7d5a8bd0128b
+          EXPECTED_PRIVATE_SNAPSHOT_PROOF: 60e04d41ea7748f8d879cb659ccac600134c0cc3e36d7d9a8bdb7758f568bb54
         run: |
           set -euo pipefail
           echo "::add-mask::$PRIVATE_REPOSITORY"
@@ -39,7 +39,7 @@ jobs:
               actual="$oid"
               break
             fi
-          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          done < <(git rev-list --all --max-count=4096 | sort -u)
           test -n "$actual"
           echo "::add-mask::$actual"
           git checkout -q --detach "$actual"
