@@ -63,12 +63,23 @@ jobs:
           digest="$(sha256sum "$log" | awk '{print $1}')"
           error_codes="$(grep -Eo 'error\\[E[0-9]{4}\\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
           unexpected_codes="$(awk 'match($0,/error\\[E[0-9]{4}\\]/){code=substr($0,RSTART+6,5); if(code!="E0412" && code!="E0433" && code!="E0599") seen[code]=1} END{print length(seen)}' "$log")"
+          generic_error_count="$(grep -c '^error:' "$log" || true)"
+          compile_marker=0
+          grep -q 'could not compile' "$log" && compile_marker=1
+          resource_marker=0
+          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137' "$log" && resource_marker=1
+          network_marker=0
+          grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
 
           echo "LAS_RUST_RED_LOG_SHA256=$digest"
           echo "LAS_RUST_RED_ERROR_CODES=$error_codes"
           echo "LAS_RUST_RED_UNEXPECTED_CODE_COUNT=$unexpected_codes"
+          echo "LAS_RUST_RED_GENERIC_ERROR_COUNT=$generic_error_count"
+          echo "LAS_RUST_RED_COMPILE_MARKER=$compile_marker"
+          echo "LAS_RUST_RED_RESOURCE_MARKER=$resource_marker"
+          echo "LAS_RUST_RED_NETWORK_MARKER=$network_marker"
 
-          if [[ "$rc" -ne 0 && -n "$error_codes" && "$unexpected_codes" -eq 0 ]]; then
+          if [[ "$rc" -ne 0 && "$compile_marker" -eq 1 && "$unexpected_codes" -eq 0 && "$resource_marker" -eq 0 && "$network_marker" -eq 0 ]]; then
             echo "LAS_RUST_RED_RESULT=EXPECTED_RED"
             exit 0
           fi
