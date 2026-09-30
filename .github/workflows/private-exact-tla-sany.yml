@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_HEAD_PROOF: 2b75015f3d0c57a4e2645e4cfaa31420fbe24933f3002aa798e0bc7e8d3b0d5c
+  EXPECTED_HEAD_PROOF: db53db8419ce7ad2eb58f69580daf9494809018e0209ad0bd9f45d3129221d65
 
 jobs:
   sany:
@@ -59,7 +59,7 @@ jobs:
           cd target/spec/defence_evolution
           log="$RUNNER_TEMP/sany.private.log"
           set +e
-          java -cp "$TLA_JAR" tla2sany.SANY ClaimFormalProofAssessment.tla >"$log" 2>&1
+          java -cp "$TLA_JAR" tla2sany.SANY CandidateAssuranceEvidenceCaseCurrentModel.tla >"$log" 2>&1
           rc=$?
           set -e
           echo "LAS_SANY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
@@ -87,7 +87,7 @@ jobs:
           cd target/spec/defence_evolution
           log="$RUNNER_TEMP/tlc.private.log"
           set +e
-          java -XX:+UseParallelGC -jar "$TLA_JAR" -workers auto -lncheck final -fp 0             -config ClaimFormalProofAssessment.cfg ClaimFormalProofAssessment.tla >"$log" 2>&1
+          java -XX:+UseParallelGC -jar "$TLA_JAR" -workers auto -lncheck final -fp 0             -config CandidateAssuranceEvidenceCaseCurrent.cfg CandidateAssuranceEvidenceCaseCurrentModel.tla >"$log" 2>&1
           rc=$?
           set -e
           echo "LAS_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
