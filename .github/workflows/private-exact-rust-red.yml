@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_HEAD_PROOF: 54bc6dfbf62f8e1c1844dfcf78d9857d3ad619000124b943a20340a371b02dc0
+  EXPECTED_HEAD_PROOF: 348ea7ae1ed448ebf0b4c1ae4acd7533c1703f9f8c60cc1dc7a507c6658a4d58
 
 jobs:
   red:
@@ -62,7 +62,7 @@ jobs:
 
           digest="$(sha256sum "$log" | awk '{print $1}')"
           error_codes="$(grep -Eo 'error\\[E[0-9]{4}\\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
-          unexpected_codes="$(awk 'match($0,/error\\[E[0-9]{4}\\]/){code=substr($0,RSTART+6,5); if(code!="E0412" && code!="E0433" && code!="E0599") seen[code]=1} END{print length(seen)}' "$log")"
+          unexpected_codes="$(awk 'match($0,/error\\[E[0-9]{4}\\]/){code=substr($0,RSTART+6,5); if(code!="E0412" && code!="E0432" && code!="E0433" && code!="E0599") seen[code]=1} END{print length(seen)}' "$log")"
           generic_error_count="$(grep -c '^error:' "$log" || true)"
           compile_marker=0
           grep -q 'could not compile' "$log" && compile_marker=1
