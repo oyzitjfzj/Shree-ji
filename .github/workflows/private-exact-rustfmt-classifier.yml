@@ -65,4 +65,12 @@ jobs:
             git diff --unified=0 -- "$file" \
               | sed -n -E 's/^@@ -([0-9]+)(,[0-9]+)? \+([0-9]+)(,[0-9]+)? @@.*/LAS_RUSTFMT_HUNK=\1\2:\3\4/p'
           done < "$changed"
+
+          if [[ "$count" -eq 1 ]]; then
+            formatted_file="$(head -n 1 "$changed")"
+            for line_no in 1627 1628; do
+              line="$(sed -n "${line_no}p" "$formatted_file")"
+              echo "LAS_RUSTFMT_FORMATTED_LINE=${line_no}:$(printf '%s' "$line" | wc -c | tr -d ' '):$(printf '%s' "$line" | sha256sum | awk '{print $1}')"
+            done
+          fi
           echo "LAS_RUSTFMT_CLASSIFIER=PASS"
