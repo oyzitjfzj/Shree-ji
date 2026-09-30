@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-sharded-verify-20260929c
+  group: current-sharded-verify-20260930b
   cancel-in-progress: true
 
 jobs:
