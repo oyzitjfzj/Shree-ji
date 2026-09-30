@@ -96,10 +96,14 @@ jobs:
           error_codes="$(grep -Eo 'error\\[E[0-9]{4}\\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
           error_code_count="$(grep -Eo 'error\\[E[0-9]{4}\\]' "$log" | sort -u | wc -l | tr -d ' ' || true)"
           class="OTHER"
-          if grep -q 'could not compile' "$log"; then
+          if grep -Eqi 'stack overflow|has overflowed its stack' "$log"; then
+            class="STACK_OVERFLOW"
+          elif grep -q 'could not compile' "$log"; then
             class="COMPILE"
           elif grep -q 'test result: FAILED' "$log"; then
             class="TEST"
+          elif grep -Eq 'signal: [0-9]+' "$log"; then
+            class="SIGNAL"
           elif [[ "$rc" -eq 0 ]]; then
             class="PASS"
           fi
@@ -108,6 +112,10 @@ jobs:
           echo "LAS_RUST_SLICE_TEST_CLASS=$class"
           echo "LAS_RUST_SLICE_TEST_ERROR_CODE_COUNT=$error_code_count"
           echo "LAS_RUST_SLICE_TEST_ERROR_CODES=$error_codes"
+          echo "LAS_RUST_SLICE_STACK_OVERFLOW_COUNT=$(grep -Eic 'stack overflow|has overflowed its stack' "$log" || true)"
+          signal_tokens="$(grep -Eo 'signal: [0-9]+' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+          echo "LAS_RUST_SLICE_SIGNAL_TOKENS=$signal_tokens"
+          echo "LAS_RUST_SLICE_PROCESS_EXIT_COUNT=$(grep -ci 'process didn.t exit successfully' "$log" || true)"
 
           if [[ "$class" == "TEST" ]]; then
             while IFS= read -r failed_name; do
@@ -125,7 +133,7 @@ jobs:
             )
           fi
 
-          if [[ "$class" == "TEST" ]]; then
+          if [[ "$rc" -ne 0 ]]; then
             python3 - "$log" <<'PY'
           import hashlib, re, sys
           seen=set()
