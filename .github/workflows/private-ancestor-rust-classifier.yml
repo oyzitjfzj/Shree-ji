@@ -74,4 +74,15 @@ jobs:
           echo "LAS_ANCESTOR_CHECK_WARNING_COUNT=$warnings"
           echo "LAS_ANCESTOR_CHECK_GENERIC_ERROR_COUNT=$generic"
           echo "LAS_ANCESTOR_CHECK_COMPILE_MARKER=$compile"
+          if [[ "$dead" -gt 0 ]]; then
+            location="$(grep -A3 -m1 'dead_code' "$log" | grep -Eo -- '--> [^:]+:[0-9]+:[0-9]+' | head -n1 || true)"
+            if [[ -n "$location" ]]; then
+              loc="${location#--> }"
+              file="${loc%%:*}"
+              rest="${loc#*:}"
+              line="${rest%%:*}"
+              echo "LAS_ANCESTOR_DEAD_PATH_HASH=$(printf '%s' "$file" | sha256sum | awk '{print $1}')"
+              echo "LAS_ANCESTOR_DEAD_LINE=$line"
+            fi
+          fi
           [[ "$rc" -ne 0 ]]
