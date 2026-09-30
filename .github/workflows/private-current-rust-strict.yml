@@ -79,11 +79,20 @@ jobs:
           cd target
           log="$RUNNER_TEMP/clippy.private.log"
           set +e
-          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >"$log" 2>&1
+          cargo +1.98.1 clippy --locked --all-targets --message-format=json -- -D warnings >"$log" 2>&1
           rc=$?
           set -e
           echo "LAS_STRICT_CLIPPY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_STRICT_CLIPPY_RC=$rc"
           echo "LAS_STRICT_CLIPPY_ERROR_CODES=$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
           echo "LAS_STRICT_CLIPPY_WARNING_COUNT=$(grep -c '^error:' "$log" || true)"
+          diag="$(jq -c 'select(.reason=="compiler-message" and .message.level=="error" and .message.code.code!=null)' "$log" | head -n1 || true)"
+          if [[ -n "$diag" ]]; then
+            lint="$(printf '%s' "$diag" | jq -r '.message.code.code')"
+            file="$(printf '%s' "$diag" | jq -r '.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name')"
+            line="$(printf '%s' "$diag" | jq -r '.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].line_start')"
+            echo "LAS_STRICT_CLIPPY_LINT=$lint"
+            echo "LAS_STRICT_CLIPPY_PATH_HASH=$(printf '%s' "$file" | sha256sum | awk '{print $1}')"
+            echo "LAS_STRICT_CLIPPY_LINE=$line"
+          fi
           [[ "$rc" -eq 0 ]]
