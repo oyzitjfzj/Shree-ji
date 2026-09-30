@@ -91,6 +91,36 @@ jobs:
                   if obj.get("reason")!="compiler-message":
                       continue
                   msg=obj.get("message") or {}
+                  if msg.get("level")!="error":
+                      continue
+                  code=(msg.get("code") or {}).get("code") or "NONE"
+                  spans=msg.get("spans") or []
+                  primary=[s for s in spans if s.get("is_primary")]
+                  ordered=primary+spans
+                  if not ordered:
+                      item=(code, "NONE", 0)
+                  else:
+                      span=ordered[0]
+                      file=str(span.get("file_name") or "")
+                      line=int(span.get("line_start") or 0)
+                      item=(code, hashlib.sha256(file.encode()).hexdigest() if file else "NONE", line)
+                  seen.add(item)
+          print(f"LAS_STRICT_CHECK_DIAG_UNIQUE_COUNT={len(seen)}")
+          for code,path_hash,line in sorted(seen):
+              print(f"LAS_STRICT_CHECK_DIAG={code}:{path_hash}:{line}")
+          PY
+          python3 - "$log" <<'PY'
+          import hashlib, json, sys
+          seen=set()
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj=json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason")!="compiler-message":
+                      continue
+                  msg=obj.get("message") or {}
                   code=(msg.get("code") or {}).get("code")
                   if code!="dead_code":
                       continue
