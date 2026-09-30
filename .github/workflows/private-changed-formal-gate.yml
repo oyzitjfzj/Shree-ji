@@ -43,7 +43,7 @@ jobs:
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=200 origin '+refs/heads/*:refs/remotes/origin/*'
+          git -c http.extraHeader="AUTHORIZATION: basic $auth"             fetch -q --depth=1024 origin '+refs/heads/*:refs/remotes/origin/*'
 
           find_by_proof() {
             local expected="$1"
@@ -55,7 +55,7 @@ jobs:
                 found="$oid"
                 break
               fi
-            done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+            done < <(git rev-list --all --max-count=8192 | sort -u)
             test -n "$found"
             printf '%s' "$found"
           }
