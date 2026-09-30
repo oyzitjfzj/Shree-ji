@@ -1,0 +1,77 @@
+name: Opaque ancestor Rust classifier
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-ancestor-rust-classifier.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_HEAD_PROOF: 7c2d471a249056f6fb05ce79acb0c5632527bbb147de72508a28b8241145c7d6
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Recover exact private ancestor opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_HEAD_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_ANCESTOR_RECOVERY=PASS"
+
+      - name: Classify default cargo-check failure without source disclosure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/ancestor-check.private.log"
+          set +e
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >"$log" 2>&1
+          rc=$?
+          set -e
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          codes="$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+          dead="$(grep -ci 'dead_code' "$log" || true)"
+          unused="$(grep -ci 'unused' "$log" || true)"
+          warnings="$(grep -c '^warning:' "$log" || true)"
+          generic="$(grep -c '^error:' "$log" || true)"
+          compile=0
+          grep -q 'could not compile' "$log" && compile=1
+          echo "LAS_ANCESTOR_CHECK_LOG_SHA256=$digest"
+          echo "LAS_ANCESTOR_CHECK_RC=$rc"
+          echo "LAS_ANCESTOR_CHECK_ERROR_CODES=$codes"
+          echo "LAS_ANCESTOR_CHECK_DEAD_CODE_COUNT=$dead"
+          echo "LAS_ANCESTOR_CHECK_UNUSED_COUNT=$unused"
+          echo "LAS_ANCESTOR_CHECK_WARNING_COUNT=$warnings"
+          echo "LAS_ANCESTOR_CHECK_GENERIC_ERROR_COUNT=$generic"
+          echo "LAS_ANCESTOR_CHECK_COMPILE_MARKER=$compile"
+          [[ "$rc" -ne 0 ]]
