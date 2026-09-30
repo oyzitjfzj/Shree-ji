@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EXPECTED_HEAD_PROOF: d7988db6b23a4e333a3871dd31ba4d6b732b7d63a304344a31dccb5b86694250
+  EXPECTED_HEAD_PROOF: a2b7a97ba06c0480fdbafd9d32691aba33f80475aa26d64374df0d81b628b8ab
 
 jobs:
   rust:
