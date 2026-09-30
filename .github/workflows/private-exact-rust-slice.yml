@@ -61,13 +61,12 @@ jobs:
           set -e
           echo "LAS_RUST_SLICE_FMT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_RUST_SLICE_FMT_RC=$rc"
-          grep -E '^Diff in .* at line [0-9]+:' "$log" \
-            | head -n 4 \
-            | while IFS= read -r line; do
-                path="$(printf '%s' "$line" | sed -E 's/^Diff in (.*) at line [0-9]+:$/\1/')"
-                lineno="$(printf '%s' "$line" | sed -E 's/^.* at line ([0-9]+):$/\1/')"
-                echo "LAS_RUST_SLICE_FMT_LOCATOR=$(printf '%s' "$path" | sha256sum | awk '{print $1}'):$lineno"
-              done
+          while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            path="$(printf '%s' "$line" | sed -E 's/^Diff in (.*) at line [0-9]+:$/\1/')"
+            lineno="$(printf '%s' "$line" | sed -E 's/^.* at line ([0-9]+):$/\1/')"
+            echo "LAS_RUST_SLICE_FMT_LOCATOR=$(printf '%s' "$path" | sha256sum | awk '{print $1}'):$lineno"
+          done < <(grep -E '^Diff in .* at line [0-9]+:' "$log" | head -n 4 || true)
           [[ "$rc" -eq 0 ]]
           echo "LAS_RUST_SLICE_FMT=PASS"
 
