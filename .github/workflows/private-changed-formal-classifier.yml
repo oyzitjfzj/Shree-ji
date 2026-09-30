@@ -1,0 +1,170 @@
+name: Opaque changed formal classifier
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-changed-formal-classifier.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_BASE_PROOF: 07d38f99f554c5e61942d28deb7b1884a03f909bf694db9e14d7ab7ba5644fce
+  EXPECTED_HEAD_PROOF: 28681edf3e00826d64f3a238cf6ebdac5185771ba1767d78d62a6418f141c17c
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Recover exact private revisions opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=200 origin '+refs/heads/*:refs/remotes/origin/*'
+
+          find_by_proof() {
+            local expected="$1"
+            local found=""
+            while IFS= read -r oid; do
+              [[ -n "$oid" ]] || continue
+              proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+              if [[ "$proof" = "$expected" ]]; then
+                found="$oid"
+                break
+              fi
+            done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
+            test -n "$found"
+            printf '%s' "$found"
+          }
+
+          base="$(find_by_proof "$EXPECTED_BASE_PROOF")"
+          head="$(find_by_proof "$EXPECTED_HEAD_PROOF")"
+          echo "::add-mask::$base"
+          echo "::add-mask::$head"
+          git merge-base --is-ancestor "$base" "$head"
+          git checkout -q --detach "$head"
+          printf '%s' "$base" > "$RUNNER_TEMP/base"
+          printf '%s' "$head" > "$RUNNER_TEMP/head"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth
+          echo "LAS_OPAQUE_RECOVERY=PASS"
+
+      - name: Classify only failed changed-formal ordinals
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          base="$(cat "$RUNNER_TEMP/base")"
+          head="$(cat "$RUNNER_TEMP/head")"
+
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" \
+            >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" \
+            | sha1sum --check --strict >/dev/null
+
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" "$RUNNER_TEMP/run-fn.sh" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src=Path(sys.argv[1]).read_text(encoding="utf-8")
+          mm=re.search(
+              r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',
+              src,re.S)
+          if not mm:
+              raise SystemExit("map extraction unavailable")
+          Path(sys.argv[2]).write_text(mm.group(1)+"\n",encoding="utf-8")
+          fm=re.search(
+              r'(run_tlc_profile\(\) \{.*?\n\})\n\nwhile IFS=\$\'\\t\' read -r cfg tla deadlock expectation; do',
+              src,re.S)
+          if not fm:
+              raise SystemExit("runner extraction unavailable")
+          Path(sys.argv[3]).write_text(fm.group(1)+"\n",encoding="utf-8")
+          PY
+
+          map="$RUNNER_TEMP/map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" > "$map"
+          changed="$RUNNER_TEMP/changed"
+          git diff --name-only "$base" "$head" -- ':(glob)spec/**/*.cfg' ':(glob)spec/**/*.tla' \
+            | sort -u > "$changed"
+          selected="$RUNNER_TEMP/selected.tsv"
+          python3 - "$map" "$changed" > "$selected" <<'PY'
+          import sys
+          changed={line.strip() for line in open(sys.argv[2],encoding="utf-8") if line.strip()}
+          for raw in open(sys.argv[1],encoding="utf-8"):
+              row=raw.rstrip("\n").split("\t")
+              if len(row) < 4:
+                  row += [""]*(4-len(row))
+              cfg,tla,deadlock,expectation=row[:4]
+              if cfg in changed or tla in changed:
+                  print("\t".join((cfg,tla,deadlock,expectation)))
+          PY
+
+          test "$(wc -l < "$selected" | tr -d ' ')" = "5"
+
+          TMP="$RUNNER_TEMP/tlc-private"
+          mkdir -p "$TMP"
+          PASS=0
+          FAIL=0
+          FAILED=()
+          source "$RUNNER_TEMP/run-fn.sh"
+
+          classify_log() {
+            local file="$1"
+            if grep -Eiq 'parse error|semantic error|Parsing or semantic analysis failed|SANY.*error' "$file"; then
+              printf 'PARSE_SEMANTIC'
+            elif grep -Eiq 'Invariant .* is violated|invariant.*violat' "$file"; then
+              printf 'INVARIANT'
+            elif grep -Eiq 'Temporal properties.*violat|temporal property.*violat|liveness.*violat' "$file"; then
+              printf 'TEMPORAL'
+            elif grep -Eiq 'Attempted to evaluate|TLC encountered.*error|evaluation error|undefined operator' "$file"; then
+              printf 'EVALUATION'
+            elif grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|exit code 137|Java heap space' "$file"; then
+              printf 'RESOURCE'
+            elif grep -Eiq 'TLC threw an unexpected exception|RuntimeException|StackOverflowError' "$file"; then
+              printf 'ENGINE'
+            else
+              printf 'OTHER'
+            fi
+          }
+
+          for ordinal in 3 4; do
+            line="$(sed -n "$((ordinal + 1))p" "$selected")"
+            test -n "$line"
+            IFS=$'\t' read -r cfg tla deadlock expectation <<< "$line"
+            before_fail="$FAIL"
+            outer="$RUNNER_TEMP/ordinal-$ordinal.private.log"
+            set +e
+            run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation" >"$outer" 2>&1
+            set -e
+            test "$FAIL" -gt "$before_fail"
+            profile_log="$TMP/tlc-$(echo "$cfg" | tr '/.' '__').log"
+            test -s "$profile_log"
+            class="$(classify_log "$profile_log")"
+            digest="$(sha256sum "$profile_log" | awk '{print $1}')"
+            echo "LAS_OPAQUE_FORMAL_ORDINAL=$ordinal"
+            echo "LAS_OPAQUE_FORMAL_CLASS=$class"
+            echo "LAS_OPAQUE_FORMAL_LOG_SHA256=$digest"
+          done
+
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_OPAQUE_CLASSIFIER=PASS"
