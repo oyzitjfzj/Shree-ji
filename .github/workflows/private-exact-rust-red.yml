@@ -62,7 +62,7 @@ jobs:
 
           digest="$(sha256sum "$log" | awk '{print $1}')"
           e0599_count="$(grep -c 'error\[E0599\]' "$log" || true)"
-          other_error_codes="$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | grep -v 'E0599' | wc -l | tr -d ' ')"
+          other_error_codes="$(awk 'match($0,/error\\[E[0-9]{4}\\]/){code=substr($0,RSTART+6,5); if(code!="E0599") seen[code]=1} END{print length(seen)}' "$log")"
 
           echo "LAS_RUST_RED_LOG_SHA256=$digest"
           echo "LAS_RUST_RED_E0599_COUNT=$e0599_count"
