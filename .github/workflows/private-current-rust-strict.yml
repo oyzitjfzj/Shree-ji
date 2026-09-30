@@ -10,6 +10,7 @@ permissions:
   contents: read
 
 env:
+  # RED_PROOF_TO_CLAIM_SOURCE_PROJECTION
   EXPECTED_HEAD_PROOF: f8a976210a2ff19c47e29743421e468770c31c3cc56dd894df104f2f81f512f2
 
 jobs:
