@@ -70,6 +70,19 @@ jobs:
             echo "LAS_STRICT_DEAD_PATH_HASH=$(printf '%s' "$file" | sha256sum | awk '{print $1}')"
             echo "LAS_STRICT_DEAD_LINE=$line"
           fi
+          jq -Rr 'fromjson?
+            | select(.reason=="compiler-message" and .message.level=="error")
+            | [(.message.code.code // "NONE"), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].file_name // ""), (.message.spans as $s | (($s | map(select(.is_primary))) + $s)[0].line_start // 0)]
+            | @tsv' "$log" | head -n 1 > "$RUNNER_TEMP/check-first-error.tsv"
+          while IFS="$(printf '\011')" read -r code file line; do
+            [[ -n "$code" ]] || continue
+            if [[ -n "$file" ]]; then
+              path_hash="$(printf '%s' "$file" | sha256sum | awk '{print $1}')"
+            else
+              path_hash="NONE"
+            fi
+            echo "LAS_STRICT_CHECK_FIRST_DIAG=$code:$path_hash:$line"
+          done < "$RUNNER_TEMP/check-first-error.tsv"
           [[ "$rc" -eq 0 ]]
 
       - name: Strict clippy
