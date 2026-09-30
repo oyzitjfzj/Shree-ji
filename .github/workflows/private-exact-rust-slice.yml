@@ -55,8 +55,20 @@ jobs:
           set -euo pipefail
           cd target
           log="$RUNNER_TEMP/rustfmt.private.log"
+          set +e
           cargo fmt --all -- --check >"$log" 2>&1
+          rc=$?
+          set -e
           echo "LAS_RUST_SLICE_FMT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_RUST_SLICE_FMT_RC=$rc"
+          grep -E '^Diff in .* at line [0-9]+:' "$log" \
+            | head -n 4 \
+            | while IFS= read -r line; do
+                path="$(printf '%s' "$line" | sed -E 's/^Diff in (.*) at line [0-9]+:$/\1/')"
+                lineno="$(printf '%s' "$line" | sed -E 's/^.* at line ([0-9]+):$/\1/')"
+                echo "LAS_RUST_SLICE_FMT_LOCATOR=$(printf '%s' "$path" | sha256sum | awk '{print $1}'):$lineno"
+              done
+          [[ "$rc" -eq 0 ]]
           echo "LAS_RUST_SLICE_FMT=PASS"
 
       - name: Run library tests
