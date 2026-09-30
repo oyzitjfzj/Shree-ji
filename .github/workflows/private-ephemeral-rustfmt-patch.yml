@@ -19,7 +19,7 @@ jobs:
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
           PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6b6c646c7e7c1771824cb3bc5fad4e9e6a2ace0dbbff5dec4f055f02a8b11a3f
+          EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7653941bee6b42f51ba2096ef9099ee20259643235dc77882d8e3a2725390aa5
         run: |
           set -euo pipefail
           echo "::add-mask::$PRIVATE_REPOSITORY"
@@ -57,12 +57,6 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
           rustup component add --toolchain 1.98.1 rustfmt >/dev/null
           cargo +1.98.1 fmt --all
-          while IFS= read -r -d '' path; do
-            path_hash="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
-            if [[ "$path_hash" == "05853ccac01cdae47829395fdce4687750ae43b6eaac5a5f547404a4689bcf10" ]]; then
-              echo "LAS_FMT_TARGET_BLOCK_SHA256=$(sed -n '1185,1192p' "$path" | sha256sum | awk '{print $1}')"
-            fi
-          done < <(git diff --name-only -z -- '*.rs')
           git diff --unified=0 --no-ext-diff -- '*.rs' \
             | grep '^@@' | cut -d' ' -f2-3 | sed 's/^/LAS_FMT_HUNK=/'
           git diff --no-ext-diff --binary -- '*.rs' > "$RUNNER_TEMP/rustfmt.patch"
