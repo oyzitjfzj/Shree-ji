@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_HEAD_PROOF: f8a976210a2ff19c47e29743421e468770c31c3cc56dd894df104f2f81f512f2
+  EXPECTED_HEAD_PROOF: 4860e55b23fa1ea5a3bde8f8e4e49b6cda23065809ece422bf7ae6ca6bd88a01
 
 jobs:
   rust:
