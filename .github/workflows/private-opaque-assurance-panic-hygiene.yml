@@ -1,0 +1,141 @@
+name: Private opaque assurance panic hygiene
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-opaque-assurance-panic-hygiene.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 74ae09d8299f30124921e7b40bb22b46656c8a918cf1936f68f26ab8a3bae9de
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+          test -n "$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "::add-mask::$resolved"
+          echo "LAS_PANIC_HYGIENE_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
+
+      - name: Audit production Rust panic surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add clippy --toolchain 1.98.1 >/dev/null
+          cd target
+
+          # Build-script failure paths intentionally terminate the build; this local
+          # runner-only allowance keeps the audit scoped to production library code.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("build.rs")
+          src=p.read_text(encoding="utf-8")
+          p.write_text("#![allow(clippy::expect_used, clippy::panic)]\n"+src,encoding="utf-8")
+          PY
+
+          log="$RUNNER_TEMP/panic-hygiene.private.log"
+          set +e
+          cargo +1.98.1 clippy --locked --lib --message-format=json -- \
+            -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -D clippy::panic \
+            -D clippy::todo \
+            -D clippy::unimplemented >"$log" 2>&1
+          rc=$?
+          set -e
+
+          echo "LAS_PANIC_HYGIENE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_PANIC_HYGIENE_RC=$rc"
+          python3 - "$log" <<'PY'
+          import hashlib, json, sys
+          found=[]
+          wanted={
+              "clippy::unwrap_used",
+              "clippy::expect_used",
+              "clippy::panic",
+              "clippy::todo",
+              "clippy::unimplemented",
+          }
+          with open(sys.argv[1],encoding="utf-8",errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj=json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason")!="compiler-message":
+                      continue
+                  msg=obj.get("message") or {}
+                  code=(msg.get("code") or {}).get("code")
+                  if code not in wanted:
+                      continue
+                  spans=msg.get("spans") or []
+                  primary=[s for s in spans if s.get("is_primary")]
+                  ordered=primary+spans
+                  if not ordered:
+                      found.append((code,"NONE",0))
+                      continue
+                  span=ordered[0]
+                  path=str(span.get("file_name") or "")
+                  line=int(span.get("line_start") or 0)
+                  found.append((code,hashlib.sha256(path.encode()).hexdigest() if path else "NONE",line))
+          unique=sorted(set(found))
+          print(f"LAS_PANIC_HYGIENE_DIAG_COUNT={len(unique)}")
+          for lint,path_hash,line in unique:
+              print(f"LAS_PANIC_HYGIENE_DIAG={lint}:{path_hash}:{line}")
+          PY
+          rm -f build.rs
+          git checkout -q -- build.rs
+          test -z "$(git status --porcelain --untracked-files=no)"
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_PANIC_HYGIENE_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_PANIC_HYGIENE_RESULT=FAIL"
+          exit 1
