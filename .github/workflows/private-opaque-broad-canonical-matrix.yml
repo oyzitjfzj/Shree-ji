@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       max-parallel: 16
       matrix:
-        index: [2, 28, 29, 36, 39]
+        index: [109, 114, 121]
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
