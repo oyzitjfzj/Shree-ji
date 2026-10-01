@@ -147,7 +147,7 @@ jobs:
           for code,path_hash,line in sorted(unexpected_errors):
               print(f"LAS_PANIC_HYGIENE_UNEXPECTED_DIAG={code}:{path_hash}:{line}")
           with open(sys.argv[2],"w",encoding="utf-8") as out:
-              out.write(f"{len(target_restriction)} {len(unexpected_errors)}")
+              out.write(f"{len(target_restriction)} {len(unexpected_errors)}\n")
           PY
           read -r slice_count unexpected_count < "$RUNNER_TEMP/hygiene-counts"
           rm -f build.rs
