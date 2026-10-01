@@ -1,6 +1,7 @@
 resume exact assurance broad TLC recovery
 mode: opaque exact-revision canonical slices
 bootstrap ordinals: 39
-reason: exact profile 39 base Case model exhausted standard runner disk with no invariant/deadlock/parser semantic marker; retry on reclaimed runner storage with explicit disk classification
+reason: prior isolated diagnostic was externally cancelled before TLC classification; repeat with same public-safe failure-class instrumentation
 checkpoint: encrypted and auto-resumed when timeout/resource-slice semantics apply
-batch: profile-39 resource recovery only
+batch: profile-39 diagnosis only
+attempt: 2
