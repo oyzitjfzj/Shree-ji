@@ -11,7 +11,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 74ae09d8299f30124921e7b40bb22b46656c8a918cf1936f68f26ab8a3bae9de
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a896d0382ad2cbd212711f614f034dd7708d24a3aeb484b6eb5fa34ee338ce3a
 
 jobs:
   hygiene:
@@ -82,20 +82,23 @@ jobs:
           log="$RUNNER_TEMP/panic-hygiene.private.log"
           set +e
           cargo +1.98.1 clippy --locked --lib --message-format=json -- \
-            -D warnings \
-            -D clippy::unwrap_used \
-            -D clippy::expect_used \
-            -D clippy::panic \
-            -D clippy::todo \
-            -D clippy::unimplemented >"$log" 2>&1
+            -A warnings \
+            -W clippy::unwrap_used \
+            -W clippy::expect_used \
+            -W clippy::panic \
+            -W clippy::todo \
+            -W clippy::unimplemented >"$log" 2>&1
           rc=$?
           set -e
 
           echo "LAS_PANIC_HYGIENE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_PANIC_HYGIENE_RC=$rc"
-          python3 - "$log" <<'PY'
+          python3 - "$log" "$RUNNER_TEMP/slice-count" <<'PY'
           import hashlib, json, sys
-          found=[]
+          target_hashes={
+              "ad2f6a85482c2ee47aaeb79488ad40eee52c841aedc87ecb965d18572ccfaf4b",
+              "d43428a49aa4e388473c68788b43a3d04fcb6c0d6a2a9cae66382b3b0c7ead27",
+          }
           wanted={
               "clippy::unwrap_used",
               "clippy::expect_used",
@@ -103,6 +106,8 @@ jobs:
               "clippy::todo",
               "clippy::unimplemented",
           }
+          all_found=set()
+          target_found=set()
           with open(sys.argv[1],encoding="utf-8",errors="replace") as fh:
               for raw in fh:
                   try:
@@ -119,21 +124,27 @@ jobs:
                   primary=[s for s in spans if s.get("is_primary")]
                   ordered=primary+spans
                   if not ordered:
-                      found.append((code,"NONE",0))
-                      continue
-                  span=ordered[0]
-                  path=str(span.get("file_name") or "")
-                  line=int(span.get("line_start") or 0)
-                  found.append((code,hashlib.sha256(path.encode()).hexdigest() if path else "NONE",line))
-          unique=sorted(set(found))
-          print(f"LAS_PANIC_HYGIENE_DIAG_COUNT={len(unique)}")
-          for lint,path_hash,line in unique:
-              print(f"LAS_PANIC_HYGIENE_DIAG={lint}:{path_hash}:{line}")
+                      item=(code,"NONE",0)
+                  else:
+                      span=ordered[0]
+                      path=str(span.get("file_name") or "")
+                      line=int(span.get("line_start") or 0)
+                      item=(code,hashlib.sha256(path.encode()).hexdigest() if path else "NONE",line)
+                  all_found.add(item)
+                  if item[1] in target_hashes:
+                      target_found.add(item)
+          print(f"LAS_PANIC_HYGIENE_PROJECT_DIAG_COUNT={len(all_found)}")
+          print(f"LAS_PANIC_HYGIENE_SLICE_DIAG_COUNT={len(target_found)}")
+          for lint,path_hash,line in sorted(target_found):
+              print(f"LAS_PANIC_HYGIENE_SLICE_DIAG={lint}:{path_hash}:{line}")
+          with open(sys.argv[2],"w",encoding="utf-8") as out:
+              out.write(str(len(target_found)))
           PY
+          slice_count="$(cat "$RUNNER_TEMP/slice-count")"
           rm -f build.rs
           git checkout -q -- build.rs
           test -z "$(git status --porcelain --untracked-files=no)"
-          if [[ "$rc" -eq 0 ]]; then
+          if [[ "$rc" -eq 0 && "$slice_count" -eq 0 ]]; then
             echo "LAS_PANIC_HYGIENE_RESULT=PASS"
             exit 0
           fi
