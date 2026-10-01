@@ -120,7 +120,7 @@ jobs:
           if [[ "$class" == "STACK_OVERFLOW" ]]; then
             serial_log="$RUNNER_TEMP/rust-test-serial.private.log"
             set +e
-            cargo test --lib -- --test-threads=1 >"$serial_log" 2>&1
+            cargo test --lib -- --test-threads=1 --nocapture >"$serial_log" 2>&1
             serial_rc=$?
             set -e
             echo "LAS_RUST_SLICE_SERIAL_RC=$serial_rc"
