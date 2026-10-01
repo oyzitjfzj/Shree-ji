@@ -208,11 +208,33 @@ jobs:
           grep -Eiq 'Deadlock reached' "$log" && deadlock_marker=1
           parser_marker=0
           grep -Eiq 'Parsing or semantic analysis failed|SANY|parse error|semantic error' "$log" && parser_marker=1
+          disk_marker=0
+          grep -Eiq 'No space left on device|Disk quota exceeded|FileSystemException.*(space|disk)|IOException.*(space|disk)' "$log" && disk_marker=1
+          jvm_exception_marker=0
+          grep -Eiq 'Exception in thread|java\.lang\.|java\.io\.|java\.nio\.' "$log" && jvm_exception_marker=1
+          tlc_internal_marker=0
+          grep -Eiq 'TLC threw an unexpected exception|TLC Bug|AssertionError|An error occurred while running TLC' "$log" && tlc_internal_marker=1
+          temporal_marker=0
+          grep -Eiq 'Temporal propert(y|ies).*violat|liveness.*violat' "$log" && temporal_marker=1
+          checkpoint_marker=0
+          grep -Eiq '(checkpoint|recover).*(error|fail|exception)|(error|fail|exception).*(checkpoint|recover)' "$log" && checkpoint_marker=1
+          fingerprint_marker=0
+          grep -Eiq 'fingerprint.*collision|collision.*fingerprint' "$log" && fingerprint_marker=1
+          meta_bytes="$(du -sb "$meta" 2>/dev/null | awk '{print $1}' || echo 0)"
+          free_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
           echo "LAS_TLC_RESUME_RESOURCE_MARKER=$resource_marker"
           echo "LAS_TLC_RESUME_NETWORK_MARKER=$network_marker"
           echo "LAS_TLC_RESUME_INVARIANT_MARKER=$invariant_marker"
           echo "LAS_TLC_RESUME_DEADLOCK_MARKER=$deadlock_marker"
           echo "LAS_TLC_RESUME_PARSER_MARKER=$parser_marker"
+          echo "LAS_TLC_RESUME_DISK_MARKER=$disk_marker"
+          echo "LAS_TLC_RESUME_JVM_EXCEPTION_MARKER=$jvm_exception_marker"
+          echo "LAS_TLC_RESUME_TLC_INTERNAL_MARKER=$tlc_internal_marker"
+          echo "LAS_TLC_RESUME_TEMPORAL_MARKER=$temporal_marker"
+          echo "LAS_TLC_RESUME_CHECKPOINT_MARKER=$checkpoint_marker"
+          echo "LAS_TLC_RESUME_FINGERPRINT_MARKER=$fingerprint_marker"
+          echo "LAS_TLC_RESUME_META_BYTES=$meta_bytes"
+          echo "LAS_TLC_RESUME_RUNNER_FREE_KB=$free_kb"
           if [[ "$rc" -eq 0 ]]; then
             echo "status=pass" >> "$GITHUB_OUTPUT"
             echo "LAS_TLC_RESUME_RESULT=PASS"
