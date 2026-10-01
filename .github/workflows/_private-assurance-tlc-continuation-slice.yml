@@ -39,7 +39,7 @@ jobs:
   slice:
     concurrency:
       group: assurance-resumable-tlc-${{ inputs.index }}
-      cancel-in-progress: false
+      cancel-in-progress: true
     runs-on: ubuntu-24.04
     timeout-minutes: 355
     env:
@@ -48,6 +48,26 @@ jobs:
       RESUME_RUN_ID: ${{ inputs.resume_run_id }}
       RESUME_ARTIFACT: ${{ inputs.resume_artifact }}
     steps:
+      - name: Reclaim runner storage for exhaustive TLC
+        shell: bash
+        run: |
+          set -euo pipefail
+          before_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          echo "LAS_TLC_RUNNER_FREE_KB_BEFORE_CLEANUP=$before_kb"
+          for path in             /usr/local/lib/android             /usr/share/dotnet             /opt/ghc             /usr/local/.ghcup             /usr/share/swift             /opt/az             /opt/hostedtoolcache/CodeQL
+          do
+            if [[ -e "$path" ]]; then
+              sudo rm -rf "$path"
+            fi
+          done
+          sudo apt-get clean
+          docker system prune --all --force >/dev/null 2>&1 || true
+          after_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          echo "LAS_TLC_RUNNER_FREE_KB_AFTER_CLEANUP=$after_kb"
+          # Previous profile-39 failure exhausted a standard ~14 GB workspace.
+          # Refuse another multi-hour attempt unless cleanup produced materially larger headroom.
+          test "$after_kb" -ge 31457280
+
       - name: Checkout exact private active head
         shell: bash
         env:
@@ -222,6 +242,9 @@ jobs:
           grep -Eiq 'fingerprint.*collision|collision.*fingerprint' "$log" && fingerprint_marker=1
           meta_bytes="$(du -sb "$meta" 2>/dev/null | awk '{print $1}' || echo 0)"
           free_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          if [[ "$free_kb" -lt 1048576 ]]; then
+            disk_marker=1
+          fi
           echo "LAS_TLC_RESUME_RESOURCE_MARKER=$resource_marker"
           echo "LAS_TLC_RESUME_NETWORK_MARKER=$network_marker"
           echo "LAS_TLC_RESUME_INVARIANT_MARKER=$invariant_marker"
@@ -251,7 +274,13 @@ jobs:
             exit 0
           fi
           echo "status=fail" >> "$GITHUB_OUTPUT"
-          echo "LAS_TLC_RESUME_RESULT=FAIL"
+          if [[ "$disk_marker" -eq 1 ]]; then
+            echo "LAS_TLC_RESUME_RESULT=DISK_EXHAUSTED"
+          elif [[ "$resource_marker" -eq 1 ]]; then
+            echo "LAS_TLC_RESUME_RESULT=RESOURCE_EXHAUSTED"
+          else
+            echo "LAS_TLC_RESUME_RESULT=FAIL"
+          fi
           exit 1
 
       - name: Seal resumable checkpoint
