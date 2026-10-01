@@ -1,6 +1,6 @@
 resume exact assurance broad TLC recovery
 mode: opaque exact-revision canonical slices
-bootstrap ordinals: 28, 39
-reason: prior profile-28 resumable bootstrap and profile-39 diagnostic were cancelled without earned PASS or semantic-failure evidence
-checkpoint: encrypted and auto-resumed
-batch: cancelled unresolved profiles only
+bootstrap ordinals: 39
+reason: profile 39 returned opaque RC=1 with no semantic/resource/network marker; rerun after public-safe failure-class instrumentation
+checkpoint: encrypted and auto-resumed when timeout/resource-slice semantics apply
+batch: profile-39 diagnosis only
