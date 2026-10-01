@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_HEAD_PROOF: 3e803fcadd75bdcdaacdda9244cf55815dbcd614aa66f6cb423067f72cd9e3fb
+  EXPECTED_HEAD_PROOF: 3e80296e98efc53c782b813e5c267ee02572c401a4b24944f4aacddaa7d9769a
 
 jobs:
   red:
