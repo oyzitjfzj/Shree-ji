@@ -1,0 +1,5 @@
+resume exact assurance broad TLC recovery
+mode: opaque exact-revision canonical slices
+initial unresolved ordinals: 2 28 29 36 39 109 114
+max parallel bootstrap: 2
+checkpoint: encrypted and auto-resumed
