@@ -1,5 +1,6 @@
 resume exact assurance broad TLC recovery
 mode: opaque exact-revision canonical slices
-bootstrap ordinal: 155
-reason: prior isolated long run reached job time ceiling without semantic failure
+bootstrap ordinals: 109, 114, 167, 171
+reason: prior isolated long runs reached job time ceiling without earned GREEN
 checkpoint: encrypted and auto-resumed
+batch: remaining unresolved timeout-only profiles
