@@ -136,6 +136,32 @@ jobs:
           if names:
               print("LAS_RUST_SLICE_SERIAL_LAST_TEST_HASH=" + hashlib.sha256(names[-1].encode()).hexdigest())
           PY
+
+            target_hash="84d8447a0f2f1a5c9dc0734cb806b4b523c93b256494db93a1ba5f009b9a868c"
+            list_log="$RUNNER_TEMP/rust-test-list.private.log"
+            cargo test --lib -- --list >"$list_log" 2>&1
+            target="$(
+              python3 - "$list_log" "$target_hash" <<'PY'
+          import hashlib, re, sys
+          wanted=sys.argv[2]
+          for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+              m=re.match(r"^([A-Za-z0-9_:]+): test$", line.strip())
+              if m and hashlib.sha256(m.group(1).encode()).hexdigest() == wanted:
+                  print(m.group(1))
+                  break
+          PY
+            )"
+            test -n "$target"
+            echo "::add-mask::$target"
+            for stack in 2097152 4194304 8388608 16777216; do
+              probe="$RUNNER_TEMP/rust-stack-$stack.private.log"
+              set +e
+              RUST_MIN_STACK="$stack" cargo test --lib "$target" -- --exact --nocapture --test-threads=1 >"$probe" 2>&1
+              probe_rc=$?
+              set -e
+              echo "LAS_RUST_SLICE_STACK_PROBE=$stack:$probe_rc:$(grep -Eic 'stack overflow|has overflowed its stack' "$probe" || true)"
+            done
+            unset target
           fi
 
           if [[ "$class" == "TEST" ]]; then
