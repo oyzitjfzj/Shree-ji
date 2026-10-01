@@ -82,18 +82,18 @@ jobs:
           log="$RUNNER_TEMP/panic-hygiene.private.log"
           set +e
           cargo +1.98.1 clippy --locked --lib --message-format=json -- \
-            -A warnings \
-            -W clippy::unwrap_used \
-            -W clippy::expect_used \
-            -W clippy::panic \
-            -W clippy::todo \
-            -W clippy::unimplemented >"$log" 2>&1
+            -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -D clippy::panic \
+            -D clippy::todo \
+            -D clippy::unimplemented >"$log" 2>&1
           rc=$?
           set -e
 
           echo "LAS_PANIC_HYGIENE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "LAS_PANIC_HYGIENE_RC=$rc"
-          python3 - "$log" "$RUNNER_TEMP/slice-count" <<'PY'
+          python3 - "$log" "$RUNNER_TEMP/hygiene-counts" <<'PY'
           import hashlib, json, sys
           target_hashes={
               "ad2f6a85482c2ee47aaeb79488ad40eee52c841aedc87ecb965d18572ccfaf4b",
@@ -106,8 +106,9 @@ jobs:
               "clippy::todo",
               "clippy::unimplemented",
           }
-          all_found=set()
-          target_found=set()
+          all_restriction=set()
+          target_restriction=set()
+          unexpected_errors=set()
           with open(sys.argv[1],encoding="utf-8",errors="replace") as fh:
               for raw in fh:
                   try:
@@ -117,34 +118,42 @@ jobs:
                   if obj.get("reason")!="compiler-message":
                       continue
                   msg=obj.get("message") or {}
-                  code=(msg.get("code") or {}).get("code")
-                  if code not in wanted:
+                  if msg.get("level")!="error":
                       continue
+                  code=(msg.get("code") or {}).get("code") or "NONE"
                   spans=msg.get("spans") or []
                   primary=[s for s in spans if s.get("is_primary")]
                   ordered=primary+spans
-                  if not ordered:
-                      item=(code,"NONE",0)
-                  else:
+                  if ordered:
                       span=ordered[0]
                       path=str(span.get("file_name") or "")
                       line=int(span.get("line_start") or 0)
-                      item=(code,hashlib.sha256(path.encode()).hexdigest() if path else "NONE",line)
-                  all_found.add(item)
-                  if item[1] in target_hashes:
-                      target_found.add(item)
-          print(f"LAS_PANIC_HYGIENE_PROJECT_DIAG_COUNT={len(all_found)}")
-          print(f"LAS_PANIC_HYGIENE_SLICE_DIAG_COUNT={len(target_found)}")
-          for lint,path_hash,line in sorted(target_found):
+                      path_hash=hashlib.sha256(path.encode()).hexdigest() if path else "NONE"
+                  else:
+                      path_hash="NONE"
+                      line=0
+                  item=(code,path_hash,line)
+                  if code in wanted:
+                      all_restriction.add(item)
+                      if path_hash in target_hashes:
+                          target_restriction.add(item)
+                  else:
+                      unexpected_errors.add(item)
+          print(f"LAS_PANIC_HYGIENE_PROJECT_RESTRICTION_COUNT={len(all_restriction)}")
+          print(f"LAS_PANIC_HYGIENE_SLICE_DIAG_COUNT={len(target_restriction)}")
+          print(f"LAS_PANIC_HYGIENE_UNEXPECTED_ERROR_COUNT={len(unexpected_errors)}")
+          for lint,path_hash,line in sorted(target_restriction):
               print(f"LAS_PANIC_HYGIENE_SLICE_DIAG={lint}:{path_hash}:{line}")
+          for code,path_hash,line in sorted(unexpected_errors):
+              print(f"LAS_PANIC_HYGIENE_UNEXPECTED_DIAG={code}:{path_hash}:{line}")
           with open(sys.argv[2],"w",encoding="utf-8") as out:
-              out.write(str(len(target_found)))
+              out.write(f"{len(target_restriction)} {len(unexpected_errors)}")
           PY
-          slice_count="$(cat "$RUNNER_TEMP/slice-count")"
+          read -r slice_count unexpected_count < "$RUNNER_TEMP/hygiene-counts"
           rm -f build.rs
           git checkout -q -- build.rs
           test -z "$(git status --porcelain --untracked-files=no)"
-          if [[ "$rc" -eq 0 && "$slice_count" -eq 0 ]]; then
+          if [[ "$slice_count" -eq 0 && "$unexpected_count" -eq 0 ]]; then
             echo "LAS_PANIC_HYGIENE_RESULT=PASS"
             exit 0
           fi
