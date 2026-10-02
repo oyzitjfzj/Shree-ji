@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-positive-use-upstream-source-anchor-hardening
-  TARGET_REF_HASH: 280bc7afabbd9eae7c080694142f82448e75497153f2221762d3f4b188886284
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 07d38f99f554c5e61942d28deb7b1884a03f909bf694db9e14d7ab7ba5644fce
+  REQUEST_MARKER: verify-provider-provenance-post-call-hardening
+  TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3669358701f08b9e894634844d2cb364395af6c39a1d5565c29a35b9054ce9bf
 
 jobs:
   targeted:
