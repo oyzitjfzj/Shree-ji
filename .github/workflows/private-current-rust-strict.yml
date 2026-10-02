@@ -15,7 +15,7 @@ concurrency:
 
 env:
   # RED_PROOF_TO_CLAIM_SOURCE_PROJECTION
-  EXPECTED_HEAD_PROOF: fde2de10dfeebf3cee9ec8529b63fd223e4af21ff1fefdecca2c13adbb0d7f0d
+  EXPECTED_HEAD_PROOF: 194ed33931be8f67c3dfa56d9e5716c805ef59003430e0a9a6b8062b4767dc83
 
 jobs:
   strict:
