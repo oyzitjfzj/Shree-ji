@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: final-promotion-rollback-proposal
+  REQUEST_MARKER: diagnose-rollback-proposal-test-failure
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 75659c27cbf70b14aa0b94f38d8d15d38d7213cea042ab00d7d604e80230eb14
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: c75cf7b0728dbabe09bc56f68ae2561d073e947d9968e9a46fe71f120a039f3e
 
 jobs:
   targeted:
@@ -162,6 +162,16 @@ jobs:
           if (( rc != 0 )); then
             panic_line="$(grep -oE 'formal_proof_evidence_tests\.rs:[0-9]+:[0-9]+' "$log" | tail -n 1 | sed -E 's/.*:([0-9]+):[0-9]+/\1/' || true)"
             [[ -z "$panic_line" ]] || echo "LAS_PRIVATE_TARGET_PANIC_LINE=$panic_line"
+
+            panic_loc="$(grep -oE 'panicked at [^:]+\.rs:[0-9]+:[0-9]+' "$log" | tail -n 1 | sed -E 's/^panicked at //' || true)"
+            if [[ -n "$panic_loc" ]]; then
+              panic_col="${panic_loc##*:}"
+              panic_without_col="${panic_loc%:*}"
+              panic_src_line="${panic_without_col##*:}"
+              panic_path="${panic_without_col%:*}"
+              panic_path_hash="$(printf '%s' "$panic_path" | sha256sum | awk '{print $1}')"
+              echo "LAS_PRIVATE_TARGET_PANIC_LOCATOR=$panic_path_hash:$panic_src_line:$panic_col"
+            fi
           fi
           if (( rc != 0 )); then
             set +e
