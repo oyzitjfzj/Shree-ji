@@ -12,7 +12,7 @@ permissions:
 env:
   REQUEST_MARKER: verify-provider-provenance-post-call-hardening
   TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f603211135924feedbb581eed459ac2edbda85e87b3d63ece6705f17421ad830
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: de601594a9664154dfdc9b90effab6f3144b3506dd9a2c41fe454f5f02c38d40
 
 jobs:
   targeted:
