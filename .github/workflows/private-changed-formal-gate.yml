@@ -262,3 +262,4 @@ jobs:
 
           echo "LAS_CHANGED_FORMAL_RESULT=$result"
           [[ "$result" == "PASS" ]]
+# retrigger: current repaired Authorized Defence Promotion head
