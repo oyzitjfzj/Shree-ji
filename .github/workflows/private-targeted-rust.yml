@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-trusted-promotion-resource-epochs
+  REQUEST_MARKER: verify-restored-non-root-promotion-boundary
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fa31d6fce177833b4266bbe8b7c8432125535fdad67883f99407f67416213abc
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 45418b1dd926f2bb7c0ba5a6d668cc894b98d791351431625ee7732ae5d735b0
 
 jobs:
   targeted:
