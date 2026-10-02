@@ -218,10 +218,39 @@ jobs:
           cd "$RUNNER_TEMP/private-target"
           log="$RUNNER_TEMP/formatted-check.log"
           set +e
-          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >"$log" 2>&1
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --message-format=json >"$log" 2>&1
           rc=$?
           set -e
           echo "LAS_FORMATTED_CHECK_RC=$rc"
+          python3 - "$log" <<'PY'
+          import hashlib, json, sys
+          seen = set()
+          with open(sys.argv[1], "r", encoding="utf-8", errors="replace") as handle:
+              for line in handle:
+                  try:
+                      obj = json.loads(line)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  message = obj.get("message") or {}
+                  if message.get("level") != "error":
+                      continue
+                  code = ((message.get("code") or {}).get("code") or "NO_CODE")
+                  spans = [s for s in (message.get("spans") or []) if s.get("is_primary")]
+                  if not spans:
+                      key = (code, "NO_SPAN", 0, 0)
+                  else:
+                      span = spans[0]
+                      name = span.get("file_name") or ""
+                      path_hash = hashlib.sha256(name.encode()).hexdigest()
+                      key = (code, path_hash, span.get("line_start") or 0, span.get("column_start") or 0)
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  print(f"LAS_FORMATTED_DIAG={key[0]}:{key[1]}:{key[2]}:{key[3]}")
+          print(f"LAS_FORMATTED_DIAG_COUNT={len(seen)}")
+          PY
           grep -oE 'error\[E[0-9]+\]' "$log" | sort -u | sed -E 's/error\[([^]]+)\]/LAS_FORMATTED_RUST_CODE_SAFE=\1/' || true
           grep -oE 'error\\[E[0-9]+\\]' "$log" \
             | sort -u \
