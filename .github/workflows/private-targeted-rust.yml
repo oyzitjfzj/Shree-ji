@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-promotion-rollback-proposal
+  REQUEST_MARKER: final-promotion-rollback-proposal
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7e79d090f65f82c219b51ce614b4ed59869a1372fa9237a4a72b5ea4f16b2a03
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 75659c27cbf70b14aa0b94f38d8d15d38d7213cea042ab00d7d604e80230eb14
 
 jobs:
   targeted:
