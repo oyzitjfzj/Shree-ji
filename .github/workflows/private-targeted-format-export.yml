@@ -131,7 +131,7 @@ jobs:
           python3 - <<'PY'
           import base64, hashlib, os, pathlib, subprocess
 
-          SAFE = set(b" \t\r\n\v\f,;")
+          SAFE = set(b" \t\r\n\v\f,;(){}[]")
 
           def decompose(data: bytes):
               anchors = bytearray()
