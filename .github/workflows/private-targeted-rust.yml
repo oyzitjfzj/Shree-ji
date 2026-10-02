@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: diagnose-rollback-proposal-test-failure
+  REQUEST_MARKER: diagnose-current-rollback-proposal-tests
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: c75cf7b0728dbabe09bc56f68ae2561d073e947d9968e9a46fe71f120a039f3e
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 356f35dead6813534cfbf73372c387bd3d96acb60d90767305ed821d005fc15b
 
 jobs:
   targeted:
