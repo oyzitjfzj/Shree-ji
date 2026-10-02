@@ -80,8 +80,10 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-target"
-          rustup toolchain install 1.98.1 --profile minimal >/dev/null
-          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          rustc +1.98.1 --version --verbose
+          cargo +1.98.1 --version
+          rustup component list --toolchain 1.98.1 --installed | grep -q '^rustfmt-'
+          rustup run 1.98.1 rustfmt --version
           cargo +1.98.1 fmt --all
           cargo +1.98.1 fmt --all -- --check
           changed="$RUNNER_TEMP/format-paths"
