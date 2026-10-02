@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: final-artifact-protection-test-suite
+  REQUEST_MARKER: verify-promotion-rollback-proposal
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f0238c1d3eeee05f2d998b5b844361065a0ee8901a3bc7f7a2b73a102556496a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7e79d090f65f82c219b51ce614b4ed59869a1372fa9237a4a72b5ea4f16b2a03
 
 jobs:
   targeted:
