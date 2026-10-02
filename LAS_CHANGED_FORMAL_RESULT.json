@@ -1,7 +1,7 @@
 {
   "schema": "las-public-changed-formal-verification-v1",
   "base_snapshot_proof": "4e25d40ec879c70cef9851fa8888a1cccab2de6761c80e502953ff7344abe746",
-  "head_snapshot_proof": "cb370fb5160340d1fbb362b7f82d56bb56f814d9cf7e459e9e66f03cd5acecf1",
+  "head_snapshot_proof": "39e4f8efb386ef550565daf0b387dc5701d4c5f5794c746387df39a89c8fcb95",
   "formal_job": "cancelled",
   "phase": "pre_profile",
   "profile_count": "",
