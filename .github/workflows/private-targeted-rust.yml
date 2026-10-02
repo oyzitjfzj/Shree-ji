@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-sealed-promotion-approval-ledger
+  REQUEST_MARKER: final-promotion-approval-quorum
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f9c9fb78b84b3246aa0ada7eb134392bbdc47403657f3c4cab4d3bb4a79920a2
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 17466bdaa7ddf31525a0aede8538e7bc5107311ed1ccc44ca820035138e9d079
 
 jobs:
   targeted:
