@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-wired-promotion-transaction-state
+  REQUEST_MARKER: verify-promotion-case-selection-owner
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fde2de10dfeebf3cee9ec8529b63fd223e4af21ff1fefdecca2c13adbb0d7f0d
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 194ed33931be8f67c3dfa56d9e5716c805ef59003430e0a9a6b8062b4767dc83
 
 jobs:
   targeted:
