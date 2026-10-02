@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-complete-cross-domain-pinned-sessions
+  REQUEST_MARKER: verify-frozen-cross-domain-pinned-sessions
   TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1313b30b5ffd5d0f0f64a772c252996a29110cd14097c52b71f1c1058ae35974
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 74e9248d6cbb79479060b6f8c53f4b359dbf7d705379f0fe69c2fe5acf52ebb3
 
 jobs:
   targeted:
