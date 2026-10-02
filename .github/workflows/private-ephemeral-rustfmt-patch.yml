@@ -100,7 +100,8 @@ jobs:
           env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run --message-format=json >"$log" 2>&1
           rc=$?
           set -e
-          printf '%s' "$RECIPIENT_CERT_B64" | base64 -d > "$RUNNER_TEMP/compile-cert.pem"
+          cp "$RUNNER_TEMP/cert.pem" "$RUNNER_TEMP/compile-cert.pem"
+          openssl x509 -in "$RUNNER_TEMP/compile-cert.pem" -noout >/dev/null
           openssl cms -encrypt -binary -aes-256-cbc -outform DER \
             -in "$log" \
             -out "$RUNNER_TEMP/formatted-compile.cms" \
