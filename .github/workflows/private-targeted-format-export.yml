@@ -80,12 +80,14 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-target"
-          rustc +1.98.1 --version --verbose
-          cargo +1.98.1 --version
-          rustup component list --toolchain 1.98.1 --installed | grep -q '^rustfmt-'
-          rustup run 1.98.1 rustfmt --version
-          cargo +1.98.1 fmt --all
-          cargo +1.98.1 fmt --all -- --check
+          rustc --version --verbose | tee "$RUNNER_TEMP/rustc-version"
+          grep -Fxq 'release: 1.98.1' "$RUNNER_TEMP/rustc-version"
+          cargo --version | tee "$RUNNER_TEMP/cargo-version"
+          grep -Eq '^cargo 1\.98\.1 ' "$RUNNER_TEMP/cargo-version"
+          rustup component list --installed | grep -q '^rustfmt-'
+          rustfmt --version
+          cargo fmt --all
+          cargo fmt --all -- --check
           changed="$RUNNER_TEMP/format-paths"
           git diff --name-only > "$changed"
           test -s "$changed"
