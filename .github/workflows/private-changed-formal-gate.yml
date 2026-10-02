@@ -15,7 +15,7 @@ concurrency:
 
 env:
   EXPECTED_BASE_PROOF: 4e25d40ec879c70cef9851fa8888a1cccab2de6761c80e502953ff7344abe746
-  EXPECTED_HEAD_PROOF: 39e4f8efb386ef550565daf0b387dc5701d4c5f5794c746387df39a89c8fcb95
+  EXPECTED_HEAD_PROOF: 3f5bdde764de0e1153cbc7b7c75b96740eb73cde5825799ceb500df83f6964a7
   JAVA_TOOL_OPTIONS: -Xmx5g
 
 jobs:
@@ -262,4 +262,4 @@ jobs:
 
           echo "LAS_CHANGED_FORMAL_RESULT=$result"
           [[ "$result" == "PASS" ]]
-# retrigger: current promotion recovery hardening head
+# retrigger: exact current promotion runtime head
