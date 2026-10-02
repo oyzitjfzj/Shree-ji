@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: final-promotion-outcome-history
+  REQUEST_MARKER: verify-guarded-promotion-observation-reconciliation
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a7f7e336985a9c29cc25f718533bda5e077d9be24b1b5a11940a66c06f5a56db
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 84a88f75e6029b6227c7b9f4ef1bc93bba197460e49b8d765ac14e5a3ce91dbe
 
 jobs:
   targeted:
