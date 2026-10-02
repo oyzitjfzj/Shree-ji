@@ -294,6 +294,51 @@ jobs:
           rm -f "$RUNNER_TEMP/formatted-check-cert.pem" "$log"
           exit 0
 
+      - name: Emit opaque formatted compile locations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          log="$RUNNER_TEMP/formatted-check-json.log"
+          set +e
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --message-format=json >"$log" 2>/dev/null
+          rc=$?
+          set -e
+          echo "LAS_FORMATTED_JSON_RC=$rc"
+          python3 - "$log" <<'PY'
+          import hashlib, json, pathlib, sys
+          seen=set()
+          for line in pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines():
+              try:
+                  obj=json.loads(line)
+              except Exception:
+                  continue
+              if obj.get("reason") != "compiler-message":
+                  continue
+              msg=obj.get("message") or {}
+              level=msg.get("level")
+              if level != "error":
+                  continue
+              code=((msg.get("code") or {}).get("code")) or "NO_CODE"
+              spans=[s for s in (msg.get("spans") or []) if s.get("is_primary")]
+              if not spans:
+                  key=(code,"NO_SPAN",0,0)
+                  if key not in seen:
+                      seen.add(key)
+                      print(f"LAS_FORMATTED_DIAG={code}:NO_SPAN:0:0")
+                  continue
+              for s in spans:
+                  path=s.get("file_name") or ""
+                  path_hash=hashlib.sha256(path.encode()).hexdigest()
+                  key=(code,path_hash,s.get("line_start") or 0,s.get("column_start") or 0)
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  print(f"LAS_FORMATTED_DIAG={key[0]}:{key[1]}:{key[2]}:{key[3]}")
+          print(f"LAS_FORMATTED_DIAG_COUNT={len(seen)}")
+          PY
+          rm -f "$log"
+
       - name: Upload encrypted formatted compile diagnostic
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
