@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-typed-promotion-approval-admission
+  REQUEST_MARKER: verify-pending-activation-intent-currentness
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e5d6539f1be504bda10b4731371b9b744abe42471e9cbf56916806044cf8f36f
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: bc0ad881e6330eea113a8c331f47374f1d21d6e9d52babf8bded6386d871087f
 
 jobs:
   targeted:
