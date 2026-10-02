@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-provider-provenance-post-call-hardening
+  REQUEST_MARKER: verify-guardian-pinned-verification-session
   TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7ff1a86436d6131f50c56f8d5215e80caf0e4b583e4cc73f7ecd5c87dd0fdb80
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8ed80eb6ecad82a8d45a2677085673376525dac65615794af7439d26876f7f1d
 
 jobs:
   targeted:
