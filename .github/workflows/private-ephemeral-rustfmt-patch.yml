@@ -108,6 +108,42 @@ jobs:
             "$RUNNER_TEMP/compile-cert.pem"
           echo "LAS_FMT_COMPILE_RC=$rc"
           echo "LAS_FMT_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          python3 - "$log" "$RUNNER_TEMP/private-target" <<'PY'
+          import hashlib, json, os, sys
+          log_path, root = sys.argv[1], os.path.realpath(sys.argv[2])
+          seen = set()
+          with open(log_path, encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
+                  spans = [s for s in (msg.get("spans") or []) if s.get("is_primary")]
+                  if not spans:
+                      item = (code, "NO_SPAN", 0, 0)
+                      if item not in seen:
+                          seen.add(item)
+                          print(f"LAS_FMT_COMPILE_DIAG={code}:NO_SPAN:0:0")
+                      continue
+                  for span in spans:
+                      filename = str(span.get("file_name") or "")
+                      absolute = os.path.realpath(os.path.join(root, filename)) if not os.path.isabs(filename) else os.path.realpath(filename)
+                      rel = os.path.relpath(absolute, root).replace(os.sep, "/") if absolute == root or absolute.startswith(root + os.sep) else "<EXTERNAL>"
+                      path_hash = hashlib.sha256(rel.encode()).hexdigest()
+                      line = int(span.get("line_start") or 0)
+                      col = int(span.get("column_start") or 0)
+                      item = (code, path_hash, line, col)
+                      if item not in seen:
+                          seen.add(item)
+                          print(f"LAS_FMT_COMPILE_DIAG={code}:{path_hash}:{line}:{col}")
+          print(f"LAS_FMT_COMPILE_DIAG_COUNT={len(seen)}")
+          PY
           rm -f "$RUNNER_TEMP/compile-cert.pem" "$log"
 
       - name: Upload encrypted formatted compile diagnostic
