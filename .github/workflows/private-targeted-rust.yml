@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-third-artifact-rollback-mismatch
+  REQUEST_MARKER: verify-promotion-artifact-protection-guard
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: eeb1dda6738f17e9d019715035c50ffa4463ffeb0c4409b54f2569d134979fd4
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9766c6c66b3d724c9313f0ddd233db233853467a145200c2d265790124eb2884
 
 jobs:
   targeted:
