@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-guarded-promotion-observation-reconciliation
+  REQUEST_MARKER: verify-guarded-reconciliation-unused-mut-fix
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 84a88f75e6029b6227c7b9f4ef1bc93bba197460e49b8d765ac14e5a3ce91dbe
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 61c8c1bd7d95632600db8a30e3c0e85cfe578b04b622c3b5ee46e668c501775c
 
 jobs:
   targeted:
