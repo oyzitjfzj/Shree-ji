@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-complete-pinned-session-migration
+  REQUEST_MARKER: verify-rustfmt-aligned-pinned-session-migration
   TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d9891120bdd5121b43dd6f44b7991a409b032047ad38a0606b5c04a310cedcac
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fc3d59bcf48c42621eab536cd893314a2feea03605395c0b38420444b49d20c7
 
 jobs:
   targeted:
