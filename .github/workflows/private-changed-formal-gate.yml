@@ -15,7 +15,7 @@ concurrency:
 
 env:
   EXPECTED_BASE_PROOF: 4e25d40ec879c70cef9851fa8888a1cccab2de6761c80e502953ff7344abe746
-  EXPECTED_HEAD_PROOF: 65024959922052b64c2114cb8c57b509db1ad5f9467e69652ac7d6a5c5e6dcb2
+  EXPECTED_HEAD_PROOF: cb370fb5160340d1fbb362b7f82d56bb56f814d9cf7e459e9e66f03cd5acecf1
   JAVA_TOOL_OPTIONS: -Xmx5g
 
 jobs:
@@ -262,4 +262,4 @@ jobs:
 
           echo "LAS_CHANGED_FORMAL_RESULT=$result"
           [[ "$result" == "PASS" ]]
-# retrigger: current repaired Authorized Defence Promotion head
+# retrigger: preserve indeterminate recovery identity
