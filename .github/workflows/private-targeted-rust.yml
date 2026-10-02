@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-consolidated-cross-domain-pinned-sessions
+  REQUEST_MARKER: verify-clippy-clean-transient-state-assertions
   TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a74969a5e3be5ecff80c994cbdbcc54179900ed6e21b20852994a96ce995fac4
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1f5cb9beeecab4327d359f0190b870a97d9ca55e4311f82010db20b8e6c3ed09
 
 jobs:
   targeted:
