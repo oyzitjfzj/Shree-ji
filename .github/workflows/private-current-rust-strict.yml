@@ -15,7 +15,7 @@ concurrency:
 
 env:
   # RED_PROOF_TO_CLAIM_SOURCE_PROJECTION
-  EXPECTED_HEAD_PROOF: 7ff1a86436d6131f50c56f8d5215e80caf0e4b583e4cc73f7ecd5c87dd0fdb80
+  EXPECTED_HEAD_PROOF: fc3d59bcf48c42621eab536cd893314a2feea03605395c0b38420444b49d20c7
 
 jobs:
   strict:
@@ -181,4 +181,4 @@ jobs:
           done < "$RUNNER_TEMP/clippy-diags.tsv"
           [[ "$rc" -eq 0 ]]
 
-# BASELINE_TRIGGER_STRICT_1F6F
+# PINNED_SESSION_STRICT_040F
