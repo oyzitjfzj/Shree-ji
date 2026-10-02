@@ -61,7 +61,30 @@ jobs:
             | grep '^@@' | cut -d' ' -f2-3 | sed 's/^/LAS_FMT_HUNK=/'
           git diff --no-ext-diff --binary -- '*.rs' > "$RUNNER_TEMP/rustfmt.patch"
           test -s "$RUNNER_TEMP/rustfmt.patch"
-          printf '%s' "$RECIPIENT_CERT_B64" | base64 -d > "$RUNNER_TEMP/cert.pem"
+          cat > "$RUNNER_TEMP/cert.pem" <<'CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIDNTCCAh2gAwIBAgIULVSrAWYAvY3CeInmUx2xkX3J8SIwDQYJKoZIhvcNAQEL
+          BQAwKjEoMCYGA1UEAwwfTEFTIGVwaGVtZXJhbCBydXN0Zm10IHJlY2lwaWVudDAe
+          Fw0yNjEwMDIwMDE1MDJaFw0yNjEwMDMwMDE1MDJaMCoxKDAmBgNVBAMMH0xBUyBl
+          cGhlbWVyYWwgcnVzdGZtdCByZWNpcGllbnQwggEiMA0GCSqGSIb3DQEBAQUAA4IB
+          DwAwggEKAoIBAQC18YJArofPB7AbPuqt7261evj6w7If+pwnB3NbYf/g69URW0L2
+          S8zagoYD07A1g8QAL7U49wudMQQpYNydUpKONx+5NFrcKVVaVk3DHvWbuJRA0qv0
+          b02LZRxjg8zoUp5h0gzioYAHAQTrZosAU2jGB1D6VsriA7FaSui3ze30GCBQcq2H
+          KTAvM/zW5vIJlFKQC2LMhGvZRfOjwu2onH9nu0+7Oyrn6D5Idna2tukB8GwjXktw
+          Nuu3g49OlaBAVYDd8WCbFAOftcD4dWGEXSjddMfawdWANApJrzbc1RoTjP3L1ViK
+          4zFn+oBz0xb1AlLxgAu35F2CPHyPO96FwEoFAgMBAAGjUzBRMB0GA1UdDgQWBBTf
+          NYrVXD5C6jUVcjjptq/KaNex3DAfBgNVHSMEGDAWgBTfNYrVXD5C6jUVcjjptq/K
+          aNex3DAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAk9txiya/A
+          jYbOYYM9MHmor0tfEY5BX/0rTyBPVmFSTRyxs5eURj0eLof0x+AtOwrlFU/mCN3R
+          VgLBR4drZv44R1nFA4FauZpT16mJOa67SDvubsqbwQE6uR/fs57F8yaO1U7K7yqp
+          3trtZu7J9iB/gyB9SRtj5Qx6CrhCXR4PrPnx9FftU27ptOEAelalZ65T/lCZYo3S
+          H7WAiQGyRpXOf9RiJSxwSAAJRpby/8ZPMzSS0s4l6EfvvARIBVgMmPvIUnmMGq0J
+          sQ8SmTSPtHamHPw9mjKKpY/8wq70nSlfv8Jf2shQ2zSf1spb09HqXG99/wVgnGKp
+          qpeYtvMZD9kI
+          -----END CERTIFICATE-----
+          CERT
+          sed -i 's/^          //' "$RUNNER_TEMP/cert.pem"
+          openssl x509 -in "$RUNNER_TEMP/cert.pem" -noout >/dev/null
           openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$RUNNER_TEMP/rustfmt.patch"             -out "$RUNNER_TEMP/rustfmt.patch.cms"             "$RUNNER_TEMP/cert.pem"
           echo "LAS_FMT_PATCH_SHA256=$(sha256sum "$RUNNER_TEMP/rustfmt.patch" | awk '{print $1}')"
 
