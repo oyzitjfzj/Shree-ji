@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: final-proposal-bound-promotion-crossing
+  REQUEST_MARKER: external-evidence-activation-crossing
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4fa9fa8787b5712b95192c5f897607f0750a82436dd847713cfed144c8251a9c
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 0fa28ec8cff8715c96ffb5923ecb4d31b254b3450e40deee9789b5fa9e5e1739
 
 jobs:
   targeted:
