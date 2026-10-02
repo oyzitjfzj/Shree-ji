@@ -110,6 +110,92 @@ jobs:
           echo "LAS_TARGETED_FORMAT_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.cms" | awk '{print $1}')"
           echo "LAS_TARGETED_FORMAT_DIFF_SHA256=$(sha256sum "$RUNNER_TEMP/rustfmt-diff.cms" | awk '{print $1}')"
 
+      - name: Emit source-free rustfmt whitespace edit metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          python3 - <<'PY'
+          import base64, hashlib, os, pathlib, subprocess
+
+          WS = set(b" \t\r\n\v\f")
+
+          def decompose(data: bytes):
+              nonws = bytearray()
+              gaps = {}
+              i = 0
+              while i < len(data):
+                  if data[i] in WS:
+                      start = i
+                      pos = len(nonws)
+                      while i < len(data) and data[i] in WS:
+                          i += 1
+                      gaps[pos] = (start, i, data[start:i])
+                  else:
+                      nonws.append(data[i])
+                      i += 1
+              return bytes(nonws), gaps
+
+          def insertion_offset(original: bytes, logical_pos: int, nonws_len: int) -> int:
+              if logical_pos == nonws_len:
+                  return len(original)
+              seen = 0
+              for idx, byte in enumerate(original):
+                  if byte not in WS:
+                      if seen == logical_pos:
+                          return idx
+                      seen += 1
+              raise RuntimeError("logical position not found")
+
+          changed = pathlib.Path(os.environ["RUNNER_TEMP"]) / "format-paths"
+          total_files = 0
+          total_edits = 0
+
+          for path in filter(None, (x.strip() for x in changed.read_text().splitlines())):
+              original = subprocess.check_output(["git", "show", f"HEAD:{path}"])
+              formatted = pathlib.Path(path).read_bytes()
+              orig_nonws, orig_gaps = decompose(original)
+              fmt_nonws, fmt_gaps = decompose(formatted)
+              path_hash = hashlib.sha256(path.encode()).hexdigest()
+
+              if orig_nonws != fmt_nonws:
+                  print(f"LAS_FMT_WS_ONLY_FILE={path_hash}:NO")
+                  raise SystemExit(41)
+
+              edits = []
+              for pos in sorted(set(orig_gaps) | set(fmt_gaps)):
+                  if pos in orig_gaps:
+                      start, end, old_ws = orig_gaps[pos]
+                  else:
+                      start = end = insertion_offset(original, pos, len(orig_nonws))
+                      old_ws = b""
+                  new_ws = fmt_gaps.get(pos, (0, 0, b""))[2]
+                  if old_ws != new_ws:
+                      edits.append((start, end, new_ws))
+
+              rebuilt = bytearray(original)
+              for start, end, new_ws in sorted(edits, reverse=True):
+                  rebuilt[start:end] = new_ws
+              if bytes(rebuilt) != formatted:
+                  print(f"LAS_FMT_WS_REBUILD={path_hash}:FAIL")
+                  raise SystemExit(42)
+
+              print(f"LAS_FMT_WS_FILE={path_hash}:{len(edits)}")
+              for start, end, new_ws in edits:
+                  print(
+                      "LAS_FMT_WS_EDIT="
+                      + path_hash
+                      + f":{start}:{end}:"
+                      + base64.b64encode(new_ws).decode()
+                  )
+              total_files += 1
+              total_edits += len(edits)
+
+          print("LAS_FMT_WS_ONLY=YES")
+          print(f"LAS_FMT_WS_FILES={total_files}")
+          print(f"LAS_FMT_WS_EDITS={total_edits}")
+          PY
+
       - name: Diagnose formatted private compile without accepting formatting
         shell: bash
         run: |
