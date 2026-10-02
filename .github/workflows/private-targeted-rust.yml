@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: final-approval-evidence-threshold
+  REQUEST_MARKER: final-promotion-commit-ledger
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b521842d0f06102c2e192718132a3449b109fe2de2e34d3255fe2714f0cb2293
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 54ef26bc823409a51b2f3c27887b287529dce2456e946f58615d959fc92ccab4
 
 jobs:
   targeted:
