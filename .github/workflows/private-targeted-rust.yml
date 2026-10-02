@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-source-bound-promotion-policy
+  REQUEST_MARKER: verify-bounded-promotion-transaction-state
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e0b120dee6125764f07ae0d582187cb9fc304897f8201b3b0091d8474092eb49
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 05e323bc77ada692b355cefed36a0369c38d398e8f540046d04ac2cad15c6d26
 
 jobs:
   targeted:
