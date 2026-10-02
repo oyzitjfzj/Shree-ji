@@ -1,0 +1,81 @@
+name: Private dependency lock export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-lock-export.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 5dcc921ed4163e07b0a5daf94b832438c0cf2ead2b078dd30dff7a038730e7ee
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 70c8d727c9ce4a51d73f0446193ba8ddbb52e4d1474c582473c404a09ec29b31
+
+jobs:
+  lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-lock-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=128 origin "$matched_ref"
+          resolved=""
+          while IFS= read -r oid; do
+            [[ -n "$oid" ]] || continue
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --max-count=128 FETCH_HEAD)
+          test -n "$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_LOCK_SOURCE_PROOF=$(printf '%s' "$resolved" | sha256sum | awk '{print $1}')"
+          unset PRIVATE_TOKEN auth matched_ref resolved
+
+      - name: Install exact Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+
+      - name: Generate lockfile and emit dependency metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          rm -f Cargo.lock
+          cargo +1.98.1 generate-lockfile
+          echo "LAS_LOCK_SHA256=$(sha256sum Cargo.lock | awk '{print $1}')"
+          echo "LAS_LOCK_BYTES=$(stat -c '%s' Cargo.lock)"
+          echo "LAS_LOCK_PACKAGE_COUNT=$(grep -c '^\[\[package\]\]$' Cargo.lock)"
+          echo "LAS_LOCK_B64=$(base64 -w0 Cargo.lock)"
