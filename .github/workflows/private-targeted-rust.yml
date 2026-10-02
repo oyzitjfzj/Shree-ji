@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-promotion-artifact-availability-owner
-  TARGET_REF_HASH: 40f510c1fe7a4656c17c09f3d8d987b1a251d740722e824c6a4eec459a20c987
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 3f5bdde764de0e1153cbc7b7c75b96740eb73cde5825799ceb500df83f6964a7
+  REQUEST_MARKER: verify-promotion-approval-authority-policy
+  TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 39bc0d389006bfbee20ffde628cb91c7ae5dcc9bb05f69f8d4191fea5ed7db0f
 
 jobs:
   targeted:
