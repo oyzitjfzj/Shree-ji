@@ -1,3 +1,3 @@
 TARGET_REF_HASH=e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
 EXPECTED_PRIVATE_SNAPSHOT_PROOF=fa31d6fce177833b4266bbe8b7c8432125535fdad67883f99407f67416213abc
-REQUEST_MARKER=promotion-root-preimage-trusted-epoch
+REQUEST_MARKER=promotion-root-preimage-trusted-epoch-preinstalled-toolchain
