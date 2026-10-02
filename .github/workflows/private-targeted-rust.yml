@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-import-repaired-cross-domain-pinned-sessions
+  REQUEST_MARKER: verify-semantic-import-repaired-pinned-sessions
   TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: b1af1eba6baec0f5392c17083222b91788f2fad0c81238d9ba5445b9781a7450
 
