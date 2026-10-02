@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: typed-external-activation-evidence
+  REQUEST_MARKER: typed-activation-evidence-import-fix
   TARGET_REF_HASH: 3040ba16af9e1a116c52111fe625d4f24a942e456b2592ef08fcb8c7aaef312a
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8a91cf077425b6c6181323e6ec124269e4a9a7ee09f7be9f7dd0d35ebe1f8e8b
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1649e7f6c6042cacdc54059639c4532ac63a4470ed4029f49c657891f0a0c476
 
 jobs:
   targeted:
