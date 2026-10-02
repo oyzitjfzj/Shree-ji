@@ -39,7 +39,7 @@ jobs:
   slice:
     concurrency:
       group: assurance-resumable-tlc-${{ inputs.index }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 355
     env:
