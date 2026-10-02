@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-clippy-clean-transient-state-assertions
-  TARGET_REF_HASH: cafdfbc746e97cce57341d45c91c8e3bb5be0de854d76bf1ea03ab6c4e135800
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1f5cb9beeecab4327d359f0190b870a97d9ca55e4311f82010db20b8e6c3ed09
+  REQUEST_MARKER: verify-promotion-artifact-availability-owner
+  TARGET_REF_HASH: 40f510c1fe7a4656c17c09f3d8d987b1a251d740722e824c6a4eec459a20c987
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8311b69ae144b5b23a986a8f8464ee8122e840a3926ffd1b0b8ae143dd73172a
 
 jobs:
   targeted:
