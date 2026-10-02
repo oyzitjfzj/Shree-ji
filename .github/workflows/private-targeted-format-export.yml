@@ -110,6 +110,19 @@ jobs:
           echo "LAS_TARGETED_FORMAT_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/formatted.cms" | awk '{print $1}')"
           echo "LAS_TARGETED_FORMAT_DIFF_SHA256=$(sha256sum "$RUNNER_TEMP/rustfmt-diff.cms" | awk '{print $1}')"
 
+      - name: Emit source-free rustfmt hunk coordinates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          while IFS= read -r path; do
+            path_hash="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
+            echo "LAS_FMT_HUNK_FILE=$path_hash"
+            git diff --unified=0 -- "$path" \
+              | grep '^@@' \
+              | sed -E "s#^@@ ([^@]+) @@.*#LAS_FMT_HUNK_COORD=$path_hash:\1#" || true
+          done < "$RUNNER_TEMP/format-paths"
+
       - name: Emit source-free rustfmt safe edit metadata
         shell: bash
         run: |
