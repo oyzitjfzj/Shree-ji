@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: typed-activation-evidence-import-fix
-  TARGET_REF_HASH: 3040ba16af9e1a116c52111fe625d4f24a942e456b2592ef08fcb8c7aaef312a
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1649e7f6c6042cacdc54059639c4532ac63a4470ed4029f49c657891f0a0c476
+  REQUEST_MARKER: verify-current-promotion-runtime-head
+  TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 0fa28ec8cff8715c96ffb5923ecb4d31b254b3450e40deee9789b5fa9e5e1739
 
 jobs:
   targeted:
