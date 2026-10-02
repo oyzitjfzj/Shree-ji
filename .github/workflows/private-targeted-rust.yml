@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: source-bound-activation-preparation
+  REQUEST_MARKER: proposal-bound-activation-rollback-crossing
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 04f8ca1cff4722624b87f3dc259f12d590aa378e9a3606e6f79949de3fd39131
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 19084c30dd31fc3f38c9898fc354505db19b53b0770782fd593c56ca68ca70b7
 
 jobs:
   targeted:
