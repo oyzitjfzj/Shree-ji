@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: final-intent-evidence-currentness
+  REQUEST_MARKER: verify-intent-currentness-nll
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4d255a8b7fa7def12a1c296ca28822dbb5bc0227a80794351660f5c9298a5572
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a050812689ad1fef97a7402a64904cb61dd08a6ea5f66decbd93b1bc2082ca98
 
 jobs:
   targeted:
