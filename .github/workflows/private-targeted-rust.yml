@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: final-consumed-commit-transaction
+  REQUEST_MARKER: verify-prepared-artifact-active-change
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 918b882c18f1118c69bffd9b590770a477947e0831f4048e8b43d51f8a7fa1b4
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 518adfc75216f8b2b0e97bf863d9138a1cf869bea62b436ca1219b08081442f5
 
 jobs:
   targeted:
