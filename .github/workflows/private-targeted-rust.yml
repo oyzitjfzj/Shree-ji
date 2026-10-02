@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-current-evidence-promotion-intent-final
+  REQUEST_MARKER: verify-current-evidence-promotion-intent
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 75dfff91a71869168a633cb93ac36298ee681f9c1b917b2beeeea5844a5ac9f4
 
