@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: external-evidence-activation-crossing
-  TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 0fa28ec8cff8715c96ffb5923ecb4d31b254b3450e40deee9789b5fa9e5e1739
+  REQUEST_MARKER: diagnose-frozen-promotion-integration
+  TARGET_REF_HASH: 3040ba16af9e1a116c52111fe625d4f24a942e456b2592ef08fcb8c7aaef312a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a22829ff98004efc013d6ead9370e036f6d199416ebc4959ea4742058173bee6
 
 jobs:
   targeted:
