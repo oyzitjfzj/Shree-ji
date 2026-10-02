@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-revision-bound-promotion-artifact-state
+  REQUEST_MARKER: final-revision-bound-promotion-artifact-state
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 70ccdcbbcbf1aa298ef258285b202c9306b36a22a1b26943e8de7873b8759283
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e80baa8cc77ac0ab8023d4361015d47713879e148bd9691cecf5e9073343b02d
 
 jobs:
   targeted:
