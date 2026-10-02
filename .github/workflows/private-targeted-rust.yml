@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: repaired-promotion-approval-quorum
+  REQUEST_MARKER: verify-repaired-promotion-approval-quorum
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d64a3ec29fbcf00d631441870b18a82813554497c77b07e8e94a974bfa0ef3d7
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ef69ff41de46c8b4f362d7cf77ce2cf7c664e3e03af180305f0fba5ec108c984
 
 jobs:
   targeted:
