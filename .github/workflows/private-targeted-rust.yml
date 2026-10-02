@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: diagnose-current-rollback-proposal-tests
+  REQUEST_MARKER: verify-distinct-protection-fixture
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 356f35dead6813534cfbf73372c387bd3d96acb60d90767305ed821d005fc15b
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 9cabac37e3e46dd8efb4501339f262adeaf0cf2d7306cf566f62ab749ac58b92
 
 jobs:
   targeted:
