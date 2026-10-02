@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: verify-current-promotion-runtime-head
+  REQUEST_MARKER: verify-promotion-root-preimage
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 0fa28ec8cff8715c96ffb5923ecb4d31b254b3450e40deee9789b5fa9e5e1739
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4d9621f8dcab5940026edddf88d18597172beee4bef24331ed90a74e0a76a0f1
 
 jobs:
   targeted:
