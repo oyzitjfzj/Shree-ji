@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 env:
-  REQUEST_MARKER: final-exact-reconciliation-and-rollback-history
+  REQUEST_MARKER: final-promotion-outcome-history
   TARGET_REF_HASH: e9a03e2b78968bace8bffb3fec4263ef49768b71148a8bf8b8f809842022b361
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 207469abadc754684efadf496b77d56e081c03c05b8968923106811a32b601fd
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a7f7e336985a9c29cc25f718533bda5e077d9be24b1b5a11940a66c06f5a56db
 
 jobs:
   targeted:
