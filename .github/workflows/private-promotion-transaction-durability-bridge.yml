@@ -40,7 +40,7 @@ jobs:
             expected_line_1: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_RED=OBSERVED
             expected_line_2: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_RED_TESTS=1
           - mode: prepared_green
-            expected_snapshot_proof: c7f13b56a6fe6078f814ad738470b591b28473b7d7fbdad3efac986f7e53e971
+            expected_snapshot_proof: 8c10ed37aa27237201e89ffffc9cef77dbdaf80ca51e19c9ec52a40fca068085
             expected_verifier_blob: d356135098ca3ca95a8c3193ac455b50a8ccc05d
             verifier: tools/verify_promotion_transaction_prepared_restart_green.sh
             expected_line_1: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_GREEN=OBSERVED
