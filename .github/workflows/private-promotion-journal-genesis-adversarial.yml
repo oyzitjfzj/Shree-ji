@@ -1,0 +1,102 @@
+name: Private promotion journal genesis adversarial
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-journal-genesis-adversarial.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 36e21d1f34a51e92cdfdfce07e673abea6ea954f6e181312fce4ffe2858018a9
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 712f0ef07c0d84520809aaff8c2a34885d5f5dda9fa266d82b6e55e74744153e
+  EXPECTED_VERIFIER_BLOB: 25ba37c59318068328f584a09d566fad498ea87b
+  VERIFIER: tools/verify_promotion_journal_genesis_adversarial.sh
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add rustfmt --toolchain 1.98.1
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version --verbose
+
+      - name: Resolve exact private snapshot without disclosing private identifiers
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=128 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=128 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          test "$(git hash-object "$VERIFIER")" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
+
+      - name: Verify exact adversarial closure and publish sanitized result
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          out="$RUNNER_TEMP/promotion-journal-genesis-adversarial.out"
+          set +e
+          bash "$VERIFIER" >"$out" 2>&1
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 ]]; then
+            rm -f "$out"
+            echo 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_BRIDGE=FAILED'
+            exit 1
+          fi
+          grep -Fxq 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL=PASS' "$out"
+          count_line="$(grep -E '^LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_TEST_COUNT=[1-9][0-9]*$' "$out" | head -n 1 || true)"
+          test -n "$count_line"
+          rm -f "$out"
+          echo 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL=PASS'
+          echo "$count_line"
+          echo 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_BRIDGE=PASS'
