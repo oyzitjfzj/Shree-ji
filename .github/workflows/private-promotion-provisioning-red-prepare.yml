@@ -1,4 +1,4 @@
-name: Private promotion provisioning committed RED verify
+name: Private promotion provisioning protocol GREEN verify
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: 50b65b0205ad09dfe3065c40fd9c4d8b9112a6f243e0412720df9697d94f75e0
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7576e6b2009d673559210b2d070795b237ce53e9ef560d2644049d8c10718cb3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 11588e71e052539af9fbf7cebf185ecbc263af5055360c70e4c1b383ca7f91d1
 
 jobs:
   verify:
@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
-          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
           cargo +1.98.1 --version
           rustc +1.98.1 --version --verbose
 
@@ -72,38 +72,28 @@ jobs:
           git checkout -q --detach "$resolved"
           test "$(git rev-parse HEAD)" = "$resolved"
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_PROVISION_COMMITTED_RED_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_PROVISION_PROTOCOL_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
 
-      - name: Prove committed format and compile gates
+      - name: Strict format compile and Clippy gates
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
           cargo +1.98.1 fmt --all -- --check
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run >/dev/null
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo 'LAS_PROVISION_COMMITTED_RED_FORMAT=PASS'
-          echo 'LAS_PROVISION_COMMITTED_RED_COMPILE=PASS'
+          echo 'LAS_PROVISION_PROTOCOL_FORMAT=PASS'
+          echo 'LAS_PROVISION_PROTOCOL_CHECK=PASS'
+          echo 'LAS_PROVISION_PROTOCOL_CLIPPY=PASS'
 
-      - name: Prove exact intended RED
+      - name: Serialized full library regression
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/provision-committed-red.log"
-          set +e
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$log" 2>&1
-          rc=$?
-          set -e
-          digest="$(sha256sum "$log" | awk '{print $1}')"
-          summary="$(grep '^test result:' "$log" | tail -n 1 || true)"
-          failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
-          rm -f "$log"
-          echo "LAS_PROVISION_COMMITTED_RED_TEST_LOG_SHA256=$digest"
-          test "$rc" -ne 0
-          test "$failed" = '3'
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo 'LAS_PROVISION_COMMITTED_RED_EXPECTED_FAIL_COUNT=3'
-          echo 'LAS_PROVISION_COMMITTED_RED=PASS'
-          echo 'LAS_PROVISION_COMMITTED_RED_BRIDGE=PASS'
+          echo 'LAS_PROVISION_PROTOCOL_TESTS=PASS'
+          echo 'LAS_PROVISION_PROTOCOL_BRIDGE=PASS'
