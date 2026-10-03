@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 36e21d1f34a51e92cdfdfce07e673abea6ea954f6e181312fce4ffe2858018a9
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 712f0ef07c0d84520809aaff8c2a34885d5f5dda9fa266d82b6e55e74744153e
-  EXPECTED_VERIFIER_BLOB: 25ba37c59318068328f584a09d566fad498ea87b
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1dc7936a1cfabb774ccb2f5faae6ad2b69b67fc01277cdedcbc8881cda2bd499
+  EXPECTED_VERIFIER_BLOB: 5e70b975dd68cfa087546357378b5b38566e58f9
   VERIFIER: tools/verify_promotion_journal_genesis_adversarial.sh
 
 jobs:
@@ -88,31 +88,27 @@ jobs:
           bash "$VERIFIER" >"$out" 2>&1
           rc=$?
           set -e
+          surface="$(grep -E '^LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_SURFACE=' "$out" | tail -n 1 || true)"
+          format="$(grep -E '^LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_FORMAT=' "$out" | tail -n 1 || true)"
+          tests="$(grep -E '^LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_TESTS=' "$out" | tail -n 1 || true)"
+          count_line="$(grep -E '^LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_TEST_COUNT=[1-9][0-9]*$' "$out" | tail -n 1 || true)"
+          rm -f "$out"
+          test -n "$surface"
+          test -n "$format"
+          echo "$surface"
+          echo "$format"
           if [[ "$rc" -ne 0 ]]; then
-            if ! cargo +1.98.1 fmt --all -- --check >/dev/null 2>&1; then
-              stage=FORMAT
-            else
-              set +e
-              RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib \
-                'defence_evolution::promotion_transaction_journal_genesis_' \
-                -- --test-threads=1 >/dev/null 2>&1
-              test_rc=$?
-              set -e
-              if [[ "$test_rc" -ne 0 ]]; then
-                stage=TEST
-              else
-                stage=VERIFIER_ACCOUNTING
-              fi
-            fi
-            rm -f "$out"
-            echo "LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_FAILURE_STAGE=$stage"
+            test -n "$tests" && echo "$tests"
             echo 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_BRIDGE=FAILED'
             exit 1
           fi
-          grep -Fxq 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL=PASS' "$out"
-          count_line="$(grep -E '^LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_TEST_COUNT=[1-9][0-9]*$' "$out" | head -n 1 || true)"
+          test "$surface" = 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_SURFACE=PASS'
+          test "$tests" = 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_TESTS=PASS'
           test -n "$count_line"
-          rm -f "$out"
-          echo 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL=PASS'
+          echo "$tests"
           echo "$count_line"
+          if [[ "$format" != 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_FORMAT=PASS' ]]; then
+            echo 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_BRIDGE=FAILED'
+            exit 1
+          fi
           echo 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_BRIDGE=PASS'
