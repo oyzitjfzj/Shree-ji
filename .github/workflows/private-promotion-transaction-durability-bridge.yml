@@ -114,8 +114,14 @@ jobs:
           rc=$?
           set -e
           if [[ "$rc" -ne 0 ]]; then
-            rm -f "$out"
             echo "LAS_PROMOTION_DURABILITY_BRIDGE_MODE=$MODE"
+            if [[ "$MODE" == "green" ]]; then
+              stage="$(grep -E '^LAS_PROMOTION_DURABILITY_GREEN_STAGE=(FORMAT|TEST)$' "$out" | head -n 1 || true)"
+              if [[ -n "$stage" ]]; then
+                echo "$stage"
+              fi
+            fi
+            rm -f "$out"
             echo 'LAS_PROMOTION_DURABILITY_BRIDGE=VERIFIER_FAILED'
             exit 1
           fi
