@@ -87,7 +87,7 @@ jobs:
           rc=$?
           set -e
           if [[ "$rc" -ne 0 ]]; then
-            echo "LAS_PROMOTION_DURABILITY_GREEN=NOT_OBSERVED"
+            grep -E '^LAS_PROMOTION_DURABILITY_GREEN=NOT_OBSERVED$|^LAS_PROMOTION_DURABILITY_GREEN_STAGE=(FORMAT|TEST)$' <<<"$output" || true
             exit 1
           fi
           grep -qx 'LAS_PROMOTION_DURABILITY_GREEN=OBSERVED' <<<"$output"
