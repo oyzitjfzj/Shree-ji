@@ -110,10 +110,10 @@ jobs:
             git hash-object "$path"
           done <"$changed" | sort >"$actual"
           cat >"$RUNNER_TEMP/expected-blobs" <<'EOF'
-          187c395ae305e0d64f09efffd2273711013dab50
-          28e0d121fba222659c1ee0cff005b7472e8ab262
-          67ed11e0b2c4b355427e3c8faf426735bbc13929
-          fb81ceee7e32467213f0839cba7c30138377c0ed
+          8cf99bfd42ec159ecb25755588fdb9b4317e6f6a
+          b08d756d541d4d2c52a8ae866d066d37f4a3abb6
+          e67faf25de813f95feb3b65f79016817fafd5e80
+          ec86b2283b1ce37cfe77e0eccf4c50acb1e79719
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-blobs"
           diff -u "$RUNNER_TEMP/expected-blobs" "$actual" >/dev/null
