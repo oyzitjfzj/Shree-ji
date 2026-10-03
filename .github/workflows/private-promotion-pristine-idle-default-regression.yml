@@ -125,11 +125,27 @@ jobs:
           rc=$?
           set -e
           echo "LAS_PROMOTION_IDLE_DEFAULT_REGRESSION_CLIPPY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          rm -f "$log"
           if [[ "$rc" -ne 0 ]]; then
+            first_error="$(grep -m1 '^error:' "$log" || true)"
+            if [[ -n "$first_error" ]]; then
+              normalized="$(printf '%s' "$first_error" | sed -E 's#(/[^ ]+)+#<PATH>#g')"
+              echo "LAS_PROMOTION_IDLE_DEFAULT_REGRESSION_CLIPPY_FIRST_ERROR_HASH=$(printf '%s' "$normalized" | sha256sum | awk '{print $1}')"
+            fi
+            arrow="$(grep -m1 -E '^[[:space:]]*-->[[:space:]]+.*:[0-9]+:[0-9]+' "$log" || true)"
+            if [[ -n "$arrow" ]]; then
+              loc="$(printf '%s' "$arrow" | sed -E 's/^[[:space:]]*-->[[:space:]]+//')"
+              pathpart="$(printf '%s' "$loc" | sed -E 's/:[0-9]+:[0-9]+$//')"
+              linecol="$(printf '%s' "$loc" | sed -E 's/^.*:([0-9]+:[0-9]+)$/\1/')"
+              echo "LAS_PROMOTION_IDLE_DEFAULT_REGRESSION_CLIPPY_PATH_HASH=$(printf '%s' "$pathpart" | sha256sum | awk '{print $1}')"
+              echo "LAS_PROMOTION_IDLE_DEFAULT_REGRESSION_CLIPPY_LINECOL=$linecol"
+            fi
+            lint="$(grep -m1 -oE 'clippy::[A-Za-z0-9_-]+' "$log" || true)"
+            [[ -z "$lint" ]] || echo "LAS_PROMOTION_IDLE_DEFAULT_REGRESSION_CLIPPY_LINT=$lint"
+            rm -f "$log"
             echo 'LAS_PROMOTION_IDLE_DEFAULT_REGRESSION_STAGE=CLIPPY'
             exit 1
           fi
+          rm -f "$log"
           echo 'LAS_PROMOTION_IDLE_DEFAULT_REGRESSION_CLIPPY=PASS'
 
       - name: Serialized default library regression
