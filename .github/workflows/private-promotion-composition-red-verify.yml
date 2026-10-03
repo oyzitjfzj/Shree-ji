@@ -1,0 +1,109 @@
+name: Private promotion composition RED verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-composition-red-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: dc96ab8492788f2af1b8609e9735f55e60c94ba86c066d411df41538285843a3
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f959cc8ad186d8aaa6622a97ff4b042279910acdec9e673ca815cbab16612ae5
+
+jobs:
+  prove-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+
+      - name: Resolve exact private RED snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=32 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=32 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          key="$(printf 'LAS_COMPOSITION_RED_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$key"
+          printf '%s' "$key" >"$RUNNER_TEMP/red-key"
+          chmod 600 "$RUNNER_TEMP/red-key"
+          echo "LAS_COMPOSITION_RED_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash tree key
+
+      - name: Observe compile RED without public diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 fmt --all >/dev/null 2>&1
+          log="$RUNNER_TEMP/composition-red.log"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run >"$log" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/red-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+            -pass env:LAS_EXPORT_KEY -in "$log" -out "$RUNNER_TEMP/composition-red.enc"
+          unset LAS_EXPORT_KEY
+          rm -f "$log" "$RUNNER_TEMP/red-key"
+          echo "LAS_COMPOSITION_RED_COMPILE_RC=$rc"
+          echo "LAS_COMPOSITION_RED_DIAGNOSTIC_SHA256=$(sha256sum "$RUNNER_TEMP/composition-red.enc" | awk '{print $1}')"
+          echo 'LAS_COMPOSITION_RED_OBSERVED=PASS'
+
+      - name: Upload encrypted RED diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-promotion-composition-red
+          path: ${{ runner.temp }}/composition-red.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
