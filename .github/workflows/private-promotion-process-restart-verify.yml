@@ -1,0 +1,122 @@
+name: Private promotion process restart verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-process-restart-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: fb69966a4451752e54dfb253cc9c7a812e95d96ceeba7bfc6ee4c96f2cb8f505
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: da4a4b35281713e8185f978bd1fb244b72fed6c86e61067eafaad53e667bd8c9
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version --verbose
+
+      - name: Resolve exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=64 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=64 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_PROMOTION_PROCESS_RESTART_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
+
+      - name: Strict format compile and Clippy gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 fmt --all -- --check
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >/dev/null
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >/dev/null
+          git diff --check
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo 'LAS_PROMOTION_PROCESS_RESTART_FORMAT=PASS'
+          echo 'LAS_PROMOTION_PROCESS_RESTART_CHECK=PASS'
+          echo 'LAS_PROMOTION_PROCESS_RESTART_CLIPPY=PASS'
+
+      - name: Real Linux process restart gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/promotion-process-restart.log"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_transaction_linux_journal_process_restart_tests -- --test-threads=1 >"$log" 2>&1
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          summary="$(grep '^test result:' "$log" | tail -n 1 || true)"
+          passed="$(printf '%s' "$summary" | sed -nE 's/.* ([0-9]+) passed;.*/\1/p')"
+          failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
+          rm -f "$log"
+          test "$passed" = '3'
+          test "$failed" = '0'
+          echo "LAS_PROMOTION_PROCESS_RESTART_LOG_SHA256=$digest"
+          echo 'LAS_PROMOTION_PROCESS_RESTART_TEST_COUNT=3'
+          echo 'LAS_PROMOTION_PROCESS_RESTART_TESTS=PASS'
+
+      - name: Serialized full library regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/promotion-process-restart-library.log"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$log" 2>&1
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          rm -f "$log"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_PROMOTION_PROCESS_RESTART_LIBRARY_LOG_SHA256=$digest"
+          echo 'LAS_PROMOTION_PROCESS_RESTART_LIBRARY=PASS'
+          echo 'LAS_PROMOTION_PROCESS_RESTART_BRIDGE=PASS'
