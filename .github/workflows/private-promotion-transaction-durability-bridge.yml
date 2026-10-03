@@ -148,6 +148,9 @@ jobs:
               if [[ "$stage" == 'LAS_PROMOTION_DURABILITY_PREPARED_RESTART_GREEN_STAGE=FORMAT' ]]; then
                 grep -E '^LAS_PROMOTION_DURABILITY_PREPARED_FORMAT_(IMPLEMENTATION|TEST)_(CHANGED=[01]|HUNKS=(NONE|[0-9:,>]+))$' "$out"
               fi
+            elif [[ "$MODE" == "journal_green" ]]; then
+              stage="$(grep -E '^LAS_PROMOTION_JOURNAL_RECOVERY_GREEN_STAGE=(FORMAT|TEST)$' "$out" | head -n 1 || true)"
+              if [[ -n "$stage" ]]; then echo "$stage"; fi
             fi
             rm -f "$out"
             echo 'LAS_PROMOTION_DURABILITY_BRIDGE=VERIFIER_FAILED'
