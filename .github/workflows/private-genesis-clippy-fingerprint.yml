@@ -1,0 +1,95 @@
+name: Private genesis Clippy file fingerprint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-genesis-clippy-fingerprint.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 36e21d1f34a51e92cdfdfce07e673abea6ea954f6e181312fce4ffe2858018a9
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 416c44c77a26671b77cfb906f769a6c52c266076e7eb71443761ec45f7c338b3
+
+jobs:
+  fingerprint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Resolve exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$h" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=128 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=128 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_CLIPPY_FINGERPRINT_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof h
+
+      - name: Fingerprint first strict Clippy finding without exposing pathname
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 clippy >/dev/null
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/clippy-fingerprint.log"
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >"$log" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          arrow="$(grep -m1 -E '^[[:space:]]*-->[[:space:]]+.*:[0-9]+:[0-9]+' "$log" || true)"
+          test -n "$arrow"
+          loc="$(printf '%s' "$arrow" | sed -E 's/^[[:space:]]*-->[[:space:]]+//')"
+          pathpart="$(printf '%s' "$loc" | sed -E 's/:[0-9]+:[0-9]+$//')"
+          linecol="$(printf '%s' "$loc" | sed -E 's/^.*:([0-9]+:[0-9]+)$/\1/')"
+          lint="$(grep -m1 -oE 'clippy::[A-Za-z0-9_-]+' "$log" || true)"
+          test -n "$lint"
+          test -f "$pathpart"
+          echo "LAS_CLIPPY_FINGERPRINT_PATH_HASH=$(printf '%s' "$pathpart" | sha256sum | awk '{print $1}')"
+          echo "LAS_CLIPPY_FINGERPRINT_BLOB=$(git hash-object "$pathpart")"
+          echo "LAS_CLIPPY_FINGERPRINT_LINECOL=$linecol"
+          echo "LAS_CLIPPY_FINGERPRINT_LINT=$lint"
+          echo "LAS_CLIPPY_FINGERPRINT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          rm -f "$log"
