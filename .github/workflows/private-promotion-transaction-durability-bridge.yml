@@ -168,7 +168,7 @@ parts=[]
 for line in sys.stdin:
     m=re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
     if m:
-        parts.append(f"{m.group(1)}:{m.group(2) or "1"}>{m.group(3)}:{m.group(4) or "1"}")
+        parts.append("%s:%s>%s:%s" % (m.group(1), m.group(2) or "1", m.group(3), m.group(4) or "1"))
 print(",".join(parts) if parts else "NONE")
 ')"
                   echo "LAS_PROMOTION_JOURNAL_FORMAT_${label}_CHANGED=$changed"
