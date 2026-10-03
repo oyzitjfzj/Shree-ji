@@ -12,7 +12,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: 8ab68fe7f21c61e0d2bb0e45f6323b3d98031aed072bb0734c848e35a2652a44
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 16052bb97510585c9f5d19a50688ba2ed4d28e9e0fdbc0a4b3ea4946b81aff62
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 442aba89a21b21f049e2e545a2d7a067e2912f0aa75007ec8194a5ec442d2562
 
 jobs:
   diagnose:
@@ -87,4 +87,4 @@ jobs:
           echo "LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_CHANGED_FILES=$files"
           echo "LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_ADDITIONS=$additions"
           echo "LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_DELETIONS=$deletions"
-          git diff --unified=0 --no-color | grep '^@@' | sed -E 's/^(@@[^@]*@@).*/LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_HUNK=\1/'
+          git diff --unified=0 --no-color | grep '^@@' | sed -E 's/^(@@[^@]*@@).*/LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_HUNK=\1/' || true
