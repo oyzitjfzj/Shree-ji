@@ -1,4 +1,4 @@
-name: Private promotion provisioning protocol GREEN verify
+name: Private promotion provisioning storage identity verify
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: 50b65b0205ad09dfe3065c40fd9c4d8b9112a6f243e0412720df9697d94f75e0
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 11588e71e052539af9fbf7cebf185ecbc263af5055360c70e4c1b383ca7f91d1
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 560de801a992bcd0be67c7aa01c271be90024c57725fc4d10be179306a7e9651
 
 jobs:
   verify:
@@ -72,7 +72,7 @@ jobs:
           git checkout -q --detach "$resolved"
           test "$(git rev-parse HEAD)" = "$resolved"
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_PROVISION_PROTOCOL_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_PROVISION_STORAGE_ID_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
 
       - name: Strict format compile and Clippy gates
@@ -84,9 +84,9 @@ jobs:
           RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
           cargo +1.98.1 clippy --locked --all-targets -- -D warnings
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo 'LAS_PROVISION_PROTOCOL_FORMAT=PASS'
-          echo 'LAS_PROVISION_PROTOCOL_CHECK=PASS'
-          echo 'LAS_PROVISION_PROTOCOL_CLIPPY=PASS'
+          echo 'LAS_PROVISION_STORAGE_ID_FORMAT=PASS'
+          echo 'LAS_PROVISION_STORAGE_ID_CHECK=PASS'
+          echo 'LAS_PROVISION_STORAGE_ID_CLIPPY=PASS'
 
       - name: Serialized full library regression
         shell: bash
@@ -95,5 +95,5 @@ jobs:
           cd "$GITHUB_WORKSPACE/target"
           RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo 'LAS_PROVISION_PROTOCOL_TESTS=PASS'
-          echo 'LAS_PROVISION_PROTOCOL_BRIDGE=PASS'
+          echo 'LAS_PROVISION_STORAGE_ID_TESTS=PASS'
+          echo 'LAS_PROVISION_STORAGE_ID_BRIDGE=PASS'
