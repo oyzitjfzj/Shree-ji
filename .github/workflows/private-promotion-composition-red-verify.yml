@@ -1,4 +1,4 @@
-name: Private promotion composition RED verify
+name: Private promotion composition GREEN verify
 
 on:
   push:
@@ -12,22 +12,23 @@ permissions:
 
 env:
   TARGET_REF_HASH: dc96ab8492788f2af1b8609e9735f55e60c94ba86c066d411df41538285843a3
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f959cc8ad186d8aaa6622a97ff4b042279910acdec9e673ca815cbab16612ae5
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6bfaf781d1f9a76aee26542849a1effd3c363368b71e3786282b839a8750955f
 
 jobs:
-  prove-red:
+  verify-export:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Install exact Rust executor
         shell: bash
         run: |
           set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
-          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
           test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
 
-      - name: Resolve exact private RED snapshot
+      - name: Resolve exact private GREEN snapshot
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -69,41 +70,77 @@ jobs:
           test -n "$resolved"
           echo "::add-mask::$resolved"
           git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
           tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$tree"
-          key="$(printf 'LAS_COMPOSITION_RED_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          key="$(printf 'LAS_COMPOSITION_GREEN_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
           echo "::add-mask::$key"
-          printf '%s' "$key" >"$RUNNER_TEMP/red-key"
-          chmod 600 "$RUNNER_TEMP/red-key"
-          echo "LAS_COMPOSITION_RED_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          printf '%s' "$key" >"$RUNNER_TEMP/green-key"
+          chmod 600 "$RUNNER_TEMP/green-key"
+          echo "LAS_COMPOSITION_GREEN_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash tree key
 
-      - name: Observe compile RED without public diagnostics
+      - name: Apply pinned formatting and prove scope
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
           cargo +1.98.1 fmt --all >/dev/null 2>&1
-          log="$RUNNER_TEMP/composition-red.log"
-          set +e
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run >"$log" 2>&1
-          rc=$?
-          set -e
-          test "$rc" -ne 0
-          export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/red-key")"
-          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
-            -pass env:LAS_EXPORT_KEY -in "$log" -out "$RUNNER_TEMP/composition-red.enc"
-          unset LAS_EXPORT_KEY
-          rm -f "$log" "$RUNNER_TEMP/red-key"
-          echo "LAS_COMPOSITION_RED_COMPILE_RC=$rc"
-          echo "LAS_COMPOSITION_RED_DIAGNOSTIC_SHA256=$(sha256sum "$RUNNER_TEMP/composition-red.enc" | awk '{print $1}')"
-          echo 'LAS_COMPOSITION_RED_OBSERVED=PASS'
+          cargo +1.98.1 fmt --all -- --check >/dev/null 2>&1
+          git diff --check
+          count=0
+          while IFS= read -r path; do
+            test -n "$path"
+            count=$((count + 1))
+            h="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
+            case "$h" in
+              5ba5d9d9c2ad4648105802ffe05bce571fdb14a5221a8c24870350d1f1024b9e|20a81b995618902bc13c3316ccf8147d259e19ca94a85d44aee34ccc38dc6a76|7db09e57d14b340e626d04dfa95dc1aca16d293d2359d216b5637f748c9ce2f5) ;;
+              *) echo 'LAS_COMPOSITION_GREEN_FORMAT_SCOPE=FAILED'; exit 1 ;;
+            esac
+          done < <(git diff --name-only)
+          echo "LAS_COMPOSITION_GREEN_FORMAT_CHANGED_FILE_COUNT=$count"
+          echo 'LAS_COMPOSITION_GREEN_FORMAT_SCOPE=PASS'
 
-      - name: Upload encrypted RED diagnostic
+      - name: Strict compile and Clippy gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >/dev/null 2>&1
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >/dev/null 2>&1
+          echo 'LAS_COMPOSITION_GREEN_CHECK=PASS'
+          echo 'LAS_COMPOSITION_GREEN_CLIPPY=PASS'
+
+      - name: Serialized full library regression including real Linux composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >/dev/null 2>&1
+          echo 'LAS_COMPOSITION_GREEN_LIBRARY=PASS'
+
+      - name: Encrypt exact formatter material
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          list="$RUNNER_TEMP/export-paths"
+          git diff --name-only -z >"$list"
+          plain="$RUNNER_TEMP/composition-green-format.tar.gz"
+          tar --null -T "$list" -czf "$plain"
+          export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/green-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+            -pass env:LAS_EXPORT_KEY -in "$plain" -out "$RUNNER_TEMP/composition-green-format.enc"
+          unset LAS_EXPORT_KEY
+          rm -f "$plain" "$list" "$RUNNER_TEMP/green-key"
+          echo "LAS_COMPOSITION_GREEN_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/composition-green-format.enc" | awk '{print $1}')"
+          echo 'LAS_COMPOSITION_GREEN_EXPORT=PASS'
+
+      - name: Upload encrypted formatter material
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: encrypted-private-promotion-composition-red
-          path: ${{ runner.temp }}/composition-red.enc
+          name: encrypted-private-promotion-composition-green-format
+          path: ${{ runner.temp }}/composition-green-format.enc
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
