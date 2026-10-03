@@ -151,6 +151,30 @@ jobs:
             elif [[ "$MODE" == "journal_green" ]]; then
               stage="$(grep -E '^LAS_PROMOTION_JOURNAL_RECOVERY_GREEN_STAGE=(FORMAT|TEST)$' "$out" | head -n 1 || true)"
               if [[ -n "$stage" ]]; then echo "$stage"; fi
+              if [[ "$stage" == 'LAS_PROMOTION_JOURNAL_RECOVERY_GREEN_STAGE=FORMAT' ]]; then
+                module='src/defence_evolution/promotion_transaction_journal.rs'
+                test_file='src/defence_evolution/promotion_journal_recovery_red_tests.rs'
+                registry='src/defence_evolution/mod.rs'
+                rustfmt +1.98.1 --edition 2024 "$module" "$test_file" >/dev/null 2>&1 || true
+                rustfmt +1.98.1 --edition 2024 --config skip_children=true "$registry" >/dev/null 2>&1 || true
+                for spec in "MODULE:$module" "TEST:$test_file" "REGISTRY:$registry"; do
+                  label="${spec%%:*}"
+                  path="${spec#*:}"
+                  changed=0
+                  if ! git diff --quiet -- "$path"; then changed=1; fi
+                  hunks="$(git diff --unified=0 -- "$path" | python3 -c '
+import re, sys
+parts=[]
+for line in sys.stdin:
+    m=re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+    if m:
+        parts.append(f"{m.group(1)}:{m.group(2) or "1"}>{m.group(3)}:{m.group(4) or "1"}")
+print(",".join(parts) if parts else "NONE")
+')"
+                  echo "LAS_PROMOTION_JOURNAL_FORMAT_${label}_CHANGED=$changed"
+                  echo "LAS_PROMOTION_JOURNAL_FORMAT_${label}_HUNKS=$hunks"
+                done
+              fi
             fi
             rm -f "$out"
             echo 'LAS_PROMOTION_DURABILITY_BRIDGE=VERIFIER_FAILED'
