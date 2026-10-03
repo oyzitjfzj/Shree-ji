@@ -89,8 +89,20 @@ jobs:
           rc=$?
           set -e
           if [[ "$rc" -ne 0 ]]; then
-            grep -E '^LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_STAGE=[A-Z0-9_]+$' "$out" | head -n 1 || true
+            stage="$(grep -E '^LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_STAGE=[A-Z0-9_]+$' "$out" | head -n 1 || true)"
+            if [[ -n "$stage" ]]; then echo "$stage"; fi
             grep -E '^LAS_PROMOTION_LINUX_JOURNAL_(FAULT_MATRIX|REAL_FILE)_TEST_COUNT=[0-9]+$' "$out" || true
+            if [[ "$stage" == 'LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_STAGE=FORMAT' ]]; then
+              cargo +1.98.1 fmt --all
+              files="$(git diff --name-only | wc -l | tr -d ' ')"
+              stats="$(git diff --numstat | awk '{a+=$1; d+=$2} END {printf "%d %d", a, d}')"
+              additions="${stats%% *}"
+              deletions="${stats##* }"
+              echo "LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_FMT_CHANGED_FILES=$files"
+              echo "LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_FMT_ADDITIONS=$additions"
+              echo "LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_FMT_DELETIONS=$deletions"
+              git diff --unified=0 --no-color | grep '^@@' | sed -E 's/^(@@[^@]*@@).*/LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_FMT_HUNK=\1/' || true
+            fi
             rm -f "$out"
             echo 'LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_BRIDGE=FAILED'
             exit 1
