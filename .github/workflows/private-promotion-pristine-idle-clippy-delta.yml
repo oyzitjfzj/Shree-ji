@@ -1,0 +1,125 @@
+name: Private promotion pristine Idle Clippy delta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-pristine-idle-clippy-delta.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 20b4967e64d331ea8849725b4b038cbbdf41671c49e3cfc9d13d7471d839385e
+  CURRENT_PROOF: a4d52295d15e53d71bb4f3d96aef97af6d6634c2fc6f85cc28378b2e4bb68b67
+  BASELINE_PROOF: 44fc5960b979cc8d67c867601f4ee0bfb21d572d9f6168ac537ab1e81c030481
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Install exact Rust Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add --toolchain 1.98.1 clippy
+
+      - name: Resolve exact current and baseline snapshots opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=128 origin "$matched_ref"
+          current=""
+          baseline=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$CURRENT_PROOF" ]]; then current="$candidate"; fi
+            if [[ "$proof" == "$BASELINE_PROOF" ]]; then baseline="$candidate"; fi
+          done < <(git rev-list --max-count=128 FETCH_HEAD)
+          test -n "$current"
+          test -n "$baseline"
+          echo "::add-mask::$current"
+          echo "::add-mask::$baseline"
+          printf '%s' "$current" >"$RUNNER_TEMP/current.oid"
+          printf '%s' "$baseline" >"$RUNNER_TEMP/baseline.oid"
+          unset PRIVATE_TOKEN auth matched_ref candidate proof current baseline
+
+      - name: Compare exact Clippy diagnostic signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          run_one() {
+            local label="$1"
+            local oid_file="$2"
+            local oid
+            oid="$(cat "$oid_file")"
+            git checkout -q --detach "$oid"
+            test -z "$(git status --porcelain --untracked-files=no)"
+            local log="$RUNNER_TEMP/${label}.jsonl"
+            set +e
+            cargo +1.98.1 clippy --locked --all-targets --message-format=json -- -D warnings >"$log" 2>&1
+            local rc=$?
+            set -e
+            echo "LAS_CLIPPY_DELTA_${label}_RC=$rc"
+            python3 - "$label" "$log" <<'PY'
+          import hashlib, json, sys
+          label, path = sys.argv[1], sys.argv[2]
+          diags=set()
+          with open(path, encoding='utf-8', errors='replace') as fh:
+              for line in fh:
+                  try:
+                      obj=json.loads(line)
+                  except Exception:
+                      continue
+                  if obj.get('reason') != 'compiler-message':
+                      continue
+                  msg=obj.get('message') or {}
+                  if msg.get('level') not in ('error','warning'):
+                      continue
+                  code=(msg.get('code') or {}).get('code') or 'NONE'
+                  prim=[s for s in (msg.get('spans') or []) if s.get('is_primary')]
+                  if not prim:
+                      diags.add((code,'NONE',0,0))
+                  for s in prim[:2]:
+                      p=s.get('file_name') or ''
+                      ph=hashlib.sha256(p.encode()).hexdigest() if p else 'NONE'
+                      diags.add((code,ph,int(s.get('line_start') or 0),int(s.get('column_start') or 0)))
+          print(f'LAS_CLIPPY_DELTA_{label}_DIAG_COUNT={len(diags)}')
+          for code,ph,line,col in sorted(diags):
+              print(f'LAS_CLIPPY_DELTA_{label}_DIAG={code}:{ph}:{line}:{col}')
+          PY
+            echo "LAS_CLIPPY_DELTA_${label}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            rm -f "$log"
+          }
+          run_one BASELINE "$RUNNER_TEMP/baseline.oid"
+          run_one CURRENT "$RUNNER_TEMP/current.oid"
