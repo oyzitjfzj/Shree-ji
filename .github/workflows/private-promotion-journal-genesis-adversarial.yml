@@ -89,7 +89,23 @@ jobs:
           rc=$?
           set -e
           if [[ "$rc" -ne 0 ]]; then
+            if ! cargo +1.98.1 fmt --all -- --check >/dev/null 2>&1; then
+              stage=FORMAT
+            else
+              set +e
+              RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib \
+                'defence_evolution::promotion_transaction_journal_genesis_' \
+                -- --test-threads=1 >/dev/null 2>&1
+              test_rc=$?
+              set -e
+              if [[ "$test_rc" -ne 0 ]]; then
+                stage=TEST
+              else
+                stage=VERIFIER_ACCOUNTING
+              fi
+            fi
             rm -f "$out"
+            echo "LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_FAILURE_STAGE=$stage"
             echo 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_BRIDGE=FAILED'
             exit 1
           fi
