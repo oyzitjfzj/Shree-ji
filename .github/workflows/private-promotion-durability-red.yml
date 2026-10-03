@@ -1,4 +1,4 @@
-name: Private promotion durability RED
+name: Private promotion durability GREEN
 
 on:
   push:
@@ -13,11 +13,11 @@ permissions:
 
 env:
   TARGET_REF_HASH: 8ab68fe7f21c61e0d2bb0e45f6323b3d98031aed072bb0734c848e35a2652a44
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 757b0d434cd694b5280c1f0f4ca0f35bde3046af74524d0020abd54406cddc75
-  EXPECTED_VERIFIER_BLOB: 962956190f31ac0c83d1e7ce55410ceeaa2ea2ad
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 06378837cc1d7df2e5b517aca5ee4d6d4e0d36da6c9fd6c94d5ac3b906cb40f4
+  EXPECTED_VERIFIER_BLOB: d9c54e63b6f09ffb60e012d38b01250744fb3938
 
 jobs:
-  verify-red:
+  verify-green:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -64,7 +64,7 @@ jobs:
           echo "::add-mask::$resolved"
           git checkout -q --detach "$resolved"
           test "$(git rev-parse HEAD)" = "$resolved"
-          test "$(git hash-object tools/verify_promotion_transaction_durability_red.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test "$(git hash-object tools/verify_promotion_transaction_durability_green.sh)" = "$EXPECTED_VERIFIER_BLOB"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash sha ref
@@ -74,21 +74,22 @@ jobs:
         run: |
           set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add rustfmt --toolchain 1.98.1 >/dev/null
           echo "LAS_RUST_TOOLCHAIN=1.98.1"
 
-      - name: Observe sanitized compiler RED
+      - name: Observe sanitized GREEN
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
           set +e
-          output="$(bash tools/verify_promotion_transaction_durability_red.sh)"
+          output="$(bash tools/verify_promotion_transaction_durability_green.sh)"
           rc=$?
           set -e
           if [[ "$rc" -ne 0 ]]; then
-            echo "LAS_PROMOTION_DURABILITY_RED=NOT_OBSERVED"
+            echo "LAS_PROMOTION_DURABILITY_GREEN=NOT_OBSERVED"
             exit 1
           fi
-          grep -qx 'LAS_PROMOTION_DURABILITY_RED=OBSERVED' <<<"$output"
-          grep -qx 'LAS_PROMOTION_DURABILITY_RED_ERROR_COUNT=2' <<<"$output"
+          grep -qx 'LAS_PROMOTION_DURABILITY_GREEN=OBSERVED' <<<"$output"
+          grep -qx 'LAS_PROMOTION_DURABILITY_GREEN_TESTS=1' <<<"$output"
           printf '%s\n' "$output"
