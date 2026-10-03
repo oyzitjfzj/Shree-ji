@@ -40,8 +40,8 @@ jobs:
             expected_line_1: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_RED=OBSERVED
             expected_line_2: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_RED_TESTS=1
           - mode: prepared_green
-            expected_snapshot_proof: de94e316a4c4996227b80529781ecdea02402b1082eb2cda447dc6f1118e8227
-            expected_verifier_blob: 6d5a1c7b6c8a34dd7651b5baca1e17f8233248e9
+            expected_snapshot_proof: c7f13b56a6fe6078f814ad738470b591b28473b7d7fbdad3efac986f7e53e971
+            expected_verifier_blob: d356135098ca3ca95a8c3193ac455b50a8ccc05d
             verifier: tools/verify_promotion_transaction_prepared_restart_green.sh
             expected_line_1: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_GREEN=OBSERVED
             expected_line_2: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_GREEN_TESTS=1
@@ -74,7 +74,6 @@ jobs:
           test -n "$PRIVATE_TOKEN"
           echo "::add-mask::$PRIVATE_REPOSITORY"
           echo "::add-mask::$PRIVATE_TOKEN"
-
           ROOT="$GITHUB_WORKSPACE/target"
           mkdir "$ROOT"
           cd "$ROOT"
@@ -83,7 +82,6 @@ jobs:
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           refs="$RUNNER_TEMP/private-heads"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
-
           matched_ref=""
           while read -r sha ref; do
             ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
@@ -95,7 +93,6 @@ jobs:
           rm -f "$refs"
           test -n "$matched_ref"
           echo "::add-mask::$matched_ref"
-
           git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
           resolved=""
           while read -r candidate; do
@@ -129,16 +126,15 @@ jobs:
             echo "LAS_PROMOTION_DURABILITY_BRIDGE_MODE=$MODE"
             if [[ "$MODE" == "green" ]]; then
               stage="$(grep -E '^LAS_PROMOTION_DURABILITY_GREEN_STAGE=(FORMAT|TEST)$' "$out" | head -n 1 || true)"
-              if [[ -n "$stage" ]]; then
-                echo "$stage"
-              fi
+              if [[ -n "$stage" ]]; then echo "$stage"; fi
               if [[ "$stage" == 'LAS_PROMOTION_DURABILITY_GREEN_STAGE=FORMAT' ]]; then
                 grep -E '^LAS_PROMOTION_DURABILITY_FORMAT_(IMPLEMENTATION|TEST)_(CHANGED=[01]|HUNKS=(NONE|[0-9:,>]+))$' "$out"
               fi
             elif [[ "$MODE" == "prepared_green" ]]; then
               stage="$(grep -E '^LAS_PROMOTION_DURABILITY_PREPARED_RESTART_GREEN_STAGE=(FORMAT|TEST)$' "$out" | head -n 1 || true)"
-              if [[ -n "$stage" ]]; then
-                echo "$stage"
+              if [[ -n "$stage" ]]; then echo "$stage"; fi
+              if [[ "$stage" == 'LAS_PROMOTION_DURABILITY_PREPARED_RESTART_GREEN_STAGE=FORMAT' ]]; then
+                grep -E '^LAS_PROMOTION_DURABILITY_PREPARED_FORMAT_(IMPLEMENTATION|TEST)_(CHANGED=[01]|HUNKS=(NONE|[0-9:,>]+))$' "$out"
               fi
             fi
             rm -f "$out"
