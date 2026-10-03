@@ -162,15 +162,7 @@ jobs:
                   path="${spec#*:}"
                   changed=0
                   if ! git diff --quiet -- "$path"; then changed=1; fi
-                  hunks="$(git diff --unified=0 -- "$path" | python3 -c '
-import re, sys
-parts=[]
-for line in sys.stdin:
-    m=re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
-    if m:
-        parts.append("%s:%s>%s:%s" % (m.group(1), m.group(2) or "1", m.group(3), m.group(4) or "1"))
-print(",".join(parts) if parts else "NONE")
-')"
+                  hunks="$(git diff --unified=0 -- "$path" | python3 -c 'import re,sys; ms=[re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line) for line in sys.stdin]; xs=["%s:%s>%s:%s" % (m.group(1), m.group(2) or "1", m.group(3), m.group(4) or "1") for m in ms if m]; print(",".join(xs) if xs else "NONE")')"
                   echo "LAS_PROMOTION_JOURNAL_FORMAT_${label}_CHANGED=$changed"
                   echo "LAS_PROMOTION_JOURNAL_FORMAT_${label}_HUNKS=$hunks"
                 done
