@@ -1,0 +1,117 @@
+name: Private promotion pristine Idle library regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-pristine-idle-library-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 20b4967e64d331ea8849725b4b038cbbdf41671c49e3cfc9d13d7471d839385e
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a4d52295d15e53d71bb4f3d96aef97af6d6634c2fc6f85cc28378b2e4bb68b67
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version --verbose
+
+      - name: Resolve exact private snapshot without disclosing private identifiers
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=128 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=128 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_PROMOTION_IDLE_LIBRARY_REGRESSION_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
+
+      - name: Serialized default library regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/pristine-idle-library-test.log"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          class="OTHER"
+          if grep -Eqi 'stack overflow|has overflowed its stack' "$log"; then
+            class="STACK_OVERFLOW"
+          elif grep -q 'could not compile' "$log"; then
+            class="COMPILE"
+          elif grep -q 'test result: FAILED' "$log"; then
+            class="TEST"
+          elif grep -Eq 'signal: [0-9]+' "$log"; then
+            class="SIGNAL"
+          elif [[ "$rc" -eq 0 ]]; then
+            class="PASS"
+          fi
+          echo "LAS_PROMOTION_IDLE_LIBRARY_REGRESSION_LOG_SHA256=$digest"
+          echo "LAS_PROMOTION_IDLE_LIBRARY_REGRESSION_CLASS=$class"
+          if [[ "$rc" -ne 0 ]]; then
+            codes="$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
+            echo "LAS_PROMOTION_IDLE_LIBRARY_REGRESSION_ERROR_CODES=$codes"
+            while IFS= read -r failed_name; do
+              [[ -n "$failed_name" ]] || continue
+              echo "LAS_PROMOTION_IDLE_LIBRARY_REGRESSION_FAILED_TEST_HASH=$(printf '%s' "$failed_name" | sha256sum | awk '{print $1}')"
+            done < <(awk '/^failures:$/ {capture=1; next} capture && /^test result:/ {capture=0} capture && /^    [A-Za-z0-9_]+(::[A-Za-z0-9_]+)+$/ {sub(/^    /, ""); print}' "$log" | sort -u)
+            rm -f "$log"
+            exit 1
+          fi
+          passed="$(grep -Eo 'test result: ok\. [0-9]+ passed; 0 failed' "$log" | tail -n 1 || true)"
+          test -n "$passed"
+          echo "LAS_PROMOTION_IDLE_LIBRARY_REGRESSION_SUMMARY=$passed"
+          rm -f "$log"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo 'LAS_PROMOTION_IDLE_LIBRARY_REGRESSION=PASS'
