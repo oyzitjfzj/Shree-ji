@@ -33,6 +33,12 @@ jobs:
             verifier: tools/verify_promotion_transaction_durability_green.sh
             expected_line_1: LAS_PROMOTION_DURABILITY_GREEN=OBSERVED
             expected_line_2: LAS_PROMOTION_DURABILITY_GREEN_TESTS=1
+          - mode: prepared_red
+            expected_snapshot_proof: b8312c5d4c7cc3b71cd68862171852f005a1b408ff599c804038978e446eea1c
+            expected_verifier_blob: 84db9c29fb0ec0f93bc9de141f47ef8be5aa8f1b
+            verifier: tools/verify_promotion_transaction_prepared_restart_red.sh
+            expected_line_1: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_RED=OBSERVED
+            expected_line_2: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_RED_TESTS=1
     env:
       MODE: ${{ matrix.mode }}
       EXPECTED_PRIVATE_SNAPSHOT_PROOF: ${{ matrix.expected_snapshot_proof }}
