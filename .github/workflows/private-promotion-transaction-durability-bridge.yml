@@ -52,8 +52,8 @@ jobs:
             expected_line_1: LAS_PROMOTION_JOURNAL_RECOVERY_RED=OBSERVED
             expected_line_2: LAS_PROMOTION_JOURNAL_RECOVERY_RED_ERROR_COUNT=1
           - mode: journal_green
-            expected_snapshot_proof: 44a4c6570dd3a1c87a0c084e48b5ef34cf3cc13e2e03efa7f39d1166ec61a811
-            expected_verifier_blob: 594aa0191ef57257b5f0235295f9dddc268412e8
+            expected_snapshot_proof: a207e978bd4c0cbe5beed1c465bd48fa5fda4660ecbb96d2421617971ec20aea
+            expected_verifier_blob: e5443ce11d6b964a04cd5226c81ec2ed3e5e6a55
             verifier: tools/verify_promotion_journal_recovery_green.sh
             expected_line_1: LAS_PROMOTION_JOURNAL_RECOVERY_GREEN=OBSERVED
             expected_line_2: LAS_PROMOTION_JOURNAL_RECOVERY_GREEN_TESTS=4
