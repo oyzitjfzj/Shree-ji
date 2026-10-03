@@ -1,4 +1,4 @@
-name: Private promotion Linux adapter GREEN verify
+name: Private promotion Linux adapter committed closure
 
 on:
   push:
@@ -12,21 +12,23 @@ permissions:
 
 env:
   TARGET_REF_HASH: 632205e83e253786157de64f41b0c5080e88fc5992706bed2dfeaf556d9f4e34
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6b070cbeb2307eb165355ac096c814bb274abac9e859435d74a4b74f5968ec64
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 14c97937002a714bb6f089c1501eea0ff34a64272cad19f1e74f5cb301f9e82d
 
 jobs:
-  verify-export:
+  verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - name: Install exact Rust executor
+      - name: Install exact Rust executor and audit tool
         shell: bash
         run: |
           set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
           rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 install cargo-audit --version 0.22.2 --locked >/dev/null
           cargo +1.98.1 --version
           rustc +1.98.1 --version --verbose
+          cargo audit --version
 
       - name: Resolve exact private snapshot
         shell: bash
@@ -71,54 +73,39 @@ jobs:
           echo "::add-mask::$resolved"
           git checkout -q --detach "$resolved"
           test "$(git rev-parse HEAD)" = "$resolved"
-          tree="$(git rev-parse 'HEAD^{tree}')"
-          echo "::add-mask::$tree"
-          key="$(printf 'LAS_LINUX_PROVISION_ADAPTER_GREEN_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
-          echo "::add-mask::$key"
-          printf '%s' "$key" >"$RUNNER_TEMP/export-key"
-          chmod 600 "$RUNNER_TEMP/export-key"
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
-          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash tree key
+          echo "LAS_LINUX_PROVISION_ADAPTER_COMMITTED_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
 
-      - name: Apply pinned formatting and prove scope
+      - name: Exact committed format and lock gate
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
           grep -A2 '^name = "rustix"$' Cargo.lock | grep -F 'version = "1.1.5"' >/dev/null
-          cargo +1.98.1 fmt --all
           cargo +1.98.1 fmt --all -- --check
           git diff --check
-          count=0
-          while IFS= read -r path; do
-            test -n "$path"
-            count=$((count + 1))
-            h="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
-            case "$h" in
-              c6dfe3bcbb54c21672f9304e701d5ac9a30d9ce1d43f26859d63a824aef1f5f7|e19ef6f5c9c1446a2b1a840bd43100f4d106ea59f76f9a90381a40da16f08110|7db09e57d14b340e626d04dfa95dc1aca16d293d2359d216b5637f748c9ce2f5) ;;
-              *) echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FORMAT_SCOPE=FAILED'; exit 1 ;;
-            esac
-          done < <(git diff --name-only)
-          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_FORMAT_CHANGED_FILE_COUNT=$count"
-          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FORMAT_SCOPE=PASS'
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_FORMAT=PASS'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_LOCK=PASS'
 
       - name: Strict compile and Clippy gates
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
-          cargo +1.98.1 clippy --locked --all-targets -- -D warnings
-          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_CHECK=PASS'
-          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_CLIPPY=PASS'
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >/dev/null
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >/dev/null
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_CHECK=PASS'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_CLIPPY=PASS'
 
-      - name: Focused real Linux GREEN
+      - name: Focused real Linux adapter gate
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/linux-provision-adapter-green-tests.log"
+          log="$RUNNER_TEMP/linux-provision-adapter-focused.log"
           set +e
           RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_transaction_linux_journal_provisioning_adapter_red_tests -- --test-threads=1 >"$log" 2>&1
           rc=$?
@@ -127,68 +114,45 @@ jobs:
           summary="$(grep '^test result:' "$log" | tail -n 1 || true)"
           passed="$(printf '%s' "$summary" | sed -nE 's/.* ([0-9]+) passed;.*/\1/p')"
           failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
-          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_TEST_LOG_SHA256=$digest"
-          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_OBSERVED_PASS_COUNT=${passed:-UNKNOWN}"
-          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_OBSERVED_FAIL_COUNT=${failed:-UNKNOWN}"
-          if [[ "$rc" -ne 0 || "$passed" != '5' || "$failed" != '0' ]]; then
-            export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/export-key")"
-            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
-              -pass env:LAS_EXPORT_KEY -in "$log" -out "$RUNNER_TEMP/linux-provision-adapter-green-tests.enc"
-            unset LAS_EXPORT_KEY
-            rm -f "$log"
-            echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_DIAGNOSTIC_SHA256=$(sha256sum "$RUNNER_TEMP/linux-provision-adapter-green-tests.enc" | awk '{print $1}')"
-            echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FOCUSED=FAILED'
-            exit 1
-          fi
           rm -f "$log"
-          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_PASS_COUNT=5'
-          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FAIL_COUNT=0'
-          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FOCUSED=PASS'
-
-      - name: Upload encrypted focused diagnostics
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: encrypted-private-linux-provision-adapter-green-diagnostics
-          path: ${{ runner.temp }}/linux-provision-adapter-green-tests.enc
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
+          echo "LAS_LINUX_PROVISION_ADAPTER_COMMITTED_FOCUSED_LOG_SHA256=$digest"
+          test "$rc" -eq 0
+          test "$passed" = '5'
+          test "$failed" = '0'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_FOCUSED_PASS_COUNT=5'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_FOCUSED_FAIL_COUNT=0'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_FOCUSED=PASS'
 
       - name: Serialized full library regression
-        if: success()
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >/dev/null
-          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_LIBRARY=PASS'
+          log="$RUNNER_TEMP/linux-provision-adapter-library.log"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$log" 2>&1
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          rm -f "$log"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_LINUX_PROVISION_ADAPTER_COMMITTED_LIBRARY_LOG_SHA256=$digest"
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_LIBRARY=PASS'
 
-      - name: Encrypt exact formatter material
-        if: success()
+      - name: RustSec locked dependency audit
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          list="$RUNNER_TEMP/export-paths"
-          git diff --name-only -z >"$list"
-          plain="$RUNNER_TEMP/linux-provision-adapter-green-format.tar.gz"
-          tar --null -T "$list" -czf "$plain"
-          export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/export-key")"
-          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
-            -pass env:LAS_EXPORT_KEY -in "$plain" -out "$RUNNER_TEMP/linux-provision-adapter-green-format.enc"
-          unset LAS_EXPORT_KEY
-          rm -f "$plain" "$list" "$RUNNER_TEMP/export-key"
-          test -s "$RUNNER_TEMP/linux-provision-adapter-green-format.enc"
-          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/linux-provision-adapter-green-format.enc" | awk '{print $1}')"
-          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_EXPORT=PASS'
-
-      - name: Upload encrypted formatter material
-        if: success()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: encrypted-private-linux-provision-adapter-green-format
-          path: ${{ runner.temp }}/linux-provision-adapter-green-format.enc
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
+          log="$RUNNER_TEMP/linux-provision-adapter-audit.log"
+          set +e
+          cargo audit --deny warnings --target-os linux --target-arch x86_64 --quiet >"$log" 2>&1
+          rc=$?
+          set -e
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          rm -f "$log"
+          echo "LAS_LINUX_PROVISION_ADAPTER_COMMITTED_AUDIT_LOG_SHA256=$digest"
+          if [[ "$rc" -ne 0 ]]; then
+            echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_AUDIT=FAILED'
+            exit 1
+          fi
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_AUDIT=PASS'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_COMMITTED_BRIDGE=PASS'
