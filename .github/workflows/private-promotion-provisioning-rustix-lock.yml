@@ -1,0 +1,150 @@
+name: Private promotion provisioning rustix lock
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-provisioning-rustix-lock.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 50b65b0205ad09dfe3065c40fd9c4d8b9112a6f243e0412720df9697d94f75e0
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f70a52e1cf7f40eaf5ced4eb5d1d00009bbc7c19a6d1816b7819f1c918555473
+  EXPECTED_CARGO_TOML_BLOB: 99b66f1797c8c9822c15b5cd2b3f16b5bdf2571d
+  EXPECTED_OLD_LOCK_BLOB: 86bef7187143dcefa6f352d7d577b27d2d5eeb57
+
+jobs:
+  verify-export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version --verbose
+
+      - name: Resolve exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=64 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=64 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          test "$(git hash-object Cargo.toml)" = "$EXPECTED_CARGO_TOML_BLOB"
+          test "$(git hash-object Cargo.lock)" = "$EXPECTED_OLD_LOCK_BLOB"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          key="$(printf 'LAS_PRIVATE_RUSTIX_LOCK_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$key"
+          printf '%s' "$key" >"$RUNNER_TEMP/lock-key"
+          chmod 600 "$RUNNER_TEMP/lock-key"
+          echo "LAS_RUSTIX_LOCK_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash tree key
+
+      - name: Generate and audit exact lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 generate-lockfile
+          cargo +1.98.1 metadata --locked --format-version 1 >"$RUNNER_TEMP/metadata.json"
+          python3 - "$RUNNER_TEMP/metadata.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          root = next(p for p in data['packages'] if p['name'] == 'living-assurance-system')
+          direct = sorted((d['name'], d['req'], tuple(sorted(d['features'])), d['uses_default_features'], d.get('target')) for d in root['dependencies'])
+          expected = [('rustix', '=1.1.5', ('fs', 'std'), False, 'cfg(target_os = "linux")')]
+          if direct != expected:
+              raise SystemExit(f'unexpected direct dependency graph: {direct!r}')
+          third = sorted((p['name'], p['version'], p['source']) for p in data['packages'] if p['name'] != 'living-assurance-system')
+          if not third or not any(n == 'rustix' and v == '1.1.5' for n, v, _ in third):
+              raise SystemExit('rustix 1.1.5 missing')
+          if any(source is None or not source.startswith('registry+') for _, _, source in third):
+              raise SystemExit(f'non-registry dependency present: {third!r}')
+          print('LAS_RUSTIX_LOCK_DIRECT_DEPENDENCY=rustix@1.1.5;default_features=false;features=fs,std;target=linux')
+          print('LAS_RUSTIX_LOCK_THIRD_PARTY_PACKAGE_COUNT=' + str(len(third)))
+          for name, version, _ in third:
+              print(f'LAS_RUSTIX_LOCK_PACKAGE={name}@{version}')
+          PY
+          rm -f "$RUNNER_TEMP/metadata.json"
+          echo "LAS_RUSTIX_LOCK_SHA256=$(sha256sum Cargo.lock | awk '{print $1}')"
+          echo 'LAS_RUSTIX_LOCK_AUDIT=PASS'
+
+      - name: Verify exact dependency candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 fmt --all -- --check
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1
+          changed="$(git diff --name-only)"
+          test "$changed" = 'Cargo.lock'
+          echo 'LAS_RUSTIX_LOCK_VERIFICATION=PASS'
+
+      - name: Encrypt generated lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          export LAS_LOCK_KEY="$(cat "$RUNNER_TEMP/lock-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+            -pass env:LAS_LOCK_KEY -in Cargo.lock -out "$RUNNER_TEMP/Cargo.lock.enc"
+          unset LAS_LOCK_KEY
+          rm -f "$RUNNER_TEMP/lock-key"
+          test -s "$RUNNER_TEMP/Cargo.lock.enc"
+          echo "LAS_RUSTIX_LOCK_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/Cargo.lock.enc" | awk '{print $1}')"
+          echo 'LAS_RUSTIX_LOCK_EXPORT=PASS'
+
+      - name: Upload encrypted generated lockfile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-rustix-lock
+          path: ${{ runner.temp }}/Cargo.lock.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
