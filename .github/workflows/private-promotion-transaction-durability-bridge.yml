@@ -45,6 +45,12 @@ jobs:
             verifier: tools/verify_promotion_transaction_prepared_restart_green.sh
             expected_line_1: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_GREEN=OBSERVED
             expected_line_2: LAS_PROMOTION_DURABILITY_PREPARED_RESTART_GREEN_TESTS=1
+          - mode: journal_red
+            expected_snapshot_proof: 2471fcc210fe0a715b102cbb83e73366e853cd365c22e6e9b05f57c410fae2c8
+            expected_verifier_blob: 178d4f0e6e0909f8d6b910c667beacc9741e3c2f
+            verifier: tools/verify_promotion_journal_recovery_red.sh
+            expected_line_1: LAS_PROMOTION_JOURNAL_RECOVERY_RED=OBSERVED
+            expected_line_2: LAS_PROMOTION_JOURNAL_RECOVERY_RED_ERROR_COUNT=1
     env:
       MODE: ${{ matrix.mode }}
       EXPECTED_PRIVATE_SNAPSHOT_PROOF: ${{ matrix.expected_snapshot_proof }}
