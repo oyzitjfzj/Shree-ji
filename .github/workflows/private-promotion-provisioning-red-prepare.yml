@@ -1,4 +1,4 @@
-name: Private promotion Linux adapter RED prepare
+name: Private promotion Linux adapter GREEN prepare
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: 632205e83e253786157de64f41b0c5080e88fc5992706bed2dfeaf556d9f4e34
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 467fcd5d0009b17c85225fe85ad8924255e648e415aad01ab0b19ff8b284e41f
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6b070cbeb2307eb165355ac096c814bb274abac9e859435d74a4b74f5968ec64
 
 jobs:
   verify-export:
@@ -73,20 +73,19 @@ jobs:
           test "$(git rev-parse HEAD)" = "$resolved"
           tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$tree"
-          key="$(printf 'LAS_LINUX_PROVISION_ADAPTER_RED_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          key="$(printf 'LAS_LINUX_PROVISION_ADAPTER_GREEN_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
           echo "::add-mask::$key"
           printf '%s' "$key" >"$RUNNER_TEMP/export-key"
           chmod 600 "$RUNNER_TEMP/export-key"
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_LINUX_PROVISION_ADAPTER_RED_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash tree key
 
-      - name: Generate exact dependency lock and pinned formatting
+      - name: Apply pinned formatting and prove scope
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          cargo +1.98.1 generate-lockfile
           grep -A2 '^name = "rustix"$' Cargo.lock | grep -F 'version = "1.1.5"' >/dev/null
           cargo +1.98.1 fmt --all
           cargo +1.98.1 fmt --all -- --check
@@ -97,70 +96,73 @@ jobs:
             count=$((count + 1))
             h="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
             case "$h" in
-              13ee4b2252c9e516a0547f2891aa2105c3ca71c6d7a1e682c69be97998dfc87e|c6dfe3bcbb54c21672f9304e701d5ac9a30d9ce1d43f26859d63a824aef1f5f7|e19ef6f5c9c1446a2b1a840bd43100f4d106ea59f76f9a90381a40da16f08110|7db09e57d14b340e626d04dfa95dc1aca16d293d2359d216b5637f748c9ce2f5) ;;
-              *) echo 'LAS_LINUX_PROVISION_ADAPTER_RED_PREP_SCOPE=FAILED'; exit 1 ;;
+              c6dfe3bcbb54c21672f9304e701d5ac9a30d9ce1d43f26859d63a824aef1f5f7|e19ef6f5c9c1446a2b1a840bd43100f4d106ea59f76f9a90381a40da16f08110|7db09e57d14b340e626d04dfa95dc1aca16d293d2359d216b5637f748c9ce2f5) ;;
+              *) echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FORMAT_SCOPE=FAILED'; exit 1 ;;
             esac
           done < <(git diff --name-only)
-          test "$count" -ge 1
-          echo "LAS_LINUX_PROVISION_ADAPTER_RED_PREP_CHANGED_FILE_COUNT=$count"
-          echo 'LAS_LINUX_PROVISION_ADAPTER_RED_PREP_SCOPE=PASS'
+          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_FORMAT_CHANGED_FILE_COUNT=$count"
+          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FORMAT_SCOPE=PASS'
 
-      - name: Prove RED source compiles cleanly
+      - name: Strict compile and Clippy gates
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run >/dev/null
-          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >/dev/null
-          echo 'LAS_LINUX_PROVISION_ADAPTER_RED_COMPILE=PASS'
-          echo 'LAS_LINUX_PROVISION_ADAPTER_RED_CLIPPY=PASS'
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings
+          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_CHECK=PASS'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_CLIPPY=PASS'
 
-      - name: Prove expected real Linux RED is narrow
+      - name: Focused real Linux GREEN
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/linux-provision-adapter-red-tests.log"
-          set +e
+          log="$RUNNER_TEMP/linux-provision-adapter-green-tests.log"
           RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_transaction_linux_journal_provisioning_adapter_red_tests -- --test-threads=1 >"$log" 2>&1
-          rc=$?
-          set -e
           digest="$(sha256sum "$log" | awk '{print $1}')"
           summary="$(grep '^test result:' "$log" | tail -n 1 || true)"
-          failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
           passed="$(printf '%s' "$summary" | sed -nE 's/test result: [A-Z]+\. ([0-9]+) passed;.*/\1/p')"
-          echo "LAS_LINUX_PROVISION_ADAPTER_RED_TEST_LOG_SHA256=$digest"
+          failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
+          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_TEST_LOG_SHA256=$digest"
           rm -f "$log"
-          test "$rc" -ne 0
-          test "$failed" = '5'
-          test "$passed" = '0'
-          echo 'LAS_LINUX_PROVISION_ADAPTER_RED_EXPECTED_FAIL_COUNT=5'
-          echo 'LAS_LINUX_PROVISION_ADAPTER_RED_EXPECTED_PASS_COUNT=0'
-          echo 'LAS_LINUX_PROVISION_ADAPTER_RED_EXPECTED_RED=PASS'
+          test "$passed" = '5'
+          test "$failed" = '0'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_PASS_COUNT=5'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FAIL_COUNT=0'
+          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_FOCUSED=PASS'
 
-      - name: Encrypt exact generated repair material
+      - name: Serialized full library regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >/dev/null
+          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_LIBRARY=PASS'
+
+      - name: Encrypt exact formatter material
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
           list="$RUNNER_TEMP/export-paths"
           git diff --name-only -z >"$list"
-          plain="$RUNNER_TEMP/linux-provision-adapter-red-prep.tar.gz"
+          plain="$RUNNER_TEMP/linux-provision-adapter-green-format.tar.gz"
           tar --null -T "$list" -czf "$plain"
           export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/export-key")"
           openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
-            -pass env:LAS_EXPORT_KEY -in "$plain" -out "$RUNNER_TEMP/linux-provision-adapter-red-prep.enc"
+            -pass env:LAS_EXPORT_KEY -in "$plain" -out "$RUNNER_TEMP/linux-provision-adapter-green-format.enc"
           unset LAS_EXPORT_KEY
           rm -f "$plain" "$list" "$RUNNER_TEMP/export-key"
-          test -s "$RUNNER_TEMP/linux-provision-adapter-red-prep.enc"
-          echo "LAS_LINUX_PROVISION_ADAPTER_RED_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/linux-provision-adapter-red-prep.enc" | awk '{print $1}')"
-          echo 'LAS_LINUX_PROVISION_ADAPTER_RED_EXPORT=PASS'
+          test -s "$RUNNER_TEMP/linux-provision-adapter-green-format.enc"
+          echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/linux-provision-adapter-green-format.enc" | awk '{print $1}')"
+          echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_EXPORT=PASS'
 
-      - name: Upload encrypted generated repair material
+      - name: Upload encrypted formatter material
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: encrypted-private-linux-provision-adapter-red-prep
-          path: ${{ runner.temp }}/linux-provision-adapter-red-prep.enc
+          name: encrypted-private-linux-provision-adapter-green-format
+          path: ${{ runner.temp }}/linux-provision-adapter-green-format.enc
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
