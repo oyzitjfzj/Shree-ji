@@ -1,0 +1,100 @@
+name: Private committed snapshot verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-committed-snapshot-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 632205e83e253786157de64f41b0c5080e88fc5992706bed2dfeaf556d9f4e34
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 14c97937002a714bb6f089c1501eea0ff34a64272cad19f1e74f5cb301f9e82d
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+
+      - name: Resolve exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=64 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=64 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_COMMITTED_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
+
+      - name: Exact committed static gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          grep -A2 '^name = "rustix"$' Cargo.lock | grep -F 'version = "1.1.5"' >/dev/null
+          cargo +1.98.1 fmt --all -- --check >/dev/null 2>&1
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >/dev/null 2>&1
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >/dev/null 2>&1
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo 'LAS_COMMITTED_FORMAT=PASS'
+          echo 'LAS_COMMITTED_CHECK=PASS'
+          echo 'LAS_COMMITTED_CLIPPY=PASS'
+
+      - name: Exact committed serialized library regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >/dev/null 2>&1
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo 'LAS_COMMITTED_LIBRARY=PASS'
+          echo 'LAS_COMMITTED_BRIDGE=PASS'
