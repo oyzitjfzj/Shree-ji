@@ -1,0 +1,165 @@
+name: Private promotion provisioning RED prepare
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-provisioning-red-prepare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 50b65b0205ad09dfe3065c40fd9c4d8b9112a6f243e0412720df9697d94f75e0
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e29e6d3e7e4a49bfc14bfe1f5c47dde7911e429e2859e601015b130c241e9e35
+
+jobs:
+  verify-export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version --verbose
+
+      - name: Resolve exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=64 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=64 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          key="$(printf 'LAS_PRIVATE_PROVISION_RED_FORMAT_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$key"
+          printf '%s' "$key" >"$RUNNER_TEMP/format-key"
+          chmod 600 "$RUNNER_TEMP/format-key"
+          echo "LAS_PROVISION_RED_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash tree key
+
+      - name: Format exact snapshot and prove formatter scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          git diff --check
+          count=0
+          while IFS= read -r path; do
+            test -n "$path"
+            count=$((count + 1))
+            h="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
+            case "$h" in
+              7db09e57d14b340e626d04dfa95dc1aca16d293d2359d216b5637f748c9ce2f5|3146e93740c8610d7cbadf069ef3ac0892b6a5e33e22818292122925bbd3a4a0|3ad4335f8630e0ab19e7f472be14ac95ec3bec47de3bc3682410ed00b17188d2) ;;
+              *) echo 'LAS_PROVISION_RED_FORMAT_SCOPE=FAILED'; exit 1 ;;
+            esac
+          done < <(git diff --name-only)
+          test "$count" -ge 1
+          echo "LAS_PROVISION_RED_FORMAT_CHANGED_FILE_COUNT=$count"
+          echo 'LAS_PROVISION_RED_FORMAT_SCOPE=PASS'
+
+      - name: Prove RED source compiles cleanly
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/provision-red-compile.log"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --no-run >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_PROVISION_RED_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          rm -f "$log"
+          test "$rc" -eq 0
+          echo 'LAS_PROVISION_RED_COMPILE=PASS'
+
+      - name: Prove expected RED is narrow
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/provision-red-tests.log"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          summary="$(grep '^test result:' "$log" | tail -n 1 || true)"
+          failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
+          rm -f "$log"
+          echo "LAS_PROVISION_RED_TEST_LOG_SHA256=$digest"
+          test "$rc" -ne 0
+          test "$failed" = '3'
+          echo 'LAS_PROVISION_RED_EXPECTED_FAIL_COUNT=3'
+          echo 'LAS_PROVISION_RED_EXPECTED_RED=PASS'
+
+      - name: Encrypt exact formatter repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          list="$RUNNER_TEMP/format-paths"
+          git diff --name-only -z >"$list"
+          plain="$RUNNER_TEMP/provision-red-format.tar.gz"
+          tar --null -T "$list" -czf "$plain"
+          export LAS_FORMAT_KEY="$(cat "$RUNNER_TEMP/format-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+            -pass env:LAS_FORMAT_KEY -in "$plain" -out "$RUNNER_TEMP/provision-red-format.enc"
+          unset LAS_FORMAT_KEY
+          rm -f "$plain" "$list" "$RUNNER_TEMP/format-key"
+          test -s "$RUNNER_TEMP/provision-red-format.enc"
+          echo "LAS_PROVISION_RED_FORMAT_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/provision-red-format.enc" | awk '{print $1}')"
+          echo 'LAS_PROVISION_RED_FORMAT_EXPORT=PASS'
+
+      - name: Upload encrypted formatter repair
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-provision-red-format
+          path: ${{ runner.temp }}/provision-red-format.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
