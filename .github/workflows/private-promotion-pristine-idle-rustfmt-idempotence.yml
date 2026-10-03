@@ -12,7 +12,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: 20b4967e64d331ea8849725b4b038cbbdf41671c49e3cfc9d13d7471d839385e
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 99e8d97002a9df7374fcb7ca7dcc36e9c449063c337d7ce129d73796571624a1
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6d3c79e2dafbfcd30bd1310d7d6f4fdbf9e9c5e9eae164b4581a9adf3cebfbf6
   IMPLEMENTATION: src/defence_evolution/promotion_transaction_durability.rs
   TEST: src/defence_evolution/promotion_transaction_durability_red_tests.rs
 
@@ -85,6 +85,7 @@ jobs:
           before="$(fingerprint)"
           rustfmt +1.98.1 --edition 2024 "${files[@]}"
           after1="$(fingerprint)"
+          implementation_after1="$(sha256sum "$IMPLEMENTATION" | awk '{print $1}')"
           rustfmt +1.98.1 --edition 2024 "${files[@]}"
           after2="$(fingerprint)"
           rustfmt +1.98.1 --edition 2024 "${files[@]}"
@@ -104,3 +105,4 @@ jobs:
           echo "LAS_RUSTFMT_PASS1_EQ_PASS2=$eq12"
           echo "LAS_RUSTFMT_PASS2_EQ_PASS3=$eq23"
           echo "LAS_RUSTFMT_FINAL_CHECK_RC=$check_rc"
+          echo "LAS_RUSTFMT_IMPLEMENTATION_FIXED_POINT_SHA256=$implementation_after1"
