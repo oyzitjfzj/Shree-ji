@@ -1,4 +1,4 @@
-name: Private promotion Linux adapter GREEN diagnose
+name: Private promotion Linux adapter GREEN verify
 
 on:
   push:
@@ -113,7 +113,7 @@ jobs:
           echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_CHECK=PASS'
           echo 'LAS_LINUX_PROVISION_ADAPTER_GREEN_CLIPPY=PASS'
 
-      - name: Focused real Linux GREEN with encrypted failure evidence
+      - name: Focused real Linux GREEN
         shell: bash
         run: |
           set -euo pipefail
@@ -125,7 +125,7 @@ jobs:
           set -e
           digest="$(sha256sum "$log" | awk '{print $1}')"
           summary="$(grep '^test result:' "$log" | tail -n 1 || true)"
-          passed="$(printf '%s' "$summary" | sed -nE 's/test result: [A-Z]+\. ([0-9]+) passed;.*/\1/p')"
+          passed="$(printf '%s' "$summary" | sed -nE 's/.* ([0-9]+) passed;.*/\1/p')"
           failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
           echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_TEST_LOG_SHA256=$digest"
           echo "LAS_LINUX_PROVISION_ADAPTER_GREEN_OBSERVED_PASS_COUNT=${passed:-UNKNOWN}"
