@@ -43,7 +43,6 @@ jobs:
           test -n "$PRIVATE_TOKEN"
           echo "::add-mask::$PRIVATE_REPOSITORY"
           echo "::add-mask::$PRIVATE_TOKEN"
-
           root="$RUNNER_TEMP/private-target"
           mkdir "$root"
           cd "$root"
@@ -51,7 +50,6 @@ jobs:
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           echo "::add-mask::$auth"
-
           refs="$RUNNER_TEMP/private-heads"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
           matched_ref=""
@@ -65,7 +63,6 @@ jobs:
           rm -f "$refs"
           test -n "$matched_ref"
           echo "::add-mask::$matched_ref"
-
           git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=128 origin "$matched_ref"
           resolved=""
           while read -r candidate; do
@@ -80,7 +77,6 @@ jobs:
           git checkout -q --detach "$resolved"
           test "$(git rev-parse HEAD)" = "$resolved"
           test -z "$(git status --porcelain --untracked-files=no)"
-
           tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$tree"
           repair_key="$(printf 'LAS_PRIVATE_RUSTFMT_REPAIR_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
@@ -98,7 +94,6 @@ jobs:
           cargo +1.98.1 fmt --all
           cargo +1.98.1 fmt --all -- --check
           git diff --check
-
           changed="$RUNNER_TEMP/changed-paths"
           git diff --name-only >"$changed"
           test "$(wc -l <"$changed" | tr -d ' ')" = "4"
@@ -108,6 +103,7 @@ jobs:
               *) exit 1 ;;
             esac
           done <"$changed"
+          echo 'LAS_PRIVATE_GENESIS_RUSTFMT_REPAIR_SCOPE=PASS'
 
           actual="$RUNNER_TEMP/formatted-blobs"
           while IFS= read -r path; do
@@ -121,17 +117,21 @@ jobs:
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-blobs"
           diff -u "$RUNNER_TEMP/expected-blobs" "$actual" >/dev/null
+          echo 'LAS_PRIVATE_GENESIS_RUSTFMT_REPAIR_ORACLE_SET=PASS'
 
           plain="$RUNNER_TEMP/genesis-rustfmt-repair.tar.gz"
           tr '\n' '\0' <"$changed" | tar --null -T - -czf "$plain"
+          test -s "$plain"
+          echo 'LAS_PRIVATE_GENESIS_RUSTFMT_REPAIR_PACKAGE=PASS'
           export LAS_REPAIR_KEY="$(cat "$RUNNER_TEMP/repair-key")"
           openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
             -pass env:LAS_REPAIR_KEY \
             -in "$plain" \
             -out "$RUNNER_TEMP/genesis-rustfmt-repair.enc"
           unset LAS_REPAIR_KEY
+          test -s "$RUNNER_TEMP/genesis-rustfmt-repair.enc"
+          echo 'LAS_PRIVATE_GENESIS_RUSTFMT_REPAIR_ENCRYPT=PASS'
           rm -f "$plain" "$changed" "$actual" "$RUNNER_TEMP/expected-blobs" "$RUNNER_TEMP/repair-key"
-
           echo 'LAS_PRIVATE_GENESIS_RUSTFMT_REPAIR_ORACLE=PASS'
           echo 'LAS_PRIVATE_GENESIS_RUSTFMT_REPAIR_CHANGED_FILES=4'
           echo "LAS_PRIVATE_GENESIS_RUSTFMT_REPAIR_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/genesis-rustfmt-repair.enc" | awk '{print $1}')"
