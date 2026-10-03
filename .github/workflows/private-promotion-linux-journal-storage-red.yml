@@ -1,0 +1,105 @@
+name: Private promotion Linux journal storage RED
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-linux-journal-storage-red.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 8ab68fe7f21c61e0d2bb0e45f6323b3d98031aed072bb0734c848e35a2652a44
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cae85bf0e9d99dcde1dfdb2dc051964bbfcc324f9cb1d4e6d7482e6c1d3a62cf
+  EXPECTED_VERIFIER_BLOB: a0b56574f91c4fc75a562f28dbd2d588ffc77b8a
+  VERIFIER: tools/verify_promotion_transaction_linux_journal_storage_red.sh
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add --toolchain 1.98.1 rustfmt
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version --verbose
+
+      - name: Resolve exact private snapshot without disclosing private identifiers
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1024 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=1024 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          test "$(git hash-object "$VERIFIER")" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_PROMOTION_LINUX_JOURNAL_STORAGE_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
+
+      - name: Observe exact private RED and publish only sanitized result
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          out="$RUNNER_TEMP/promotion-linux-journal-storage-red.out"
+          set +e
+          bash "$VERIFIER" >"$out" 2>&1
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 ]]; then
+            stage="$(grep -E '^LAS_PROMOTION_LINUX_JOURNAL_STORAGE_RED_STAGE=[A-Z0-9_]+$' "$out" | head -n 1 || true)"
+            if [[ -n "$stage" ]]; then echo "$stage"; fi
+            rm -f "$out"
+            echo 'LAS_PROMOTION_LINUX_JOURNAL_STORAGE_RED_BRIDGE=FAILED'
+            exit 1
+          fi
+          grep -Fxq 'LAS_PROMOTION_LINUX_JOURNAL_STORAGE_RED=OBSERVED' "$out"
+          grep -Fxq 'LAS_PROMOTION_LINUX_JOURNAL_STORAGE_RED_DISCRIMINATOR=E0432_MISSING_PRODUCTION_MODULE' "$out"
+          rm -f "$out"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo 'LAS_PROMOTION_LINUX_JOURNAL_STORAGE_RED=OBSERVED'
+          echo 'LAS_PROMOTION_LINUX_JOURNAL_STORAGE_RED_DISCRIMINATOR=E0432_MISSING_PRODUCTION_MODULE'
+          echo 'LAS_PROMOTION_LINUX_JOURNAL_STORAGE_RED_BRIDGE=PASS'
