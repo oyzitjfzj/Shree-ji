@@ -88,3 +88,16 @@ jobs:
           echo "LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_ADDITIONS=$additions"
           echo "LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_DELETIONS=$deletions"
           git diff --unified=0 --no-color | grep '^@@' | sed -E 's/^(@@[^@]*@@).*/LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_HUNK=\1/' || true
+          index=0
+          while IFS= read -r line; do
+            case "$line" in
+              +++*) continue ;;
+              +*)
+                payload="${line#+}"
+                leading="${payload%%[! ]*}"
+                index=$((index + 1))
+                echo "LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_ADDED_${index}_LEN=${#payload}"
+                echo "LAS_PROMOTION_LINUX_JOURNAL_STORAGE_GREEN_FMT_ADDED_${index}_INDENT=${#leading}"
+                ;;
+            esac
+          done < <(git diff --unified=0 --no-color)
