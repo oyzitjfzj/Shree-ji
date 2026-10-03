@@ -1,0 +1,106 @@
+name: Private promotion pristine Idle rustfmt idempotence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-pristine-idle-rustfmt-idempotence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 20b4967e64d331ea8849725b4b038cbbdf41671c49e3cfc9d13d7471d839385e
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 99e8d97002a9df7374fcb7ca7dcc36e9c449063c337d7ce129d73796571624a1
+  IMPLEMENTATION: src/defence_evolution/promotion_transaction_durability.rs
+  TEST: src/defence_evolution/promotion_transaction_durability_red_tests.rs
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Install exact Rust formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup component add --toolchain 1.98.1 rustfmt
+
+      - name: Resolve exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=128 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=128 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Diagnose formatter fixed-point behavior without source disclosure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          files=("$IMPLEMENTATION" "$TEST")
+          fingerprint() {
+            sha256sum "${files[@]}" | sha256sum | awk '{print $1}'
+          }
+          before="$(fingerprint)"
+          rustfmt +1.98.1 --edition 2024 "${files[@]}"
+          after1="$(fingerprint)"
+          rustfmt +1.98.1 --edition 2024 "${files[@]}"
+          after2="$(fingerprint)"
+          rustfmt +1.98.1 --edition 2024 "${files[@]}"
+          after3="$(fingerprint)"
+          pass1_changed=0; [[ "$before" != "$after1" ]] && pass1_changed=1
+          pass2_changed=0; [[ "$after1" != "$after2" ]] && pass2_changed=1
+          pass3_changed=0; [[ "$after2" != "$after3" ]] && pass3_changed=1
+          eq12=0; [[ "$after1" == "$after2" ]] && eq12=1
+          eq23=0; [[ "$after2" == "$after3" ]] && eq23=1
+          set +e
+          rustfmt +1.98.1 --edition 2024 --check "${files[@]}" >/dev/null 2>&1
+          check_rc=$?
+          set -e
+          echo "LAS_RUSTFMT_PASS1_CHANGED=$pass1_changed"
+          echo "LAS_RUSTFMT_PASS2_CHANGED=$pass2_changed"
+          echo "LAS_RUSTFMT_PASS3_CHANGED=$pass3_changed"
+          echo "LAS_RUSTFMT_PASS1_EQ_PASS2=$eq12"
+          echo "LAS_RUSTFMT_PASS2_EQ_PASS3=$eq23"
+          echo "LAS_RUSTFMT_FINAL_CHECK_RC=$check_rc"
