@@ -72,38 +72,40 @@ jobs:
           git checkout -q --detach "$resolved"
           test "$(git rev-parse HEAD)" = "$resolved"
           test -z "$(git status --porcelain --untracked-files=no)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          diag_key="$(printf 'LAS_PRIVATE_CLIPPY_DIAG_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$diag_key"
+          printf '%s' "$diag_key" >"$RUNNER_TEMP/diag-key"
+          chmod 600 "$RUNNER_TEMP/diag-key"
           echo "LAS_PROMOTION_GENESIS_CLIPPY_DIAG_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
-          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash tree diag_key
 
-      - name: Emit sanitized Clippy diagnostics
+      - name: Emit sanitized and encrypted Clippy diagnostics
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
           out="$RUNNER_TEMP/clippy.jsonl"
           err="$RUNNER_TEMP/clippy.stderr"
+          private="$RUNNER_TEMP/clippy-errors.json"
           set +e
           cargo +1.98.1 clippy --locked --all-targets --message-format=json -- -D warnings >"$out" 2>"$err"
           rc=$?
           set -e
           echo "LAS_PROMOTION_GENESIS_CLIPPY_DIAG_RC=$rc"
           echo "LAS_PROMOTION_GENESIS_CLIPPY_DIAG_STDERR_SHA256=$(sha256sum "$err" | awk '{print $1}')"
-          python3 - "$out" "$GITHUB_WORKSPACE/target" <<'PY'
+          python3 - "$out" "$GITHUB_WORKSPACE/target" "$private" <<'PY'
           import hashlib, json, os, sys
-          path, root = sys.argv[1], os.path.realpath(sys.argv[2])
-          seen = set()
-          count = 0
+          path, root, private_path = sys.argv[1], os.path.realpath(sys.argv[2]), sys.argv[3]
+          seen = set(); count = 0; private = []
           with open(path, encoding='utf-8', errors='replace') as fh:
               for raw in fh:
-                  try:
-                      obj = json.loads(raw)
-                  except Exception:
-                      continue
-                  if obj.get('reason') != 'compiler-message':
-                      continue
+                  try: obj = json.loads(raw)
+                  except Exception: continue
+                  if obj.get('reason') != 'compiler-message': continue
                   msg = obj.get('message') or {}
-                  if msg.get('level') != 'error':
-                      continue
+                  if msg.get('level') != 'error': continue
                   code = (msg.get('code') or {}).get('code') or 'NO_CODE'
                   target = obj.get('target') or {}
                   kinds = ','.join(target.get('kind') or []) or 'UNKNOWN'
@@ -115,27 +117,42 @@ jobs:
                       if key not in seen:
                           seen.add(key); count += 1
                           print(f'LAS_PROMOTION_GENESIS_CLIPPY_ERROR={code}:NO_SPAN:0:0:{kinds}:{name_hash}')
+                          private.append({'code': code, 'message': msg.get('message'), 'target_kind': kinds, 'target_name': name, 'primary_spans': []})
                       continue
+                  selected = []
                   for span in spans:
                       filename = str(span.get('file_name') or '')
                       absolute = os.path.realpath(os.path.join(root, filename)) if not os.path.isabs(filename) else os.path.realpath(filename)
-                      if absolute == root or absolute.startswith(root + os.sep):
-                          rel = os.path.relpath(absolute, root).replace(os.sep, '/')
-                      else:
-                          rel = '<EXTERNAL>'
+                      rel = os.path.relpath(absolute, root).replace(os.sep, '/') if absolute == root or absolute.startswith(root + os.sep) else '<EXTERNAL>'
                       path_hash = hashlib.sha256(rel.encode()).hexdigest()
-                      line = int(span.get('line_start') or 0)
-                      col = int(span.get('column_start') or 0)
+                      line = int(span.get('line_start') or 0); col = int(span.get('column_start') or 0)
                       key = (code, path_hash, line, col, kinds, name_hash)
-                      if key in seen:
-                          continue
+                      if key in seen: continue
                       seen.add(key); count += 1
                       print(f'LAS_PROMOTION_GENESIS_CLIPPY_ERROR={code}:{path_hash}:{line}:{col}:{kinds}:{name_hash}')
+                      selected.append({'path': rel, 'line_start': line, 'column_start': col, 'line_end': span.get('line_end'), 'column_end': span.get('column_end'), 'label': span.get('label'), 'suggested_replacement': span.get('suggested_replacement'), 'suggestion_applicability': span.get('suggestion_applicability')})
+                  private.append({'code': code, 'message': msg.get('message'), 'target_kind': kinds, 'target_name': name, 'primary_spans': selected, 'rendered': msg.get('rendered')})
+          with open(private_path, 'w', encoding='utf-8') as fh: json.dump(private, fh, separators=(',', ':'))
           print(f'LAS_PROMOTION_GENESIS_CLIPPY_ERROR_COUNT={count}')
           PY
-          rm -f "$out" "$err"
+          test -s "$private"
+          export LAS_DIAG_KEY="$(cat "$RUNNER_TEMP/diag-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt -pass env:LAS_DIAG_KEY -in "$private" -out "$RUNNER_TEMP/clippy-errors.enc"
+          unset LAS_DIAG_KEY
+          test -s "$RUNNER_TEMP/clippy-errors.enc"
+          echo "LAS_PROMOTION_GENESIS_CLIPPY_ENCRYPTED_SHA256=$(sha256sum "$RUNNER_TEMP/clippy-errors.enc" | awk '{print $1}')"
+          rm -f "$out" "$err" "$private" "$RUNNER_TEMP/diag-key"
           if [[ "$rc" -eq 0 ]]; then
             echo 'LAS_PROMOTION_GENESIS_CLIPPY_DIAG=UNEXPECTED_PASS'
             exit 1
           fi
           echo 'LAS_PROMOTION_GENESIS_CLIPPY_DIAG=PASS'
+
+      - name: Upload encrypted diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-promotion-genesis-clippy-diagnostic
+          path: ${{ runner.temp }}/clippy-errors.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
