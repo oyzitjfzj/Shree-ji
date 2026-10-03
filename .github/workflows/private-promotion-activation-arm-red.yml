@@ -1,0 +1,117 @@
+name: Private promotion durable activation arm RED
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-activation-arm-red.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: bd27b45610c9cce75c72e9601883a2314ffe4d912d441e615f9b530018787859
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: aed3dc89e291e83f8c0f923f8451de42a9a2e5f0b8a463ffff88d1fcffe3cde4
+
+jobs:
+  verify-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+
+      - name: Resolve exact private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r candidate_sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=64 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=64 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_RED_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$key"
+          printf '%s' "$key" >"$RUNNER_TEMP/export-key"
+          chmod 600 "$RUNNER_TEMP/export-key"
+          echo "LAS_PROMOTION_ACTIVATION_ARM_RED_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+
+      - name: Prove focused RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 fmt --all -- --check
+          log="$RUNNER_TEMP/activation-arm-red.log"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_activation_durable_arm_red_tests --no-run >"$log" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          test -s "$log"
+          echo "LAS_PROMOTION_ACTIVATION_ARM_RED_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo 'LAS_PROMOTION_ACTIVATION_ARM_EXPECTED_RED=PASS'
+
+      - name: Encrypt private diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/activation-arm-red.log"
+          export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/export-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+            -pass env:LAS_EXPORT_KEY -in "$log" -out "$RUNNER_TEMP/activation-arm-red.enc"
+          unset LAS_EXPORT_KEY
+          rm -f "$log" "$RUNNER_TEMP/export-key"
+          test -s "$RUNNER_TEMP/activation-arm-red.enc"
+          echo "LAS_PROMOTION_ACTIVATION_ARM_RED_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/activation-arm-red.enc" | awk '{print $1}')"
+
+      - name: Upload encrypted diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-promotion-activation-arm-red
+          path: ${{ runner.temp }}/activation-arm-red.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
