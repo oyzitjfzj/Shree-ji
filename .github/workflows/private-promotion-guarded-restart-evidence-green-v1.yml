@@ -24,6 +24,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
+      - name: Validate encrypted driver bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          driver_b64="$RUNNER_TEMP/preflight-driver.b64"
+          driver_enc="$RUNNER_TEMP/preflight-driver.enc"
+          : >"$driver_b64"
+          for part in 1 2 3; do
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-guarded-restart-evidence-driver-v1.part${part}" >>"$driver_b64"
+          done
+          tr -d '[:space:]' <"$driver_b64" | base64 -d >"$driver_enc"
+          test "$(sha256sum "$driver_enc" | awk '{print $1}')" = "$EXPECTED_DRIVER_SHA256"
+          rm -f "$driver_b64" "$driver_enc"
+
       - name: Install exact Rust toolchain
         shell: bash
         run: |
