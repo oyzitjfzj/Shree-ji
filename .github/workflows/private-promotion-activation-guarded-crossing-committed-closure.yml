@@ -1,0 +1,190 @@
+name: Private promotion activation guarded crossing committed closure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-activation-guarded-crossing-committed-closure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: b773b1e8c6c1cbdfd3733d3029c1bf79473040b81131ffd4ac1ae055812ed196
+  EXPECTED_COMMIT_PROOF: 36f779ebc32446e2b0ef07f71106917595d524d784fb5ea94cd9bb54d533e6e7
+  EXPECTED_PARENT_PROOF: 0fabd00fb4c8ded9c7c28dbd5f5012b2dd655a1d24bdfc3656abc5de9533419e
+
+jobs:
+  verify-committed-snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Verify exact committed private bytes read-only
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_COMMIT_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          parent="$(git rev-parse HEAD^)"
+          echo "::add-mask::$parent"
+          test "$(printf '%s' "$parent" | sha256sum | awk '{print $1}')" = "$EXPECTED_PARENT_PROOF"
+
+          mapfile -t changed < <(git diff --name-only "$parent" HEAD | sort)
+          expected=(
+            "research/defence_evolution/promotion_activation_guarded_crossing_design.md"
+            "src/effect_fabric/promotion_activation_guarded_crossing_tests.rs"
+            "src/effect_fabric/root_supervisor_linux_guarded_session.rs"
+            "src/lib.rs"
+          )
+          test "${#changed[@]}" -eq "${#expected[@]}"
+          for i in "${!expected[@]}"; do test "${changed[$i]}" = "${expected[$i]}"; done
+          git diff --check "$parent" HEAD
+          if git diff "$parent" HEAD -- src | grep -E '^\+.*unsafe[[:space:]]*\{' >/dev/null; then exit 1; fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          session = Path("src/effect_fabric/root_supervisor_linux_guarded_session.rs").read_text()
+          tests = Path("src/effect_fabric/promotion_activation_guarded_crossing_tests.rs").read_text()
+          lib = Path("src/lib.rs").read_text()
+          design = Path("research/defence_evolution/promotion_activation_guarded_crossing_design.md").read_text()
+
+          helper = "pub(super) fn with_exact_promotion_activation_correlation"
+          method = "pub(super) fn process_one_armed_promotion_root_only"
+          if session.count(helper) != 1 or session.count(method) != 1:
+              raise SystemExit("committed promotion crossing seam is not unique")
+          if tests.count("with_exact_promotion_activation_correlation(") != 4:
+              raise SystemExit("committed crossing discriminator coverage mismatch")
+          if lib.count("mod promotion_activation_guarded_crossing_tests;") != 1:
+              raise SystemExit("committed crossing test module registration mismatch")
+          if "indeterminate != definitely no effect" not in design:
+              raise SystemExit("committed crash law is missing")
+          method_start = session.index(method)
+          method_end = session.index("pub(super) fn process_one_guardian<", method_start)
+          body = session[method_start:method_end]
+          if body.index("with_exact_promotion_activation_correlation(") > body.index("service.process_root_only("):
+              raise SystemExit("Root service call precedes committed promotion correlation gate")
+          for variant in (
+              "PromotionActivationNotArmed",
+              "PromotionActivationNotCurrent",
+              "PromotionRequestMismatch",
+              "PromotionEffectMismatch",
+          ):
+              if variant not in session:
+                  raise SystemExit(f"missing committed fail-closed variant: {variant}")
+          print("LAS_PROMOTION_CROSSING_CLOSURE_STATIC_INVARIANTS=PASS")
+          PY
+          echo "LAS_PROMOTION_CROSSING_CLOSURE_SCOPE=PASS"
+
+          cargo +1.98.1 fmt --all -- --check
+          cp Cargo.lock "$RUNNER_TEMP/Cargo.lock.expected"
+          cargo +1.98.1 generate-lockfile >/dev/null 2>&1
+          cmp --silent Cargo.lock "$RUNNER_TEMP/Cargo.lock.expected"
+
+          export RUSTFLAGS=-Dwarnings
+          run_quiet() {
+            local label="$1"; shift
+            local log="$RUNNER_TEMP/${label}.log"
+            if ! "$@" >"$log" 2>&1; then
+              echo "LAS_PROMOTION_CROSSING_CLOSURE_${label^^}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              rm -f "$log"
+              exit 1
+            fi
+            rm -f "$log"
+          }
+          run_quiet check cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials
+          run_quiet clippy cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials -- -D warnings
+
+          run_test() {
+            local label="$1"; local filter="$2"; local features="$3"
+            local out="$RUNNER_TEMP/${label}.txt"
+            if [[ -n "$features" ]]; then
+              cargo +1.98.1 test --locked --lib --features "$features" "$filter" -- --test-threads=1 >"$out" 2>&1
+            else
+              cargo +1.98.1 test --locked --lib "$filter" -- --test-threads=1 >"$out" 2>&1
+            fi
+            python3 - "$out" "$label" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          counts = [int(x) for x in re.findall(r"test result: ok\. (\d+) passed;", text)]
+          if not counts or max(counts) <= 0:
+              raise SystemExit(f"{sys.argv[2]} executed zero tests")
+          print(f"LAS_PROMOTION_CROSSING_CLOSURE_{sys.argv[2].upper()}_COUNT={max(counts)}")
+          PY
+            rm -f "$out"
+          }
+          run_test crossing promotion_activation_guarded_crossing_tests:: linux-peer-credentials
+          run_test arm promotion_activation_durable_arm_red_tests:: ""
+          run_test bridge effect_fabric::dispatch_commit::promotion_root_effect_bridge::tests:: ""
+
+          default_full="$RUNNER_TEMP/default-full.txt"
+          cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$default_full" 2>&1
+          python3 - "$default_full" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          counts = [int(x) for x in re.findall(r"test result: ok\. (\d+) passed;", text)]
+          if not counts or max(counts) < 1264:
+              raise SystemExit(f"unexpected committed default full-library count: {counts}")
+          print(f"LAS_PROMOTION_CROSSING_CLOSURE_DEFAULT_FULL_COUNT={max(counts)}")
+          PY
+          rm -f "$default_full"
+
+          linux_full="$RUNNER_TEMP/linux-full.txt"
+          cargo +1.98.1 test --locked --lib --features linux-peer-credentials -- --test-threads=1 >"$linux_full" 2>&1
+          python3 - "$linux_full" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          counts = [int(x) for x in re.findall(r"test result: ok\. (\d+) passed;", text)]
+          if not counts or max(counts) < 1368:
+              raise SystemExit(f"unexpected committed Linux full-library count: {counts}")
+          print(f"LAS_PROMOTION_CROSSING_CLOSURE_LINUX_FULL_COUNT={max(counts)}")
+          PY
+          rm -f "$linux_full"
+
+          echo "LAS_PROMOTION_CROSSING_COMMITTED_CLOSURE=PASS"
+          echo "LAS_PROMOTION_CROSSING_COMMITTED_PROOF=$EXPECTED_COMMIT_PROOF"
