@@ -1,0 +1,119 @@
+name: Private promotion terminal durability RED
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-terminal-durability-red.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 548408fa9861d08f453c4b2091e1d5d4d40af66930544164992c41f545b497c2
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1024 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=16384 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_PROMOTION_TERMINAL_RED_RECOVERY=PASS"
+
+      - name: Require formatting clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_PROMOTION_TERMINAL_RED_FORMAT=PASS"
+
+      - name: Require targeted RED to compile cleanly
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests --no-run
+          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE=PASS"
+
+      - name: Require semantic terminal-durability RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/promotion-terminal-red.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+
+          compile_marker=0
+          grep -q 'could not compile' "$log" && compile_marker=1
+          failed_marker=0
+          grep -q 'test result: FAILED' "$log" && failed_marker=1
+          assertion_marker=0
+          grep -Eq 'assertion .*failed|panicked at' "$log" && assertion_marker=1
+          expected_message_marker=0
+          grep -q 'terminal .* classification must be durable before guarded retirement' "$log" && expected_message_marker=1
+          unsupported_state_marker=0
+          grep -q 'UnsupportedState' "$log" && unsupported_state_marker=1
+          resource_marker=0
+          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137|stack overflow' "$log" && resource_marker=1
+          network_marker=0
+          grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
+
+          echo "LAS_PROMOTION_TERMINAL_RED_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_PROMOTION_TERMINAL_RED_RC=$rc"
+          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE_MARKER=$compile_marker"
+          echo "LAS_PROMOTION_TERMINAL_RED_FAILED_MARKER=$failed_marker"
+          echo "LAS_PROMOTION_TERMINAL_RED_ASSERTION_MARKER=$assertion_marker"
+          echo "LAS_PROMOTION_TERMINAL_RED_EXPECTED_MESSAGE_MARKER=$expected_message_marker"
+          echo "LAS_PROMOTION_TERMINAL_RED_UNSUPPORTED_STATE_MARKER=$unsupported_state_marker"
+          echo "LAS_PROMOTION_TERMINAL_RED_RESOURCE_MARKER=$resource_marker"
+          echo "LAS_PROMOTION_TERMINAL_RED_NETWORK_MARKER=$network_marker"
+
+          if [[ "$rc" -ne 0 \
+             && "$compile_marker" -eq 0 \
+             && "$failed_marker" -eq 1 \
+             && "$assertion_marker" -eq 1 \
+             && "$expected_message_marker" -eq 1 \
+             && "$unsupported_state_marker" -eq 1 \
+             && "$resource_marker" -eq 0 \
+             && "$network_marker" -eq 0 ]]; then
+            echo "LAS_PROMOTION_TERMINAL_RED_RESULT=EXPECTED_RED"
+            exit 0
+          fi
+
+          echo "LAS_PROMOTION_TERMINAL_RED_RESULT=UNEXPECTED"
+          exit 1
