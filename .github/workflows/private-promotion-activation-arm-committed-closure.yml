@@ -1,0 +1,165 @@
+name: Private promotion activation arm committed closure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-activation-arm-committed-closure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: bd27b45610c9cce75c72e9601883a2314ffe4d912d441e615f9b530018787859
+  EXPECTED_PRIVATE_HEAD_PROOF: 809500e7cd151bca1ab85576cd59bc5452f0a0b58c50ea347b34cabbd2d83558
+  EXPECTED_FULL_LIB_TEST_COUNT: "1258"
+
+jobs:
+  committed-closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+
+      - name: Resolve exact committed private head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r candidate_sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$matched_sha"
+          head_proof="$(printf '%s' "$matched_sha" | sha256sum | awk '{print $1}')"
+          test "$head_proof" = "$EXPECTED_PRIVATE_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2 origin "$matched_sha"
+          git checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$matched_sha"
+          echo 'LAS_ACTIVATION_ARM_COMMITTED_HEAD=PASS'
+          echo "LAS_ACTIVATION_ARM_COMMITTED_HEAD_PROOF=$head_proof"
+
+      - name: Prove exact implementation commit scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          mapfile -t changed < <(git diff-tree --no-commit-id --name-only -r HEAD | sort)
+          expected=(
+            "src/defence_evolution/promotion_activation_proposal.rs"
+            "src/defence_evolution/promotion_artifact_protection.rs"
+            "src/defence_evolution/promotion_artifact_protection_tests.rs"
+            "src/defence_evolution/promotion_transaction_durability.rs"
+            "src/defence_evolution/promotion_transaction_journal.rs"
+            "src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs"
+            "src/defence_evolution/promotion_transaction_state.rs"
+            "src/effect_fabric/dispatch_commit.rs"
+            "src/effect_fabric/dispatch_commit/promotion_root_effect_bridge.rs"
+          )
+          test "${#changed[@]}" -eq "${#expected[@]}"
+          for i in "${!expected[@]}"; do test "${changed[$i]}" = "${expected[$i]}"; done
+          if git diff -U0 HEAD^ HEAD -- "${expected[@]}" | grep -E '^\+[^+].*\bunsafe\b' >/dev/null; then
+            echo 'LAS_ACTIVATION_ARM_NEW_UNSAFE=FAIL'
+            exit 1
+          fi
+          echo 'LAS_ACTIVATION_ARM_COMMITTED_SCOPE=PASS'
+          echo 'LAS_ACTIVATION_ARM_NEW_UNSAFE=PASS'
+
+      - name: Strict Rust closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 fmt --all -- --check
+          git diff --check
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >/dev/null
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 clippy --locked --all-targets -- -D warnings >/dev/null
+          echo 'LAS_ACTIVATION_ARM_COMMITTED_FORMAT=PASS'
+          echo 'LAS_ACTIVATION_ARM_COMMITTED_CHECK=PASS'
+          echo 'LAS_ACTIVATION_ARM_COMMITTED_CLIPPY=PASS'
+
+      - name: Focused adversarial and durability closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+
+          run_nonvacuous() {
+            local filter="$1"
+            local label="$2"
+            local log="$RUNNER_TEMP/${label}.log"
+            if ! cargo +1.98.1 test --locked --lib "$filter" -- --test-threads=1 >"$log" 2>&1; then
+              echo "LAS_${label}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              rm -f "$log"
+              return 1
+            fi
+            local passed
+            passed="$(grep -E '^test result: ok\.' "$log" | tail -1 | sed -E 's/.* ([0-9]+) passed.*/\1/')"
+            test -n "$passed"
+            test "$passed" -gt 0
+            rm -f "$log"
+            echo "LAS_${label}=PASS"
+            echo "LAS_${label}_TEST_COUNT=$passed"
+          }
+
+          run_nonvacuous promotion_activation_durable_arm_red_tests ACTIVATION_ARM_FOCUSED
+          run_nonvacuous promotion_root_effect_bridge EFFECT_BRIDGE_FOCUSED
+          run_nonvacuous promotion_transaction_durability_red_tests DURABILITY_FOCUSED
+          run_nonvacuous promotion_artifact_protection_tests ARTIFACT_PROTECTION_FOCUSED
+          run_nonvacuous promotion_transaction_journal_physical_record_red_tests PHYSICAL_RECORD_FOCUSED
+          run_nonvacuous promotion_transaction_linux_journal_fault_injection_tests LINUX_FAULT_MATRIX_FOCUSED
+          run_nonvacuous promotion_transaction_journal_genesis_red_tests GENESIS_FOCUSED
+          run_nonvacuous promotion_transaction_journal_genesis_fault_tests GENESIS_FAULTS_FOCUSED
+          run_nonvacuous promotion_transaction_linux_journal_provisioning_adapter_red_tests PROVISIONING_ADAPTER_FOCUSED
+          run_nonvacuous promotion_transaction_linux_journal_genesis_composition_red_tests GENESIS_COMPOSITION_FOCUSED
+          run_nonvacuous promotion_transaction_linux_journal_process_restart_tests PROCESS_RESTART_FOCUSED
+          echo 'LAS_ACTIVATION_ARM_DEPENDENT_BOUNDARIES=PASS'
+
+      - name: Full serialized library regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/full-lib.log"
+          if ! cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$log" 2>&1; then
+            echo "LAS_ACTIVATION_ARM_FULL_LIB_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            rm -f "$log"
+            exit 1
+          fi
+          tests="$(grep -E '^test result: ok\.' "$log" | tail -1 | sed -E 's/.* ([0-9]+) passed.*/\1/')"
+          rm -f "$log"
+          test "$tests" = "$EXPECTED_FULL_LIB_TEST_COUNT"
+          echo 'LAS_ACTIVATION_ARM_COMMITTED_FULL_LIB=PASS'
+          echo "LAS_ACTIVATION_ARM_COMMITTED_FULL_LIB_TEST_COUNT=$tests"
+          echo 'LAS_PROMOTION_ACTIVATION_ARM_COMMITTED_CLOSURE=PASS'
