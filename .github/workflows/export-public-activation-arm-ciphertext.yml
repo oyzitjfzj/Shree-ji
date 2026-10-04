@@ -20,13 +20,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/export"
-          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-green-v1.b64" \
-            -o "$RUNNER_TEMP/export/promotion-activation-arm-green-v1.b64"
-          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/workflows/private-promotion-activation-arm-green-candidate.yml" \
-            -o "$RUNNER_TEMP/export/private-promotion-activation-arm-green-candidate.yml"
-          test -s "$RUNNER_TEMP/export/promotion-activation-arm-green-v1.b64"
+          for name in \
+            promotion-activation-arm-green-v1.b64 \
+            promotion-activation-arm-protection-v1.b64 \
+            promotion-activation-arm-clippy-v1.b64 \
+            promotion-activation-arm-origin-v1.b64 \
+            promotion-activation-arm-hardening-v1.b64; do
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/${name}" -o "$RUNNER_TEMP/export/${name}"
+            test -s "$RUNNER_TEMP/export/${name}"
+            echo "PUBLIC_${name//[^A-Za-z0-9]/_}_SHA256=$(sha256sum "$RUNNER_TEMP/export/${name}" | awk '{print $1}')"
+          done
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/workflows/private-promotion-activation-arm-green-candidate.yml" -o "$RUNNER_TEMP/export/private-promotion-activation-arm-green-candidate.yml"
           test -s "$RUNNER_TEMP/export/private-promotion-activation-arm-green-candidate.yml"
-          echo "PUBLIC_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/export/promotion-activation-arm-green-v1.b64" | awk '{print $1}')"
           echo "PUBLIC_WORKFLOW_SHA256=$(sha256sum "$RUNNER_TEMP/export/private-promotion-activation-arm-green-candidate.yml" | awk '{print $1}')"
       - name: Upload public control files
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
