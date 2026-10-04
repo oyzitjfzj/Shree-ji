@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 548408fa9861d08f453c4b2091e1d5d4d40af66930544164992c41f545b497c2
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a1348f1a3ac4b8bca215b8f60a745a2df907426cc129108af124baaeb5763fc1
 
 jobs:
   red:
@@ -54,8 +54,19 @@ jobs:
         run: |
           set -euo pipefail
           cd target
-          cargo +1.98.1 fmt --all -- --check
-          echo "LAS_PROMOTION_TERMINAL_RED_FORMAT=PASS"
+          log="$RUNNER_TEMP/promotion-terminal-format.private.log"
+          set +e
+          cargo +1.98.1 fmt --all -- --check >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_PROMOTION_TERMINAL_RED_FORMAT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_PROMOTION_TERMINAL_RED_FORMAT_RC=$rc"
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_PROMOTION_TERMINAL_RED_FORMAT=PASS"
+            exit 0
+          fi
+          echo "LAS_PROMOTION_TERMINAL_RED_FORMAT=FAIL"
+          exit 1
 
       - name: Require targeted RED to compile cleanly
         shell: bash
@@ -64,8 +75,19 @@ jobs:
         run: |
           set -euo pipefail
           cd target
-          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests --no-run
-          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE=PASS"
+          log="$RUNNER_TEMP/promotion-terminal-compile.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests --no-run >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE_RC=$rc"
+          if [[ "$rc" -eq 0 ]]; then
+            echo "LAS_PROMOTION_TERMINAL_RED_COMPILE=PASS"
+            exit 0
+          fi
+          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE=FAIL"
+          exit 1
 
       - name: Require semantic terminal-durability RED
         shell: bash
