@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/private-promotion-activation-arm-green-candidate.yml"
       - ".github/private-patches/promotion-activation-arm-green-v1.b64"
+      - ".github/private-patches/promotion-activation-arm-protection-v1.b64"
   workflow_dispatch:
 
 permissions:
@@ -15,6 +16,7 @@ env:
   TARGET_REF_HASH: bd27b45610c9cce75c72e9601883a2314ffe4d912d441e615f9b530018787859
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4e3e9cb6d88769933f74df2e8beccd7168aa17fc58c2bd97ba88ef4fdc509d24
   EXPECTED_PATCH_CIPHERTEXT_SHA256: 671774406e8ed1f27bf97bdf6b27ae1a6dc5d70f99813d4acdbaea0010751a16
+  EXPECTED_PROTECTION_PATCH_SHA256: f4f5a46d16449745bbeec11f541d3df89dd9b3a08f5bccf6f004d7a80dd8c3c9
 
 jobs:
   verify-candidate:
@@ -29,7 +31,7 @@ jobs:
           rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
           cargo +1.98.1 --version
 
-      - name: Resolve exact private snapshot and encrypted candidate
+      - name: Resolve exact private snapshot and encrypted candidates
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -41,12 +43,17 @@ jobs:
           echo "::add-mask::$PRIVATE_REPOSITORY"
           echo "::add-mask::$PRIVATE_TOKEN"
 
-          patch_b64="$RUNNER_TEMP/activation-arm-green-patch.b64"
-          patch_enc="$RUNNER_TEMP/activation-arm-green-patch.enc"
-          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-green-v1.b64" -o "$patch_b64"
-          base64 -d "$patch_b64" > "$patch_enc"
-          test "$(sha256sum "$patch_enc" | awk '{print $1}')" = "$EXPECTED_PATCH_CIPHERTEXT_SHA256"
-          rm -f "$patch_b64"
+          core_b64="$RUNNER_TEMP/activation-arm-green-patch.b64"
+          core_enc="$RUNNER_TEMP/activation-arm-green-patch.enc"
+          protection_b64="$RUNNER_TEMP/activation-arm-protection.b64"
+          protection_enc="$RUNNER_TEMP/activation-arm-protection.enc"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-green-v1.b64" -o "$core_b64"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-protection-v1.b64" -o "$protection_b64"
+          base64 -d "$core_b64" > "$core_enc"
+          base64 -d "$protection_b64" > "$protection_enc"
+          test "$(sha256sum "$core_enc" | awk '{print $1}')" = "$EXPECTED_PATCH_CIPHERTEXT_SHA256"
+          test "$(sha256sum "$protection_enc" | awk '{print $1}')" = "$EXPECTED_PROTECTION_PATCH_SHA256"
+          rm -f "$core_b64" "$protection_b64"
 
           ROOT="$GITHUB_WORKSPACE/target"
           mkdir "$ROOT"
@@ -83,20 +90,27 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$tree"
 
-          patch_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_PATCH_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
-          export_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_EXPORT_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
-          echo "::add-mask::$patch_key"
+          core_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_PATCH_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          protection_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_PROTECTION_PATCH_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          export_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_EXPORT_V2\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$core_key"
+          echo "::add-mask::$protection_key"
           echo "::add-mask::$export_key"
           printf '%s' "$export_key" > "$RUNNER_TEMP/export-key"
           chmod 600 "$RUNNER_TEMP/export-key"
 
-          export LAS_PATCH_KEY="$patch_key"
-          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 \
-            -pass env:LAS_PATCH_KEY -in "$patch_enc" -out "$RUNNER_TEMP/activation-arm-green-patch.py.gz"
-          unset LAS_PATCH_KEY patch_key
-          gzip -dc "$RUNNER_TEMP/activation-arm-green-patch.py.gz" > "$RUNNER_TEMP/activation-arm-green-patch.py"
-          chmod 600 "$RUNNER_TEMP/activation-arm-green-patch.py"
-          rm -f "$patch_enc" "$RUNNER_TEMP/activation-arm-green-patch.py.gz"
+          export LAS_PATCH_KEY="$core_key"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_PATCH_KEY -in "$core_enc" -out "$RUNNER_TEMP/core.py.gz"
+          unset LAS_PATCH_KEY core_key
+          gzip -dc "$RUNNER_TEMP/core.py.gz" > "$RUNNER_TEMP/core.py"
+          chmod 600 "$RUNNER_TEMP/core.py"
+
+          export LAS_PATCH_KEY="$protection_key"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_PATCH_KEY -in "$protection_enc" -out "$RUNNER_TEMP/protection.py.gz"
+          unset LAS_PATCH_KEY protection_key
+          gzip -dc "$RUNNER_TEMP/protection.py.gz" > "$RUNNER_TEMP/protection.py"
+          chmod 600 "$RUNNER_TEMP/protection.py"
+          rm -f "$core_enc" "$protection_enc" "$RUNNER_TEMP/core.py.gz" "$RUNNER_TEMP/protection.py.gz"
           echo "LAS_PROMOTION_ACTIVATION_ARM_GREEN_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
 
       - name: Apply deterministic private candidate
@@ -104,15 +118,18 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/patch.log"
-          if ! python3 "$RUNNER_TEMP/activation-arm-green-patch.py" >"$log" 2>&1; then
-            echo "LAS_ACTIVATION_ARM_PATCH_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-            exit 1
-          fi
-          rm -f "$RUNNER_TEMP/activation-arm-green-patch.py" "$log"
+          for patch in core protection; do
+            log="$RUNNER_TEMP/${patch}-patch.log"
+            if ! python3 "$RUNNER_TEMP/${patch}.py" >"$log" 2>&1; then
+              echo "LAS_ACTIVATION_ARM_${patch^^}_PATCH_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              exit 1
+            fi
+            rm -f "$RUNNER_TEMP/${patch}.py" "$log"
+          done
           mapfile -t changed < <(git diff --name-only | sort)
           expected=(
             "src/defence_evolution/promotion_activation_proposal.rs"
+            "src/defence_evolution/promotion_artifact_protection.rs"
             "src/defence_evolution/promotion_transaction_durability.rs"
             "src/defence_evolution/promotion_transaction_state.rs"
             "src/effect_fabric/dispatch_commit.rs"
@@ -140,6 +157,7 @@ jobs:
           mapfile -t changed < <(git diff --name-only | sort)
           expected=(
             "src/defence_evolution/promotion_activation_proposal.rs"
+            "src/defence_evolution/promotion_artifact_protection.rs"
             "src/defence_evolution/promotion_transaction_durability.rs"
             "src/defence_evolution/promotion_transaction_state.rs"
             "src/effect_fabric/dispatch_commit.rs"
@@ -167,6 +185,7 @@ jobs:
           run_private activation_arm_clippy env RUSTFLAGS=-Dwarnings cargo +1.98.1 clippy --locked --all-targets -- -D warnings
           run_private activation_arm_focused cargo +1.98.1 test --locked --lib promotion_activation_durable_arm_red_tests -- --test-threads=1
           run_private activation_arm_durability cargo +1.98.1 test --locked --lib promotion_transaction_durability_red_tests -- --test-threads=1
+          run_private activation_arm_protection cargo +1.98.1 test --locked --lib promotion_artifact_protection_tests -- --test-threads=1
           echo 'LAS_PROMOTION_ACTIVATION_ARM_STRICT=PASS'
           echo 'LAS_PROMOTION_ACTIVATION_ARM_FOCUSED_GREEN=PASS'
 
@@ -193,6 +212,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/target"
           paths=(
             "src/defence_evolution/promotion_activation_proposal.rs"
+            "src/defence_evolution/promotion_artifact_protection.rs"
             "src/defence_evolution/promotion_transaction_durability.rs"
             "src/defence_evolution/promotion_transaction_state.rs"
             "src/effect_fabric/dispatch_commit.rs"
@@ -200,9 +220,7 @@ jobs:
           )
           tar -czf "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz" "${paths[@]}"
           export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/export-key")"
-          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
-            -pass env:LAS_EXPORT_KEY -in "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz" \
-            -out "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz.enc"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt -pass env:LAS_EXPORT_KEY -in "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz" -out "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz.enc"
           unset LAS_EXPORT_KEY
           rm -f "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz" "$RUNNER_TEMP/export-key"
           echo "LAS_PROMOTION_ACTIVATION_ARM_GREEN_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz.enc" | awk '{print $1}')"
@@ -220,9 +238,7 @@ jobs:
           ((${#logs[@]} > 0)) || exit 0
           tar -czf "$RUNNER_TEMP/activation-arm-green-diagnostics.tar.gz" "${logs[@]}"
           export LAS_EXPORT_KEY="$(cat "$key_file")"
-          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
-            -pass env:LAS_EXPORT_KEY -in "$RUNNER_TEMP/activation-arm-green-diagnostics.tar.gz" \
-            -out "$RUNNER_TEMP/activation-arm-green-diagnostics.tar.gz.enc"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt -pass env:LAS_EXPORT_KEY -in "$RUNNER_TEMP/activation-arm-green-diagnostics.tar.gz" -out "$RUNNER_TEMP/activation-arm-green-diagnostics.tar.gz.enc"
           unset LAS_EXPORT_KEY
           rm -f "$RUNNER_TEMP/activation-arm-green-diagnostics.tar.gz" "${logs[@]}" "$key_file"
           echo "LAS_PROMOTION_ACTIVATION_ARM_DIAGNOSTICS_SHA256=$(sha256sum "$RUNNER_TEMP/activation-arm-green-diagnostics.tar.gz.enc" | awk '{print $1}')"
