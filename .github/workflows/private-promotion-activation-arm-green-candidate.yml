@@ -202,6 +202,39 @@ jobs:
           for i in "${!expected[@]}"; do test "${changed[$i]}" = "${expected[$i]}"; done
           echo 'LAS_ACTIVATION_ARM_FORMAT_SCOPE=PASS'
 
+      - name: Export formatted candidate before strict gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          paths=(
+            "src/defence_evolution/promotion_activation_proposal.rs"
+            "src/defence_evolution/promotion_artifact_protection.rs"
+            "src/defence_evolution/promotion_transaction_durability.rs"
+            "src/defence_evolution/promotion_transaction_journal.rs"
+            "src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs"
+            "src/defence_evolution/promotion_transaction_state.rs"
+            "src/effect_fabric/dispatch_commit.rs"
+            "src/effect_fabric/dispatch_commit/promotion_root_effect_bridge.rs"
+          )
+          tar -czf "$RUNNER_TEMP/activation-arm-formatted-candidate.tar.gz" "${paths[@]}"
+          export LAS_EXPORT_KEY="$(cat "$RUNNER_TEMP/export-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+            -pass env:LAS_EXPORT_KEY -in "$RUNNER_TEMP/activation-arm-formatted-candidate.tar.gz" \
+            -out "$RUNNER_TEMP/activation-arm-formatted-candidate.tar.gz.enc"
+          unset LAS_EXPORT_KEY
+          rm -f "$RUNNER_TEMP/activation-arm-formatted-candidate.tar.gz"
+          echo "LAS_PROMOTION_ACTIVATION_ARM_FORMATTED_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/activation-arm-formatted-candidate.tar.gz.enc" | awk '{print $1}')"
+
+      - name: Upload encrypted formatted candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-promotion-activation-arm-formatted-candidate
+          path: ${{ runner.temp }}/activation-arm-formatted-candidate.tar.gz.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
       - name: Prove strict compile and focused GREEN
         shell: bash
         run: |
