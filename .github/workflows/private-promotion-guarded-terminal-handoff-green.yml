@@ -1,0 +1,162 @@
+name: Private promotion guarded terminal handoff GREEN
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-handoff-green.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fd17e01701dd9fd5321c03ee1a0d8a57a5bb5eb75b4e10d63f0222505a140421
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1024 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=16384 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_RECOVERY=PASS"
+
+      - name: Install pinned Rust verification components
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add --toolchain 1.98.1-x86_64-unknown-linux-gnu rustfmt clippy >/dev/null
+          cargo +1.98.1 fmt --version >/dev/null
+          cargo +1.98.1 clippy --version >/dev/null
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_TOOLCHAIN=PASS"
+
+      - name: Require formatting clean without publishing private diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/guarded-terminal-handoff-green-format.private.log"
+          set +e
+          cargo +1.98.1 fmt --all -- --check >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_FORMAT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_FORMAT_RC=$rc"
+          test "$rc" -eq 0
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_FORMAT=PASS"
+
+      - name: Require targeted GREEN to compile with warnings denied
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/guarded-terminal-handoff-green-compile.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_tests --no-run >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_COMPILE_RC=$rc"
+          test "$rc" -eq 0
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_COMPILE=PASS"
+
+      - name: Require guarded terminal handoff GREEN semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/guarded-terminal-handoff-green.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_tests -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          passed_marker=0
+          grep -q 'test result: ok' "$log" && passed_marker=1
+          failure_marker=0
+          grep -Eq 'FAILED|panicked at|could not compile' "$log" && failure_marker=1
+          resource_marker=0
+          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137|stack overflow' "$log" && resource_marker=1
+          network_marker=0
+          grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_RC=$rc"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_PASS_MARKER=$passed_marker"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_FAILURE_MARKER=$failure_marker"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_RESOURCE_MARKER=$resource_marker"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_NETWORK_MARKER=$network_marker"
+          test "$rc" -eq 0
+          test "$passed_marker" -eq 1
+          test "$failure_marker" -eq 0
+          test "$resource_marker" -eq 0
+          test "$network_marker" -eq 0
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_SEMANTICS=PASS"
+
+      - name: Require full library regression
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/guarded-terminal-handoff-full-lib.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          passed_marker=0
+          grep -q 'test result: ok' "$log" && passed_marker=1
+          failure_marker=0
+          grep -Eq 'FAILED|panicked at|could not compile' "$log" && failure_marker=1
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_FULL_LIB_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_FULL_LIB_RC=$rc"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_FULL_LIB_PASS_MARKER=$passed_marker"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_FULL_LIB_FAILURE_MARKER=$failure_marker"
+          test "$rc" -eq 0
+          test "$passed_marker" -eq 1
+          test "$failure_marker" -eq 0
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_FULL_LIB=PASS"
+
+      - name: Require strict Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/guarded-terminal-handoff-clippy.private.log"
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_CLIPPY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_CLIPPY_RC=$rc"
+          test "$rc" -eq 0
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_CLIPPY=PASS"
