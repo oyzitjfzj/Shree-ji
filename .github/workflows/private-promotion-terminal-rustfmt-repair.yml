@@ -49,6 +49,14 @@ jobs:
           unset PRIVATE_TOKEN auth resolved
           echo "LAS_PROMOTION_TERMINAL_FMT_RECOVERY=PASS"
 
+      - name: Install pinned rustfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add --toolchain 1.98.1-x86_64-unknown-linux-gnu rustfmt >/dev/null
+          cargo +1.98.1 fmt --version >/dev/null
+          echo "LAS_PROMOTION_TERMINAL_FMT_RUSTFMT=PASS"
+
       - name: Produce encrypted rustfmt patch
         shell: bash
         run: |
