@@ -15,20 +15,24 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Copy already-public ciphertext
+      - name: Copy already-public control files
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/export"
           curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-green-v1.b64" \
             -o "$RUNNER_TEMP/export/promotion-activation-arm-green-v1.b64"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/workflows/private-promotion-activation-arm-green-candidate.yml" \
+            -o "$RUNNER_TEMP/export/private-promotion-activation-arm-green-candidate.yml"
           test -s "$RUNNER_TEMP/export/promotion-activation-arm-green-v1.b64"
+          test -s "$RUNNER_TEMP/export/private-promotion-activation-arm-green-candidate.yml"
           echo "PUBLIC_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/export/promotion-activation-arm-green-v1.b64" | awk '{print $1}')"
-      - name: Upload public ciphertext
+          echo "PUBLIC_WORKFLOW_SHA256=$(sha256sum "$RUNNER_TEMP/export/private-promotion-activation-arm-green-candidate.yml" | awk '{print $1}')"
+      - name: Upload public control files
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: public-activation-arm-ciphertext
-          path: ${{ runner.temp }}/export/promotion-activation-arm-green-v1.b64
+          name: public-activation-arm-control-files
+          path: ${{ runner.temp }}/export/
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
