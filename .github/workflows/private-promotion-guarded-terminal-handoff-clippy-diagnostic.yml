@@ -1,0 +1,90 @@
+name: Private promotion guarded terminal handoff Clippy diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-handoff-clippy-diagnostic.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 63595c6b67e63f83ff8612b7d7223f00c69061883c6f352337279b7527528297
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Recover exact private revision and derive diagnostic key
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1024 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=16384 | sort -u)
+          test -n "$resolved"
+          tree="$(git rev-parse "$resolved^{tree}")"
+          echo "::add-mask::$resolved"
+          echo "::add-mask::$tree"
+          key="$(printf 'LAS_PRIVATE_CLIPPY_DIAG_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$key"
+          printf '%s' "$key" >"$RUNNER_TEMP/diag-key"
+          chmod 600 "$RUNNER_TEMP/diag-key"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved tree key oid proof
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_CLIPPY_DIAG_RECOVERY=PASS"
+
+      - name: Run strict Clippy and encrypt private diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add --toolchain 1.98.1-x86_64-unknown-linux-gnu clippy >/dev/null
+          cd target
+          log="$RUNNER_TEMP/guarded-terminal-handoff-clippy.private.log"
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_CLIPPY_DIAG_RC=$rc"
+          test "$rc" -ne 0
+          test -s "$log"
+          export LAS_DIAG_KEY="$(cat "$RUNNER_TEMP/diag-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+            -pass env:LAS_DIAG_KEY \
+            -in "$log" \
+            -out "$RUNNER_TEMP/guarded-terminal-handoff-clippy.enc"
+          unset LAS_DIAG_KEY
+          rm -f "$log" "$RUNNER_TEMP/diag-key"
+          test -s "$RUNNER_TEMP/guarded-terminal-handoff-clippy.enc"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_CLIPPY_DIAG_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/guarded-terminal-handoff-clippy.enc" | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_CLIPPY_DIAG_ENCRYPT=PASS"
+
+      - name: Upload encrypted diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-guarded-terminal-handoff-clippy-diagnostic
+          path: ${{ runner.temp }}/guarded-terminal-handoff-clippy.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
