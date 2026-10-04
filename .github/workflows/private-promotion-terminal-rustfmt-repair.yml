@@ -1,0 +1,99 @@
+name: Private promotion terminal rustfmt repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-terminal-rustfmt-repair.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a1348f1a3ac4b8bca215b8f60a745a2df907426cc129108af124baaeb5763fc1
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1024 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=16384 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_PROMOTION_TERMINAL_FMT_RECOVERY=PASS"
+
+      - name: Produce encrypted rustfmt patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all
+          git diff --binary --no-ext-diff > "$RUNNER_TEMP/repair.patch"
+          test -s "$RUNNER_TEMP/repair.patch"
+          echo "LAS_PROMOTION_TERMINAL_FMT_PATCH_SHA256=$(sha256sum "$RUNNER_TEMP/repair.patch" | awk '{print $1}')"
+
+          cat > "$RUNNER_TEMP/repair-public.pem" <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA8mlGvaTfxBSiW19ReEJ1
+          F0+yECY0uvKslI9aPftKrg23bdOFYk5YwIZxyoHAPLwQPKsuVh09/eYBpAxM88qr
+          ifvzj3BwmlaCp6wt/4eNlzEpMOYgBre464Vmu4if4ZzOyyr7tjsgIfoTMimvAA4w
+          5jKMPvFL8fZnT4PnSicAOCJlls2JBGWApBVfxmFXnQUf3P5SakiyxBXoNnNy7dih
+          K4z7+vnLfyI4fEFj6r/DEMeYs/x3va5AFLZMqum4UHs+MwcSCa20fnz4+HcB52Sc
+          FVZohkVHK5dcGXIznp9uYIyLgbi9SPrhji1rmR8WpvmKBS3BFAoiv78zw9dMvBvV
+          YrbPXsDYpJtflEFSpv1XyUuwVBu2dxBi45lepLFUkU1z7JbaYwPyl1GWc3IkUCpJ
+          J2hG76bJk+tavsva3gR12k/NUCxnvWSij+NYnmnqgHiu+sRpXgQ0kEDDaGRXVyLf
+          yCPS+0xkGFJibMZ3BZpkWU7uxVqw4PlAFmFI5Q+4EfS/AgMBAAE=
+          -----END PUBLIC KEY-----
+          EOF
+
+          openssl rand -hex 32 > "$RUNNER_TEMP/repair-key.hex"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -in "$RUNNER_TEMP/repair.patch" \
+            -out "$RUNNER_TEMP/repair.patch.enc" \
+            -pass file:"$RUNNER_TEMP/repair-key.hex"
+          openssl pkeyutl -encrypt -pubin \
+            -inkey "$RUNNER_TEMP/repair-public.pem" \
+            -in "$RUNNER_TEMP/repair-key.hex" \
+            -out "$RUNNER_TEMP/repair-key.enc" \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+
+          rm -f "$RUNNER_TEMP/repair.patch" "$RUNNER_TEMP/repair-key.hex" "$RUNNER_TEMP/repair-public.pem"
+          echo "LAS_PROMOTION_TERMINAL_FMT_ENCRYPTED=PASS"
+
+      - name: Upload encrypted repair bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: promotion-terminal-rustfmt-repair-encrypted
+          path: |
+            ${{ runner.temp }}/repair.patch.enc
+            ${{ runner.temp }}/repair-key.enc
+          if-no-files-found: error
+          retention-days: 1
