@@ -1,0 +1,120 @@
+name: Private promotion guarded terminal handoff rustfmt v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-handoff-rustfmt-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: d87ef3a547b8b8557a03701294477f54e3693775914299cf622c1896f68c1823
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fd17e01701dd9fd5321c03ee1a0d8a57a5bb5eb75b4e10d63f0222505a140421
+
+jobs:
+  format-and-push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Recover exact private branch
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          test -z "$(git status --porcelain)"
+          printf '%s' "$matched_ref" > "$RUNNER_TEMP/matched-ref"
+          printf '%s' "$start_sha" > "$RUNNER_TEMP/start-sha"
+          echo "LAS_GUARDED_TERMINAL_FMT_RECOVERY=PASS"
+
+      - name: Install exact rustfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+      - name: Format within exact allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -gt 0
+          for path in "${changed[@]}"; do
+            case "$path" in
+              src/effect_fabric/promotion_activation_guarded_terminal_handoff_tests.rs|src/effect_fabric/root_guarded_reconciliation_evidence.rs) ;;
+              *) echo "unexpected rustfmt path" >&2; exit 1 ;;
+            esac
+          done
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_GUARDED_TERMINAL_FMT_ALLOWLIST=PASS"
+
+      - name: Commit and guarded fast-forward push
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd target
+          matched_ref="$(cat "$RUNNER_TEMP/matched-ref")"
+          start_sha="$(cat "$RUNNER_TEMP/start-sha")"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -- src/effect_fabric/promotion_activation_guarded_terminal_handoff_tests.rs src/effect_fabric/root_guarded_reconciliation_evidence.rs
+          git diff --cached --quiet && exit 1
+          git commit -q -m "Apply exact rustfmt to guarded terminal handoff slice"
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$write_auth"
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo "LAS_GUARDED_TERMINAL_FMT_PUSH=PASS"
+          echo "LAS_GUARDED_TERMINAL_FMT_NEW_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_FMT_NEW_TREE_PROOF=$(printf '%s' "$(git rev-parse 'HEAD^{tree}')" | sha256sum | awk '{print $1}')"
