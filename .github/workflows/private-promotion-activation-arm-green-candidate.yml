@@ -9,6 +9,8 @@ on:
       - ".github/private-patches/promotion-activation-arm-protection-v1.b64"
       - ".github/private-patches/promotion-activation-arm-clippy-v1.b64"
       - ".github/private-patches/promotion-activation-arm-origin-v1.b64"
+      - ".github/private-patches/promotion-activation-arm-origin-clippy-v1.b64"
+      - ".github/private-patches/promotion-activation-arm-hardening-v1.b64"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +23,8 @@ env:
   EXPECTED_PROTECTION_PATCH_SHA256: f4f5a46d16449745bbeec11f541d3df89dd9b3a08f5bccf6f004d7a80dd8c3c9
   EXPECTED_CLIPPY_PATCH_SHA256: 2d20e489a06d2f53fe2354000a2bed5c94b4d21244b1e6a98c5003087d69fa97
   EXPECTED_ORIGIN_PATCH_SHA256: b8e0c3b66a3a5b8a310290dfbfa4e8fae797559d91e0b46716323e1b97390bac
+  EXPECTED_ORIGIN_CLIPPY_PATCH_SHA256: 52044dba1ee3c151783f3cf75aeb7a5e14dd380a35962b7b578972a1b9b47358
+  EXPECTED_HARDENING_PATCH_SHA256: 99dd226a42a62037800447ada3cfc7b5cd0db9cb660906fc2d3796a1ef0498ea
 
 jobs:
   verify-candidate:
@@ -55,19 +59,29 @@ jobs:
           clippy_enc="$RUNNER_TEMP/activation-arm-clippy.enc"
           origin_b64="$RUNNER_TEMP/activation-arm-origin.b64"
           origin_enc="$RUNNER_TEMP/activation-arm-origin.enc"
+          origin_clippy_b64="$RUNNER_TEMP/activation-arm-origin-clippy.b64"
+          origin_clippy_enc="$RUNNER_TEMP/activation-arm-origin-clippy.enc"
+          hardening_b64="$RUNNER_TEMP/activation-arm-hardening.b64"
+          hardening_enc="$RUNNER_TEMP/activation-arm-hardening.enc"
           curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-green-v1.b64" -o "$core_b64"
           curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-protection-v1.b64" -o "$protection_b64"
           curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-clippy-v1.b64" -o "$clippy_b64"
           curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-origin-v1.b64" -o "$origin_b64"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-origin-clippy-v1.b64" -o "$origin_clippy_b64"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-arm-hardening-v1.b64" -o "$hardening_b64"
           base64 -d "$core_b64" > "$core_enc"
           base64 -d "$protection_b64" > "$protection_enc"
           base64 -d "$clippy_b64" > "$clippy_enc"
           base64 -d "$origin_b64" > "$origin_enc"
+          base64 -d "$origin_clippy_b64" > "$origin_clippy_enc"
+          base64 -d "$hardening_b64" > "$hardening_enc"
           test "$(sha256sum "$core_enc" | awk '{print $1}')" = "$EXPECTED_PATCH_CIPHERTEXT_SHA256"
           test "$(sha256sum "$protection_enc" | awk '{print $1}')" = "$EXPECTED_PROTECTION_PATCH_SHA256"
           test "$(sha256sum "$clippy_enc" | awk '{print $1}')" = "$EXPECTED_CLIPPY_PATCH_SHA256"
           test "$(sha256sum "$origin_enc" | awk '{print $1}')" = "$EXPECTED_ORIGIN_PATCH_SHA256"
-          rm -f "$core_b64" "$protection_b64" "$clippy_b64" "$origin_b64"
+          test "$(sha256sum "$origin_clippy_enc" | awk '{print $1}')" = "$EXPECTED_ORIGIN_CLIPPY_PATCH_SHA256"
+          test "$(sha256sum "$hardening_enc" | awk '{print $1}')" = "$EXPECTED_HARDENING_PATCH_SHA256"
+          rm -f "$core_b64" "$protection_b64" "$clippy_b64" "$origin_b64" "$origin_clippy_b64" "$hardening_b64"
 
           ROOT="$GITHUB_WORKSPACE/target"
           mkdir "$ROOT"
@@ -108,11 +122,15 @@ jobs:
           protection_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_PROTECTION_PATCH_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
           clippy_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_CLIPPY_PATCH_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
           origin_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_ORIGIN_PATCH_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
-          export_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_EXPORT_V4\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          origin_clippy_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_ORIGIN_CLIPPY_PATCH_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          hardening_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_HARDENING_PATCH_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          export_key="$(printf 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_EXPORT_V5\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
           echo "::add-mask::$core_key"
           echo "::add-mask::$protection_key"
           echo "::add-mask::$clippy_key"
           echo "::add-mask::$origin_key"
+          echo "::add-mask::$origin_clippy_key"
+          echo "::add-mask::$hardening_key"
           echo "::add-mask::$export_key"
           printf '%s' "$export_key" > "$RUNNER_TEMP/export-key"
           chmod 600 "$RUNNER_TEMP/export-key"
@@ -141,7 +159,19 @@ jobs:
           gzip -dc "$RUNNER_TEMP/origin.py.gz" > "$RUNNER_TEMP/origin.py"
           chmod 600 "$RUNNER_TEMP/origin.py"
 
-          rm -f "$core_enc" "$protection_enc" "$clippy_enc" "$origin_enc" "$RUNNER_TEMP/core.py.gz" "$RUNNER_TEMP/protection.py.gz" "$RUNNER_TEMP/clippy.py.gz" "$RUNNER_TEMP/origin.py.gz"
+          export LAS_PATCH_KEY="$origin_clippy_key"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_PATCH_KEY -in "$origin_clippy_enc" -out "$RUNNER_TEMP/origin_clippy.py.gz"
+          unset LAS_PATCH_KEY origin_clippy_key
+          gzip -dc "$RUNNER_TEMP/origin_clippy.py.gz" > "$RUNNER_TEMP/origin_clippy.py"
+          chmod 600 "$RUNNER_TEMP/origin_clippy.py"
+
+          export LAS_PATCH_KEY="$hardening_key"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_PATCH_KEY -in "$hardening_enc" -out "$RUNNER_TEMP/hardening.py.gz"
+          unset LAS_PATCH_KEY hardening_key
+          gzip -dc "$RUNNER_TEMP/hardening.py.gz" > "$RUNNER_TEMP/hardening.py"
+          chmod 600 "$RUNNER_TEMP/hardening.py"
+
+          rm -f "$core_enc" "$protection_enc" "$clippy_enc" "$origin_enc" "$origin_clippy_enc" "$hardening_enc" "$RUNNER_TEMP/core.py.gz" "$RUNNER_TEMP/protection.py.gz" "$RUNNER_TEMP/clippy.py.gz" "$RUNNER_TEMP/origin.py.gz" "$RUNNER_TEMP/origin_clippy.py.gz" "$RUNNER_TEMP/hardening.py.gz"
           echo "LAS_PROMOTION_ACTIVATION_ARM_GREEN_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
 
       - name: Apply deterministic private candidate
@@ -149,7 +179,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
-          for patch in core protection clippy origin; do
+          for patch in core protection clippy origin origin_clippy hardening; do
             log="$RUNNER_TEMP/${patch}-patch.log"
             if ! python3 "$RUNNER_TEMP/${patch}.py" >"$log" 2>&1; then
               echo "LAS_ACTIVATION_ARM_${patch^^}_PATCH_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
@@ -161,6 +191,7 @@ jobs:
           expected=(
             "src/defence_evolution/promotion_activation_proposal.rs"
             "src/defence_evolution/promotion_artifact_protection.rs"
+            "src/defence_evolution/promotion_artifact_protection_tests.rs"
             "src/defence_evolution/promotion_transaction_durability.rs"
             "src/defence_evolution/promotion_transaction_journal.rs"
             "src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs"
@@ -191,6 +222,7 @@ jobs:
           expected=(
             "src/defence_evolution/promotion_activation_proposal.rs"
             "src/defence_evolution/promotion_artifact_protection.rs"
+            "src/defence_evolution/promotion_artifact_protection_tests.rs"
             "src/defence_evolution/promotion_transaction_durability.rs"
             "src/defence_evolution/promotion_transaction_journal.rs"
             "src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs"
@@ -210,6 +242,7 @@ jobs:
           paths=(
             "src/defence_evolution/promotion_activation_proposal.rs"
             "src/defence_evolution/promotion_artifact_protection.rs"
+            "src/defence_evolution/promotion_artifact_protection_tests.rs"
             "src/defence_evolution/promotion_transaction_durability.rs"
             "src/defence_evolution/promotion_transaction_journal.rs"
             "src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs"
@@ -282,6 +315,7 @@ jobs:
           paths=(
             "src/defence_evolution/promotion_activation_proposal.rs"
             "src/defence_evolution/promotion_artifact_protection.rs"
+            "src/defence_evolution/promotion_artifact_protection_tests.rs"
             "src/defence_evolution/promotion_transaction_durability.rs"
             "src/defence_evolution/promotion_transaction_journal.rs"
             "src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs"
