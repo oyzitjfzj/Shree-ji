@@ -19,6 +19,7 @@ permissions:
 env:
   TARGET_REF_HASH: bd27b45610c9cce75c72e9601883a2314ffe4d912d441e615f9b530018787859
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4e3e9cb6d88769933f74df2e8beccd7168aa17fc58c2bd97ba88ef4fdc509d24
+  EXPECTED_PRIVATE_HEAD_PROOF: 9cd1fdc2091e6ca154f907ba9091b65a8e48db1f2fc8d23e8616f6cdddb84e38
   EXPECTED_PATCH_CIPHERTEXT_SHA256: 671774406e8ed1f27bf97bdf6b27ae1a6dc5d70f99813d4acdbaea0010751a16
   EXPECTED_PROTECTION_PATCH_SHA256: f4f5a46d16449745bbeec11f541d3df89dd9b3a08f5bccf6f004d7a80dd8c3c9
   EXPECTED_CLIPPY_PATCH_SHA256: 2d20e489a06d2f53fe2354000a2bed5c94b4d21244b1e6a98c5003087d69fa97
@@ -330,6 +331,98 @@ jobs:
           rm -f "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz" "$RUNNER_TEMP/export-key"
           echo "LAS_PROMOTION_ACTIVATION_ARM_GREEN_EXPORT_SHA256=$(sha256sum "$RUNNER_TEMP/activation-arm-green-candidate.tar.gz.enc" | awk '{print $1}')"
           echo 'LAS_PROMOTION_ACTIVATION_ARM_GREEN_CANDIDATE=PASS'
+
+      - name: Revalidate and atomically commit exact candidate to current private head
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+          cd "$GITHUB_WORKSPACE/target"
+
+          paths=(
+            "src/defence_evolution/promotion_activation_proposal.rs"
+            "src/defence_evolution/promotion_artifact_protection.rs"
+            "src/defence_evolution/promotion_artifact_protection_tests.rs"
+            "src/defence_evolution/promotion_transaction_durability.rs"
+            "src/defence_evolution/promotion_transaction_journal.rs"
+            "src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs"
+            "src/defence_evolution/promotion_transaction_state.rs"
+            "src/effect_fabric/dispatch_commit.rs"
+            "src/effect_fabric/dispatch_commit/promotion_root_effect_bridge.rs"
+          )
+          tar -czf "$RUNNER_TEMP/verified-activation-arm-files.tar.gz" "${paths[@]}"
+
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads-write"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git reset -q --hard "$start_sha"
+          tar -xzf "$RUNNER_TEMP/verified-activation-arm-files.tar.gz"
+          rm -f "$RUNNER_TEMP/verified-activation-arm-files.tar.gz"
+
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            "src/defence_evolution/promotion_activation_proposal.rs"
+            "src/defence_evolution/promotion_artifact_protection.rs"
+            "src/defence_evolution/promotion_artifact_protection_tests.rs"
+            "src/defence_evolution/promotion_transaction_durability.rs"
+            "src/defence_evolution/promotion_transaction_journal.rs"
+            "src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs"
+            "src/defence_evolution/promotion_transaction_state.rs"
+            "src/effect_fabric/dispatch_commit.rs"
+            "src/effect_fabric/dispatch_commit/promotion_root_effect_bridge.rs"
+          )
+          test "${#changed[@]}" -eq "${#expected[@]}"
+          for i in "${!expected[@]}"; do test "${changed[$i]}" = "${expected[$i]}"; done
+          git diff --check
+
+          cargo +1.98.1 fmt --all -- --check
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          env RUSTFLAGS=-Dwarnings cargo +1.98.1 clippy --locked --all-targets -- -D warnings
+          cargo +1.98.1 test --locked --lib promotion_activation_durable_arm_red_tests -- --test-threads=1
+          cargo +1.98.1 test --locked --lib promotion_root_effect_bridge -- --test-threads=1
+          cargo +1.98.1 test --locked --lib promotion_transaction_durability_red_tests -- --test-threads=1
+          cargo +1.98.1 test --locked --lib promotion_artifact_protection_tests -- --test-threads=1
+          cargo +1.98.1 test --locked --lib -- --test-threads=1
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -- "${expected[@]}"
+          git commit -q -m "Implement durable activation arm with origin-bound effect evidence"
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:"$matched_ref"
+          echo "LAS_PROMOTION_ACTIVATION_ARM_PRIVATE_COMMIT=PASS"
+          echo "LAS_PROMOTION_ACTIVATION_ARM_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
 
       - name: Encrypt private failure diagnostics
         if: failure()
