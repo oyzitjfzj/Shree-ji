@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a1348f1a3ac4b8bca215b8f60a745a2df907426cc129108af124baaeb5763fc1
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 50b0506237036c5098f9b032347c2c4dc379de23b488526d7e1b9ddd3e9ecb77
 
 jobs:
   repair:
@@ -69,15 +69,15 @@ jobs:
 
           cat > "$RUNNER_TEMP/repair-public.pem" <<'EOF'
           -----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA8mlGvaTfxBSiW19ReEJ1
-          F0+yECY0uvKslI9aPftKrg23bdOFYk5YwIZxyoHAPLwQPKsuVh09/eYBpAxM88qr
-          ifvzj3BwmlaCp6wt/4eNlzEpMOYgBre464Vmu4if4ZzOyyr7tjsgIfoTMimvAA4w
-          5jKMPvFL8fZnT4PnSicAOCJlls2JBGWApBVfxmFXnQUf3P5SakiyxBXoNnNy7dih
-          K4z7+vnLfyI4fEFj6r/DEMeYs/x3va5AFLZMqum4UHs+MwcSCa20fnz4+HcB52Sc
-          FVZohkVHK5dcGXIznp9uYIyLgbi9SPrhji1rmR8WpvmKBS3BFAoiv78zw9dMvBvV
-          YrbPXsDYpJtflEFSpv1XyUuwVBu2dxBi45lepLFUkU1z7JbaYwPyl1GWc3IkUCpJ
-          J2hG76bJk+tavsva3gR12k/NUCxnvWSij+NYnmnqgHiu+sRpXgQ0kEDDaGRXVyLf
-          yCPS+0xkGFJibMZ3BZpkWU7uxVqw4PlAFmFI5Q+4EfS/AgMBAAE=
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEApR3lp3RPQ3xZI2omh8l0
+          WGfbOZfcKMbHChQp+Q+WGk/ui7hG6tc8ttG30/3Q+z0K3xnJw1+/kF8Sqd2lO9UQ
+          MblLPnmyr/VHgM2qxSjgV5liroIgdo7rrrXI7zXu2oDHO0v+bEb54eM/S8mL2nbM
+          xuUcfuFFfhKt2jwQ0jfdu/2na+vdDfoufFfRyfK17k4a7L9kbqOX1C8V16uCGPi/
+          tNgRjfkOLLsKArG2qG46ObT0SSFn3uDcRa20mY0NOXBp7XUnsmFsa/tgXFUKNkE0
+          ZjmpzNagk/9T16jVR+7ie2nMcOFxKAs3ea/okDU6uKVfka6TBd/ptHayTOeZxEm5
+          l9oZuIZMHgkX8aCUR5RyBByzZ0UnVvkyDt5w9pYfhlaFeXcsaG5R4wEjywZ9eGVv
+          Mjcq+OALLl8arIIRFo/O+4aS04Ds+vviBmmvPfwNMtB+eWB6OWylFiCkuPypb1Y4
+          4oyzRdoOodkIo7O6CiDYzr9GoqKFX8TmiZhEFwIfLmKfAgMBAAE=
           -----END PUBLIC KEY-----
           EOF
 
