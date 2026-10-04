@@ -1,0 +1,101 @@
+name: Private promotion guarded terminal handoff GREEN verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-handoff-green-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fd17e01701dd9fd5321c03ee1a0d8a57a5bb5eb75b4e10d63f0222505a140421
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2048 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=32768 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_RECOVERY=PASS"
+
+      - name: Install pinned Rust quality tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_TOOLCHAIN=PASS"
+
+      - name: Require formatting clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_FORMAT=PASS"
+
+      - name: Require targeted GREEN to compile warning-free
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_tests --no-run
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_COMPILE=PASS"
+
+      - name: Require guarded terminal handoff GREEN semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_tests -- --test-threads=1
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_SEMANTICS=PASS"
+
+      - name: Preserve legacy commit-only classifier closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/legacy-closure.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_red_tests -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -q 'ActivationNotCrossed' "$log"
+          grep -q 'provenance-bearing Armed handoff' "$log"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_LEGACY_CLOSURE=PASS"
