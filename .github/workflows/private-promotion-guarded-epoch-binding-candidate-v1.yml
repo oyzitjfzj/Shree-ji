@@ -1,0 +1,119 @@
+name: Private promotion guarded epoch binding candidate v1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-epoch-binding-candidate-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: ddab355e844c438545b265366dfd3be27830b044ac7e57329c6747e2635773c4
+  EXPECTED_HEAD_PROOF: 4607236829bc228b60a8dac79c57e9c780ff5095c77172f45f6d56314534fcc9
+  EXPECTED_BASE_PROOF: 36f779ebc32446e2b0ef07f71106917595d524d784fb5ea94cd9bb54d533e6e7
+
+jobs:
+  verify-rewrite-and-close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Verify private candidate and rewrite exact branch
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/private-candidate"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=2 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          base_sha="$(git rev-parse HEAD^)"
+          echo "::add-mask::$base_sha"
+          test "$(printf '%s' "$base_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_BASE_PROOF"
+          test -f .verification/promotion-activation-guarded-epoch-binding-driver.sh
+          chmod 700 .verification/promotion-activation-guarded-epoch-binding-driver.sh
+
+          BASE_SHA="$base_sha" .verification/promotion-activation-guarded-epoch-binding-driver.sh
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+          test "$(git rev-parse HEAD^)" = "$base_sha"
+          test ! -e .verification/promotion-activation-guarded-epoch-binding-driver.sh
+
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$write_auth"
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q \
+            --force-with-lease="$matched_ref:$start_sha" origin "HEAD:$matched_ref"
+
+          closure="$GITHUB_WORKSPACE/private-closure"
+          mkdir "$closure"
+          cd "$closure"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$new_sha"
+          git checkout -q --detach "$new_sha"
+          test "$(git rev-parse HEAD^)" = "$base_sha"
+          test ! -e .verification/promotion-activation-guarded-epoch-binding-driver.sh
+
+          cargo +1.98.1 fmt --all -- --check
+          git diff --check "$base_sha" "$new_sha"
+          RUSTFLAGS='-D warnings' cargo +1.98.1 check --all-targets
+          RUSTFLAGS='-D warnings' cargo +1.98.1 check --all-targets --features linux-peer-credentials
+          cargo +1.98.1 clippy --all-targets --features linux-peer-credentials -- -D warnings
+          cargo +1.98.1 test --lib --features linux-peer-credentials promotion_activation_guarded_crossing_tests -- --test-threads=1
+          cargo +1.98.1 test --lib promotion_activation_durable_arm_red_tests -- --test-threads=1
+          cargo +1.98.1 test --lib -- --test-threads=1
+          cargo +1.98.1 test --lib --features linux-peer-credentials -- --test-threads=1
+
+          echo "LAS_GUARDED_EPOCH_BINDING_EXACT_COMMITTED_CLOSURE=PASS"
+          echo "LAS_GUARDED_EPOCH_BINDING_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
