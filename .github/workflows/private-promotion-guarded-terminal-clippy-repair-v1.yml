@@ -1,0 +1,148 @@
+name: Private promotion guarded terminal Clippy repair v1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-clippy-repair-v1.yml"
+      - ".github/private-patches/promotion-guarded-terminal-clippy-v1.enc.b64"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: d87ef3a547b8b8557a03701294477f54e3693775914299cf622c1896f68c1823
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 63595c6b67e63f83ff8612b7d7223f00c69061883c6f352337279b7527528297
+  EXPECTED_PRIVATE_TREE_PROOF: 12e471550b62e4e7d3bb7a4a32fb24bc5ddd68d44d3807a422cef43b8228de5a
+  EXPECTED_DRIVER_SHA256: 7bf810014eaa9f5696fb255e2c476457c865b1fb980cbec71fb71931e2cb78ab
+
+jobs:
+  repair-verify-push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Recover exact private branch opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          printf '%s' "$matched_ref" > "$RUNNER_TEMP/matched-ref"
+          printf '%s' "$start_sha" > "$RUNNER_TEMP/start-sha"
+          printf '%s' "$tree" > "$RUNNER_TEMP/start-tree"
+          echo "LAS_GUARDED_TERMINAL_CLIPPY_RECOVERY=PASS"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Decrypt and execute exact repair with all gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          start_sha="$(cat "$RUNNER_TEMP/start-sha")"
+          tree="$(cat "$RUNNER_TEMP/start-tree")"
+          echo "::add-mask::$start_sha"
+          echo "::add-mask::$tree"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-guarded-terminal-clippy-v1.enc.b64" > "$RUNNER_TEMP/driver.b64"
+          base64 -d "$RUNNER_TEMP/driver.b64" > "$RUNNER_TEMP/driver.enc"
+          rm -f "$RUNNER_TEMP/driver.b64"
+          test "$(sha256sum "$RUNNER_TEMP/driver.enc" | awk '{print $1}')" = "$EXPECTED_DRIVER_SHA256"
+          driver_key="$(printf 'LAS_PROMOTION_GUARDED_TERMINAL_CLIPPY_V1\n%s\n%s' "$start_sha" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$driver_key"
+          LAS_DRIVER_KEY="$driver_key" openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 \
+            -pass env:LAS_DRIVER_KEY -in "$RUNNER_TEMP/driver.enc" -out "$RUNNER_TEMP/driver.sh.gz"
+          unset driver_key
+          rm -f "$RUNNER_TEMP/driver.enc"
+          gzip -dc "$RUNNER_TEMP/driver.sh.gz" > "$RUNNER_TEMP/driver.sh"
+          rm -f "$RUNNER_TEMP/driver.sh.gz"
+          chmod 700 "$RUNNER_TEMP/driver.sh"
+          cd target
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          START_SHA="$start_sha" START_TREE="$tree" "$RUNNER_TEMP/driver.sh"
+          rm -f "$RUNNER_TEMP/driver.sh"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+          printf '%s' "$new_sha" > "$RUNNER_TEMP/new-sha"
+          printf '%s' "$new_tree" > "$RUNNER_TEMP/new-tree"
+          echo "LAS_GUARDED_TERMINAL_CLIPPY_ALL_GATES=PASS"
+
+      - name: Guarded fast-forward push and readback
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd target
+          matched_ref="$(cat "$RUNNER_TEMP/matched-ref")"
+          start_sha="$(cat "$RUNNER_TEMP/start-sha")"
+          new_sha="$(cat "$RUNNER_TEMP/new-sha")"
+          new_tree="$(cat "$RUNNER_TEMP/new-tree")"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$write_auth"
+          echo "::add-mask::$read_auth"
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$post_sha"
+          test "$post_sha" = "$new_sha"
+          echo "LAS_GUARDED_TERMINAL_CLIPPY_PUSH=PASS"
+          echo "LAS_GUARDED_TERMINAL_CLIPPY_NEW_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_CLIPPY_NEW_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
