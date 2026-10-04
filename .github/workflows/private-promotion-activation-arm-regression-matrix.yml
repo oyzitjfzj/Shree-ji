@@ -1,0 +1,263 @@
+name: Private promotion activation arm regression matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-activation-arm-regression-matrix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: bd27b45610c9cce75c72e9601883a2314ffe4d912d441e615f9b530018787859
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4e3e9cb6d88769933f74df2e8beccd7168aa17fc58c2bd97ba88ef4fdc509d24
+  CORE_SHA256: 671774406e8ed1f27bf97bdf6b27ae1a6dc5d70f99813d4acdbaea0010751a16
+  PROTECTION_SHA256: f4f5a46d16449745bbeec11f541d3df89dd9b3a08f5bccf6f004d7a80dd8c3c9
+  CLIPPY_SHA256: 2d20e489a06d2f53fe2354000a2bed5c94b4d21244b1e6a98c5003087d69fa97
+  ORIGIN_SHA256: b8e0c3b66a3a5b8a310290dfbfa4e8fae797559d91e0b46716323e1b97390bac
+  ORIGIN_CLIPPY_SHA256: 52044dba1ee3c151783f3cf75aeb7a5e14dd380a35962b7b578972a1b9b47358
+  HARDENING_SHA256: 99dd226a42a62037800447ada3cfc7b5cd0db9cb660906fc2d3796a1ef0498ea
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version --verbose
+
+      - name: Resolve exact private source base
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r candidate_sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=128 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=128 FETCH_HEAD)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git rev-parse HEAD)" = "$resolved"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          printf '%s' "$resolved" > "$RUNNER_TEMP/resolved"
+          printf '%s' "$tree" > "$RUNNER_TEMP/tree"
+          echo "LAS_ACTIVATION_ARM_REGRESSION_PRIVATE_SNAPSHOT_PROOF=$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+
+      - name: Apply exact verified V5 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          resolved="$(cat "$RUNNER_TEMP/resolved")"
+          tree="$(cat "$RUNNER_TEMP/tree")"
+
+          names=(core protection clippy origin origin_clippy hardening)
+          files=(
+            promotion-activation-arm-green-v1.b64
+            promotion-activation-arm-protection-v1.b64
+            promotion-activation-arm-clippy-v1.b64
+            promotion-activation-arm-origin-v1.b64
+            promotion-activation-arm-origin-clippy-v1.b64
+            promotion-activation-arm-hardening-v1.b64
+          )
+          expected=(
+            "$CORE_SHA256"
+            "$PROTECTION_SHA256"
+            "$CLIPPY_SHA256"
+            "$ORIGIN_SHA256"
+            "$ORIGIN_CLIPPY_SHA256"
+            "$HARDENING_SHA256"
+          )
+          domains=(
+            LAS_PROMOTION_ACTIVATION_ARM_GREEN_PATCH_V1
+            LAS_PROMOTION_ACTIVATION_ARM_GREEN_PROTECTION_PATCH_V1
+            LAS_PROMOTION_ACTIVATION_ARM_GREEN_CLIPPY_PATCH_V1
+            LAS_PROMOTION_ACTIVATION_ARM_GREEN_ORIGIN_PATCH_V1
+            LAS_PROMOTION_ACTIVATION_ARM_GREEN_ORIGIN_CLIPPY_PATCH_V1
+            LAS_PROMOTION_ACTIVATION_ARM_GREEN_HARDENING_PATCH_V1
+          )
+
+          for i in "${!names[@]}"; do
+            name="${names[$i]}"
+            b64="$RUNNER_TEMP/$name.b64"
+            enc="$RUNNER_TEMP/$name.enc"
+            py="$RUNNER_TEMP/$name.py"
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/${files[$i]}" -o "$b64"
+            base64 -d "$b64" > "$enc"
+            test "$(sha256sum "$enc" | awk '{print $1}')" = "${expected[$i]}"
+            key="$(printf '%s\n%s\n%s' "${domains[$i]}" "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+            export LAS_PATCH_KEY="$key"
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_PATCH_KEY -in "$enc" -out "$py.gz"
+            unset LAS_PATCH_KEY key
+            gzip -dc "$py.gz" > "$py"
+            chmod 600 "$py"
+            log="$RUNNER_TEMP/$name.log"
+            if ! python3 "$py" >"$log" 2>&1; then
+              echo "LAS_ACTIVATION_ARM_REGRESSION_PATCH_STAGE=${name^^}"
+              echo "LAS_ACTIVATION_ARM_REGRESSION_PATCH_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              exit 1
+            fi
+            rm -f "$b64" "$enc" "$py" "$py.gz" "$log"
+          done
+
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          echo 'LAS_ACTIVATION_ARM_REGRESSION_PATCHES=PASS'
+
+      - name: Prove candidate byte identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          check_blob() {
+            local expected="$1" path="$2"
+            test "$(git hash-object "$path")" = "$expected"
+          }
+          check_blob 812c99ef24d08fa5b3cbf786472a0992d0817bba src/defence_evolution/promotion_activation_proposal.rs
+          check_blob 8894aacb861fe8437dd180e085796a282f946485 src/defence_evolution/promotion_artifact_protection.rs
+          check_blob b2a343e86e9c9732c1f0c1199646c1ebffad28f2 src/defence_evolution/promotion_artifact_protection_tests.rs
+          check_blob 3a1a0696cb60250d083ee0ea1bd5fd22916c0b59 src/defence_evolution/promotion_transaction_durability.rs
+          check_blob 0f37abef8515017cf5cb745c5dc2ba3a41f7f1a4 src/defence_evolution/promotion_transaction_journal.rs
+          check_blob b8af439e28fdf4377a4fc09a362361ac28583fda src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs
+          check_blob 1ea660b3aff5981c11583213f25965b4811269d7 src/defence_evolution/promotion_transaction_state.rs
+          check_blob 2da851430c37feb9aa312f5302c195feb1bae626 src/effect_fabric/dispatch_commit.rs
+          check_blob 10e6f9c9d5d92a25e1aa4cc6ecaa9f0502cb090e src/effect_fabric/dispatch_commit/promotion_root_effect_bridge.rs
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected_paths=(
+            src/defence_evolution/promotion_activation_proposal.rs
+            src/defence_evolution/promotion_artifact_protection.rs
+            src/defence_evolution/promotion_artifact_protection_tests.rs
+            src/defence_evolution/promotion_transaction_durability.rs
+            src/defence_evolution/promotion_transaction_journal.rs
+            src/defence_evolution/promotion_transaction_journal_genesis_red_tests.rs
+            src/defence_evolution/promotion_transaction_state.rs
+            src/effect_fabric/dispatch_commit.rs
+            src/effect_fabric/dispatch_commit/promotion_root_effect_bridge.rs
+          )
+          test "${#changed[@]}" -eq "${#expected_paths[@]}"
+          for i in "${!expected_paths[@]}"; do test "${changed[$i]}" = "${expected_paths[$i]}"; done
+          echo 'LAS_ACTIVATION_ARM_REGRESSION_BYTE_IDENTITY=PASS'
+
+      - name: Physical record and genesis adversarial gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          out="$RUNNER_TEMP/physical.out"
+          bash tools/verify_promotion_journal_physical_record_green.sh >"$out" 2>&1 || {
+            echo "LAS_ACTIVATION_ARM_PHYSICAL_LOG_SHA256=$(sha256sum "$out" | awk '{print $1}')"; rm -f "$out"; exit 1; }
+          grep -Fxq 'LAS_PROMOTION_JOURNAL_PHYSICAL_RECORD_GREEN_TESTS=14' "$out"
+          rm -f "$out"
+
+          out="$RUNNER_TEMP/genesis.out"
+          bash tools/verify_promotion_journal_genesis_adversarial.sh >"$out" 2>&1 || {
+            echo "LAS_ACTIVATION_ARM_GENESIS_LOG_SHA256=$(sha256sum "$out" | awk '{print $1}')"; rm -f "$out"; exit 1; }
+          grep -Fxq 'LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_TESTS=PASS' "$out"
+          count="$(grep -E '^LAS_PROMOTION_JOURNAL_GENESIS_ADVERSARIAL_TEST_COUNT=[0-9]+$' "$out" | tail -1)"
+          echo "$count"
+          rm -f "$out"
+          echo 'LAS_ACTIVATION_ARM_PHYSICAL_RECORD=PASS'
+          echo 'LAS_ACTIVATION_ARM_GENESIS_ADVERSARIAL=PASS'
+
+      - name: Linux journal fault matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          out="$RUNNER_TEMP/fault-matrix.out"
+          bash tools/verify_promotion_transaction_linux_journal_fault_matrix.sh >"$out" 2>&1 || {
+            echo "LAS_ACTIVATION_ARM_FAULT_MATRIX_LOG_SHA256=$(sha256sum "$out" | awk '{print $1}')"; rm -f "$out"; exit 1; }
+          grep -Fxq 'LAS_PROMOTION_LINUX_JOURNAL_FAULT_MATRIX_TEST_COUNT=15' "$out"
+          grep -Fxq 'LAS_PROMOTION_LINUX_JOURNAL_REAL_FILE_TEST_COUNT=13' "$out"
+          rm -f "$out"
+          echo 'LAS_ACTIVATION_ARM_LINUX_JOURNAL_FAULT_MATRIX=PASS'
+
+      - name: Linux provisioning and provisioning-genesis composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          run_gate() {
+            local label="$1" filter="$2" expected="$3"
+            local log="$RUNNER_TEMP/$label.log"
+            RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib "$filter" -- --test-threads=1 >"$log" 2>&1
+            summary="$(grep '^test result:' "$log" | tail -1 || true)"
+            passed="$(printf '%s' "$summary" | sed -nE 's/.* ([0-9]+) passed;.*/\1/p')"
+            failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
+            digest="$(sha256sum "$log" | awk '{print $1}')"
+            rm -f "$log"
+            test "$passed" = "$expected"
+            test "$failed" = '0'
+            echo "LAS_${label^^}_LOG_SHA256=$digest"
+          }
+          run_gate promotion_provisioning promotion_transaction_linux_journal_provisioning_adapter_red_tests 5
+          run_gate promotion_genesis_composition promotion_transaction_linux_journal_genesis_composition_red_tests 3
+          echo 'LAS_ACTIVATION_ARM_LINUX_PROVISIONING=PASS'
+          echo 'LAS_ACTIVATION_ARM_LINUX_GENESIS_COMPOSITION=PASS'
+
+      - name: Real Linux process-restart gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/restart.log"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_transaction_linux_journal_process_restart_tests -- --test-threads=1 >"$log" 2>&1
+          summary="$(grep '^test result:' "$log" | tail -1 || true)"
+          passed="$(printf '%s' "$summary" | sed -nE 's/.* ([0-9]+) passed;.*/\1/p')"
+          failed="$(printf '%s' "$summary" | sed -nE 's/.*; ([0-9]+) failed;.*/\1/p')"
+          digest="$(sha256sum "$log" | awk '{print $1}')"
+          rm -f "$log"
+          test "$passed" = '3'
+          test "$failed" = '0'
+          echo "LAS_ACTIVATION_ARM_PROCESS_RESTART_LOG_SHA256=$digest"
+          echo 'LAS_ACTIVATION_ARM_PROCESS_RESTART=PASS'
+
+      - name: Final regression matrix sentinel
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 fmt --all -- --check
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets >/dev/null
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings >/dev/null
+          echo 'LAS_PROMOTION_ACTIVATION_ARM_REGRESSION_MATRIX=PASS'
