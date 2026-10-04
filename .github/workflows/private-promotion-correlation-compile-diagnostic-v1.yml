@@ -1,0 +1,191 @@
+name: Private promotion correlation compile diagnostic v1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-correlation-compile-diagnostic-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: b773b1e8c6c1cbdfd3733d3029c1bf79473040b81131ffd4ac1ae055812ed196
+  EXPECTED_HEAD_PROOF: 5777048e713789410c1ee699ce22be1b0fead4f93849afa2d1835cbace545ef4
+  EXPECTED_PATCH_SHA256: 968c43baa68bb62f109f100c16fc3ccf4c5411f4f357dd3d7a553df60635bd76
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          cargo +1.98.1 --version
+
+      - name: Diagnose sanitized compile surface
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+
+          patch_b64="$RUNNER_TEMP/correlation-v2.b64"
+          patch_enc="$RUNNER_TEMP/correlation-v2.enc"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-guarded-request-correlation-v2.b64" -o "$patch_b64"
+          base64 -d "$patch_b64" > "$patch_enc"
+          rm -f "$patch_b64"
+          test "$(sha256sum "$patch_enc" | awk '{print $1}')" = "$EXPECTED_PATCH_SHA256"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+
+          patch_key="$(printf 'LAS_PROMOTION_GUARDED_REQUEST_CORRELATION_PATCH_V2\n%s\n%s' "$start_sha" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$patch_key"
+          export LAS_PATCH_KEY="$patch_key"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_PATCH_KEY -in "$patch_enc" -out "$RUNNER_TEMP/correlation.py.gz"
+          unset LAS_PATCH_KEY patch_key
+          rm -f "$patch_enc"
+          gzip -dc "$RUNNER_TEMP/correlation.py.gz" >"$RUNNER_TEMP/correlation.py"
+          rm -f "$RUNNER_TEMP/correlation.py.gz"
+          chmod 600 "$RUNNER_TEMP/correlation.py"
+          patch_log="$RUNNER_TEMP/patch.log"
+          if ! python3 "$RUNNER_TEMP/correlation.py" >"$patch_log" 2>&1; then
+            echo "LAS_DIAG_PATCH_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            rm -f "$RUNNER_TEMP/correlation.py" "$patch_log"
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/correlation.py" "$patch_log"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          needles = {
+              "CTOR": "PromotionActivationDurableBinding::from_test_parts(",
+              "METHOD": ".activation_durable_binding(",
+          }
+
+          def nargs(text, start):
+              depth = 1
+              i = start
+              commas = 0
+              seen = False
+              in_str = False
+              quote = ''
+              esc = False
+              while i < len(text):
+                  c = text[i]
+                  if in_str:
+                      if esc:
+                          esc = False
+                      elif c == '\\':
+                          esc = True
+                      elif c == quote:
+                          in_str = False
+                      i += 1
+                      continue
+                  if c in ('"', "'"):
+                      in_str = True
+                      quote = c
+                      seen = True
+                  elif c == '(':
+                      depth += 1; seen = True
+                  elif c == ')':
+                      depth -= 1
+                      if depth == 0:
+                          return 0 if not seen else commas + 1
+                  elif c == ',' and depth == 1:
+                      commas += 1
+                  elif not c.isspace():
+                      seen = True
+                  i += 1
+              return -1
+
+          total = 0
+          for path in sorted(Path('src').rglob('*.rs')):
+              text = path.read_text(encoding='utf-8')
+              rel = path.as_posix()
+              ph = hashlib.sha256(rel.encode()).hexdigest()
+              for kind, needle in needles.items():
+                  off = 0
+                  while True:
+                      pos = text.find(needle, off)
+                      if pos < 0: break
+                      line = text.count('\n', 0, pos) + 1
+                      argc = nargs(text, pos + len(needle))
+                      print(f"LAS_DIAG_CALL={ph}:{line}:{kind}:{argc}")
+                      total += 1
+                      off = pos + len(needle)
+          print(f"LAS_DIAG_CALL_TOTAL={total}")
+          PY
+
+          cp Cargo.lock "$RUNNER_TEMP/Cargo.lock.expected"
+          cargo +1.98.1 fmt --all >/dev/null
+          cargo +1.98.1 generate-lockfile >/dev/null 2>&1
+          cmp --silent Cargo.lock "$RUNNER_TEMP/Cargo.lock.expected"
+
+          export RUSTFLAGS=-Dwarnings
+          log="$RUNNER_TEMP/check.log"
+          set +e
+          cargo +1.98.1 check --locked --all-targets >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_DIAG_CHECK_RC=$rc"
+          echo "LAS_DIAG_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          python3 - "$log" <<'PY'
+          import hashlib, re, sys
+          lines = open(sys.argv[1], encoding='utf-8', errors='replace').read().splitlines()
+          current = "NONE"
+          emitted = 0
+          for line in lines:
+              m = re.match(r"error(?:\[([^\]]+)\])?:", line)
+              if m:
+                  current = m.group(1) or "NONE"
+                  continue
+              m = re.match(r"\s*-->\s+(.+\.rs):(\d+):(\d+)\s*$", line)
+              if m and current:
+                  path, ln, col = m.groups()
+                  ph = hashlib.sha256(path.encode()).hexdigest()
+                  print(f"LAS_DIAG_ERROR={current}:{ph}:{ln}:{col}")
+                  emitted += 1
+                  current = None
+          print(f"LAS_DIAG_ERROR_COUNT={emitted}")
+          PY
+          rm -f "$log"
