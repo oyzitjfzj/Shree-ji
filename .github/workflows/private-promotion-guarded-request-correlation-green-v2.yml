@@ -1,0 +1,209 @@
+name: Private promotion guarded-request correlation GREEN v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-request-correlation-green-v2.yml"
+      - ".github/private-patches/promotion-guarded-request-correlation-v2.b64"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: b773b1e8c6c1cbdfd3733d3029c1bf79473040b81131ffd4ac1ae055812ed196
+  EXPECTED_HEAD_PROOF: 5777048e713789410c1ee699ce22be1b0fead4f93849afa2d1835cbace545ef4
+  EXPECTED_PATCH_SHA256: 968c43baa68bb62f109f100c16fc3ccf4c5411f4f357dd3d7a553df60635bd76
+
+jobs:
+  verify-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+
+      - name: Verify exact private candidate and commit if green
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          patch_b64="$RUNNER_TEMP/correlation-v2.b64"
+          patch_enc="$RUNNER_TEMP/correlation-v2.enc"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-guarded-request-correlation-v2.b64" -o "$patch_b64"
+          base64 -d "$patch_b64" > "$patch_enc"
+          rm -f "$patch_b64"
+          test "$(sha256sum "$patch_enc" | awk '{print $1}')" = "$EXPECTED_PATCH_SHA256"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+
+          patch_key="$(printf 'LAS_PROMOTION_GUARDED_REQUEST_CORRELATION_PATCH_V2\n%s\n%s' "$start_sha" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$patch_key"
+          export LAS_PATCH_KEY="$patch_key"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_PATCH_KEY -in "$patch_enc" -out "$RUNNER_TEMP/correlation.py.gz"
+          unset LAS_PATCH_KEY patch_key
+          rm -f "$patch_enc"
+          gzip -dc "$RUNNER_TEMP/correlation.py.gz" >"$RUNNER_TEMP/correlation.py"
+          rm -f "$RUNNER_TEMP/correlation.py.gz"
+          chmod 600 "$RUNNER_TEMP/correlation.py"
+
+          patch_log="$RUNNER_TEMP/patch.log"
+          if ! python3 "$RUNNER_TEMP/correlation.py" >"$patch_log" 2>&1; then
+            echo "LAS_CORRELATION_PATCH_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            rm -f "$RUNNER_TEMP/correlation.py" "$patch_log"
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/correlation.py" "$patch_log"
+
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            "src/defence_evolution/promotion_activation_durable_arm_red_tests.rs"
+            "src/defence_evolution/promotion_transaction_durability.rs"
+            "src/effect_fabric/dispatch_commit/promotion_root_effect_bridge.rs"
+          )
+          test "${#changed[@]}" -eq "${#expected[@]}"
+          for i in "${!expected[@]}"; do test "${changed[$i]}" = "${expected[$i]}"; done
+          git diff --check
+          if git diff -- src | grep -E '^\+.*unsafe[[:space:]]*\{' >/dev/null; then exit 1; fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          zero_arg = constructors = request_getters = 0
+          for path in Path("src").rglob("*.rs"):
+              text = path.read_text()
+              zero_arg += len(re.findall(r"\.activation_durable_binding\s*\(\s*\)", text))
+              constructors += text.count("PromotionActivationDurableBinding::from_test_parts(")
+              request_getters += text.count(".request_id()")
+          if zero_arg:
+              raise SystemExit("zero-argument durable binding callsite remains")
+          if constructors < 4 or request_getters < 4:
+              raise SystemExit("guarded-request correlation coverage unexpectedly low")
+          print(f"LAS_CORRELATION_CONSTRUCTORS={constructors}")
+          print(f"LAS_CORRELATION_REQUEST_GETTERS={request_getters}")
+          PY
+          echo "LAS_CORRELATION_PATCH_SCOPE=PASS"
+
+          cp Cargo.lock "$RUNNER_TEMP/Cargo.lock.expected"
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          cargo +1.98.1 generate-lockfile >/dev/null 2>&1
+          cmp --silent Cargo.lock "$RUNNER_TEMP/Cargo.lock.expected"
+          git diff --check
+
+          export RUSTFLAGS=-Dwarnings
+          run_quiet() {
+            local label="$1"; shift
+            local log="$RUNNER_TEMP/${label}.log"
+            if ! "$@" >"$log" 2>&1; then
+              echo "LAS_CORRELATION_${label^^}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              rm -f "$log"
+              exit 1
+            fi
+            rm -f "$log"
+          }
+          run_quiet check cargo +1.98.1 check --locked --all-targets
+          run_quiet clippy cargo +1.98.1 clippy --locked --all-targets -- -D warnings
+
+          run_test() {
+            local label="$1"; local filter="$2"; local out="$RUNNER_TEMP/${label}.txt"
+            if ! cargo +1.98.1 test --locked --lib "$filter" -- --test-threads=1 >"$out" 2>&1; then
+              echo "LAS_CORRELATION_${label^^}_LOG_SHA256=$(sha256sum "$out" | awk '{print $1}')"
+              rm -f "$out"
+              exit 1
+            fi
+            python3 - "$out" "$label" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          counts = [int(x) for x in re.findall(r"test result: ok\. (\d+) passed;", text)]
+          if not counts or max(counts) <= 0:
+              raise SystemExit(f"{sys.argv[2]} executed zero tests")
+          print(f"LAS_CORRELATION_{sys.argv[2].upper()}_COUNT={max(counts)}")
+          PY
+            rm -f "$out"
+          }
+          run_test arm promotion_activation_durable_arm_red_tests::
+          run_test bridge effect_fabric::dispatch_commit::promotion_root_effect_bridge::tests::
+          run_test durability promotion_transaction_durability_red_tests::
+          run_test journal promotion_transaction_journal_
+          run_test linux_journal promotion_transaction_linux_journal_
+
+          full="$RUNNER_TEMP/full.txt"
+          if ! cargo +1.98.1 test --locked --lib -- --test-threads=1 >"$full" 2>&1; then
+            echo "LAS_CORRELATION_FULL_LOG_SHA256=$(sha256sum "$full" | awk '{print $1}')"
+            rm -f "$full"
+            exit 1
+          fi
+          python3 - "$full" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          counts = [int(x) for x in re.findall(r"test result: ok\. (\d+) passed;", text)]
+          if not counts or max(counts) < 1264:
+              raise SystemExit(f"unexpected full-library count: {counts}")
+          print(f"LAS_CORRELATION_FULL_COUNT={max(counts)}")
+          PY
+          rm -f "$full"
+
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$write_auth"
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -- "${expected[@]}"
+          git diff --cached --check
+          git commit -q -m "Bind promotion activation arm to guarded RequestId"
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          echo "LAS_CORRELATION_PRIVATE_COMMIT=PASS"
+          echo "LAS_CORRELATION_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
