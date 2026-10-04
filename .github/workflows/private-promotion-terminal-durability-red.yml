@@ -1,4 +1,4 @@
-name: Private promotion terminal durability RED
+name: Private promotion terminal durability closure
 
 on:
   push:
@@ -10,10 +10,10 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fbb5a09903fcc6047aa5d1a2eecfcb25dc3a87032121b92544bf5a35b9e43515
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 50b0506237036c5098f9b032347c2c4dc379de23b488526d7e1b9ddd3e9ecb77
 
 jobs:
-  red:
+  closure:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -47,7 +47,7 @@ jobs:
           git checkout -q --detach "$resolved"
           test -z "$(git status --porcelain --untracked-files=no)"
           unset PRIVATE_TOKEN auth resolved
-          echo "LAS_PROMOTION_TERMINAL_RED_RECOVERY=PASS"
+          echo "LAS_PROMOTION_TERMINAL_CLOSURE_RECOVERY=PASS"
 
       - name: Install pinned rustfmt
         shell: bash
@@ -55,95 +55,47 @@ jobs:
           set -euo pipefail
           rustup component add --toolchain 1.98.1-x86_64-unknown-linux-gnu rustfmt >/dev/null
           cargo +1.98.1 fmt --version >/dev/null
-          echo "LAS_PROMOTION_TERMINAL_RED_RUSTFMT=PASS"
+          echo "LAS_PROMOTION_TERMINAL_CLOSURE_RUSTFMT=PASS"
 
       - name: Require formatting clean
         shell: bash
         run: |
           set -euo pipefail
           cd target
-          log="$RUNNER_TEMP/promotion-terminal-format.private.log"
-          set +e
-          cargo +1.98.1 fmt --all -- --check >"$log" 2>&1
-          rc=$?
-          set -e
-          echo "LAS_PROMOTION_TERMINAL_RED_FORMAT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          echo "LAS_PROMOTION_TERMINAL_RED_FORMAT_RC=$rc"
-          if [[ "$rc" -eq 0 ]]; then
-            echo "LAS_PROMOTION_TERMINAL_RED_FORMAT=PASS"
-            exit 0
-          fi
-          echo "LAS_PROMOTION_TERMINAL_RED_FORMAT=FAIL"
-          exit 1
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_PROMOTION_TERMINAL_CLOSURE_FORMAT=PASS"
 
-      - name: Require targeted RED to compile cleanly
+      - name: Require warning-free targeted compile
         shell: bash
         env:
           RUSTFLAGS: -Dwarnings
         run: |
           set -euo pipefail
           cd target
-          log="$RUNNER_TEMP/promotion-terminal-compile.private.log"
-          set +e
-          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests --no-run >"$log" 2>&1
-          rc=$?
-          set -e
-          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE_RC=$rc"
-          if [[ "$rc" -eq 0 ]]; then
-            echo "LAS_PROMOTION_TERMINAL_RED_COMPILE=PASS"
-            exit 0
-          fi
-          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE=FAIL"
-          exit 1
+          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests --no-run
+          cargo +1.98.1 test --locked --lib promotion_transaction_durability_red_tests --no-run
+          echo "LAS_PROMOTION_TERMINAL_CLOSURE_COMPILE=PASS"
 
-      - name: Require semantic terminal-durability RED
+      - name: Require terminal durability GREEN
         shell: bash
         run: |
           set -euo pipefail
           cd target
-          log="$RUNNER_TEMP/promotion-terminal-red.private.log"
-          set +e
-          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests -- --test-threads=1 >"$log" 2>&1
-          rc=$?
-          set -e
+          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests -- --test-threads=1
+          echo "LAS_PROMOTION_TERMINAL_CLOSURE_TARGET=PASS"
 
-          compile_marker=0
-          grep -q 'could not compile' "$log" && compile_marker=1
-          failed_marker=0
-          grep -q 'test result: FAILED' "$log" && failed_marker=1
-          assertion_marker=0
-          grep -Eq 'assertion .*failed|panicked at' "$log" && assertion_marker=1
-          expected_message_marker=0
-          grep -q 'terminal .* classification must be durable before guarded retirement' "$log" && expected_message_marker=1
-          unsupported_state_marker=0
-          grep -q 'UnsupportedState' "$log" && unsupported_state_marker=1
-          resource_marker=0
-          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137|stack overflow' "$log" && resource_marker=1
-          network_marker=0
-          grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
+      - name: Require transaction durability regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_transaction_durability_red_tests -- --test-threads=1
+          echo "LAS_PROMOTION_TERMINAL_CLOSURE_DURABILITY=PASS"
 
-          echo "LAS_PROMOTION_TERMINAL_RED_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          echo "LAS_PROMOTION_TERMINAL_RED_RC=$rc"
-          echo "LAS_PROMOTION_TERMINAL_RED_COMPILE_MARKER=$compile_marker"
-          echo "LAS_PROMOTION_TERMINAL_RED_FAILED_MARKER=$failed_marker"
-          echo "LAS_PROMOTION_TERMINAL_RED_ASSERTION_MARKER=$assertion_marker"
-          echo "LAS_PROMOTION_TERMINAL_RED_EXPECTED_MESSAGE_MARKER=$expected_message_marker"
-          echo "LAS_PROMOTION_TERMINAL_RED_UNSUPPORTED_STATE_MARKER=$unsupported_state_marker"
-          echo "LAS_PROMOTION_TERMINAL_RED_RESOURCE_MARKER=$resource_marker"
-          echo "LAS_PROMOTION_TERMINAL_RED_NETWORK_MARKER=$network_marker"
-
-          if [[ "$rc" -ne 0 \
-             && "$compile_marker" -eq 0 \
-             && "$failed_marker" -eq 1 \
-             && "$assertion_marker" -eq 1 \
-             && "$expected_message_marker" -eq 1 \
-             && "$unsupported_state_marker" -eq 1 \
-             && "$resource_marker" -eq 0 \
-             && "$network_marker" -eq 0 ]]; then
-            echo "LAS_PROMOTION_TERMINAL_RED_RESULT=EXPECTED_RED"
-            exit 0
-          fi
-
-          echo "LAS_PROMOTION_TERMINAL_RED_RESULT=UNEXPECTED"
-          exit 1
+      - name: Require journal physical-record adjacency
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_transaction_journal_physical_record -- --test-threads=1
+          echo "LAS_PROMOTION_TERMINAL_CLOSURE_JOURNAL=PASS"
