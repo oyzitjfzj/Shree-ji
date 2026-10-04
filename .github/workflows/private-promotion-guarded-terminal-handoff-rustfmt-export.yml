@@ -1,0 +1,121 @@
+name: Private promotion guarded terminal handoff rustfmt export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-handoff-rustfmt-export.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: d87ef3a547b8b8557a03701294477f54e3693775914299cf622c1896f68c1823
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fd17e01701dd9fd5321c03ee1a0d8a57a5bb5eb75b4e10d63f0222505a140421
+  EXPECTED_PRIVATE_TREE_PROOF: 8a6f2a043e7be1edff8d25acea54b843af5fab7f70c96034a8b04110e8c523e7
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add --toolchain 1.98.1-x86_64-unknown-linux-gnu rustfmt >/dev/null
+          cargo +1.98.1 fmt --version >/dev/null
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_RUSTFMT_TOOLCHAIN=PASS"
+
+      - name: Resolve exact hidden private snapshot
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=32 origin "$matched_ref"
+          resolved="$(git rev-parse FETCH_HEAD)"
+          proof="$(printf '%s' "$resolved" | sha256sum | awk '{print $1}')"
+          test "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          tree="$(git rev-parse "$resolved^{tree}")"
+          tree_proof="$(printf '%s' "$tree" | sha256sum | awk '{print $1}')"
+          test "$tree_proof" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          echo "::add-mask::$resolved"
+          echo "::add-mask::$tree"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          repair_key="$(printf 'LAS_PRIVATE_RUSTFMT_REPAIR_V1\n%s\n%s' "$resolved" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$repair_key"
+          printf '%s' "$repair_key" >"$RUNNER_TEMP/repair-key"
+          chmod 600 "$RUNNER_TEMP/repair-key"
+          unset PRIVATE_TOKEN auth matched_ref resolved proof tree tree_proof repair_key sha ref ref_hash
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_RUSTFMT_RECOVERY=PASS"
+
+      - name: Format only allowlisted Rust surface and encrypt repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          git diff --check
+          changed="$RUNNER_TEMP/changed-paths"
+          git diff --name-only >"$changed"
+          test -s "$changed"
+          while IFS= read -r path; do
+            case "$path" in
+              src/effect_fabric/root_guarded_reconciliation_evidence.rs|src/effect_fabric/promotion_activation_guarded_terminal_handoff_tests.rs|src/lib.rs) ;;
+              *) exit 1 ;;
+            esac
+          done <"$changed"
+          count="$(wc -l <"$changed" | tr -d ' ')"
+          test "$count" -ge 1
+          test "$count" -le 3
+          plain="$RUNNER_TEMP/guarded-terminal-handoff-rustfmt-repair.tar.gz"
+          tr '\n' '\0' <"$changed" | tar --null -T - -czf "$plain"
+          test -s "$plain"
+          export LAS_REPAIR_KEY="$(cat "$RUNNER_TEMP/repair-key")"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+            -pass env:LAS_REPAIR_KEY \
+            -in "$plain" \
+            -out "$RUNNER_TEMP/guarded-terminal-handoff-rustfmt-repair.enc"
+          unset LAS_REPAIR_KEY
+          test -s "$RUNNER_TEMP/guarded-terminal-handoff-rustfmt-repair.enc"
+          rm -f "$plain" "$changed" "$RUNNER_TEMP/repair-key"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_RUSTFMT_SCOPE=PASS"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_RUSTFMT_CHANGED_FILES=$count"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_RUSTFMT_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/guarded-terminal-handoff-rustfmt-repair.enc" | awk '{print $1}')"
+
+      - name: Upload encrypted repair artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encrypted-private-guarded-terminal-handoff-rustfmt-repair
+          path: ${{ runner.temp }}/guarded-terminal-handoff-rustfmt-repair.enc
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
