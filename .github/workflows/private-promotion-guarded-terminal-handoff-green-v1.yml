@@ -1,0 +1,123 @@
+name: Private promotion guarded terminal handoff GREEN v1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-handoff-green-v1.yml"
+      - ".github/private-patches/promotion-guarded-terminal-handoff-green-v1.part1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: d87ef3a547b8b8557a03701294477f54e3693775914299cf622c1896f68c1823
+  EXPECTED_HEAD_PROOF: 646d2c3853b7c5755b07994756ce9d2b1c123304df0da6165ace52fa26691972
+  EXPECTED_TREE_PROOF: 5a075350e9c49fb7053a2f120417623dca2cad4252cb978bfc658ef0a6d112c0
+  EXPECTED_DRIVER_SHA256: 14f425676ac41b055dcfcd98ee22b15300073a4b123e639f054ba7c0110e4f76
+
+jobs:
+  green-verify-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Verify and commit exact private candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          driver_b64="$RUNNER_TEMP/driver.b64"
+          driver_enc="$RUNNER_TEMP/driver.enc"
+          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-guarded-terminal-handoff-green-v1.part1" >"$driver_b64"
+          base64 -d "$driver_b64" >"$driver_enc"
+          rm -f "$driver_b64"
+          test "$(sha256sum "$driver_enc" | awk '{print $1}')" = "$EXPECTED_DRIVER_SHA256"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+
+          driver_key="$(printf 'LAS_PROMOTION_GUARDED_TERMINAL_HANDOFF_GREEN_V1\n%s\n%s' "$start_sha" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$driver_key"
+          export LAS_DRIVER_KEY="$driver_key"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 \
+            -pass env:LAS_DRIVER_KEY -in "$driver_enc" -out "$RUNNER_TEMP/driver.sh.gz"
+          unset LAS_DRIVER_KEY driver_key
+          rm -f "$driver_enc"
+          gzip -dc "$RUNNER_TEMP/driver.sh.gz" >"$RUNNER_TEMP/driver.sh"
+          rm -f "$RUNNER_TEMP/driver.sh.gz"
+          chmod 700 "$RUNNER_TEMP/driver.sh"
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          START_SHA="$start_sha" START_TREE="$tree" "$RUNNER_TEMP/driver.sh"
+          rm -f "$RUNNER_TEMP/driver.sh"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$write_auth"
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_PRIVATE_COMMIT=PASS"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
