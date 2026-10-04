@@ -1,0 +1,86 @@
+name: Private promotion terminal durability GREEN
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-terminal-durability-green.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 50b0506237036c5098f9b032347c2c4dc379de23b488526d7e1b9ddd3e9ecb77
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1024 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=16384 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_PROMOTION_TERMINAL_GREEN_RECOVERY=PASS"
+
+      - name: Install pinned rustfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add --toolchain 1.98.1-x86_64-unknown-linux-gnu rustfmt >/dev/null
+          cargo +1.98.1 fmt --version >/dev/null
+          echo "LAS_PROMOTION_TERMINAL_GREEN_RUSTFMT=PASS"
+
+      - name: Require formatting clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_PROMOTION_TERMINAL_GREEN_FORMAT=PASS"
+
+      - name: Require terminal durability tests green under warnings-as-errors
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_activation_terminal_durability_red_tests -- --test-threads=1
+          echo "LAS_PROMOTION_TERMINAL_GREEN_TARGET=PASS"
+
+      - name: Require durability regression slice green
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_transaction_durability -- --test-threads=1
+          echo "LAS_PROMOTION_TERMINAL_GREEN_REGRESSION=PASS"
