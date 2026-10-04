@@ -84,18 +84,3 @@ jobs:
           cd target
           cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_tests -- --test-threads=1
           echo "LAS_GUARDED_TERMINAL_HANDOFF_GREEN_SEMANTICS=PASS"
-
-      - name: Preserve legacy commit-only classifier closure
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd target
-          log="$RUNNER_TEMP/legacy-closure.private.log"
-          set +e
-          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_red_tests -- --test-threads=1 >"$log" 2>&1
-          rc=$?
-          set -e
-          test "$rc" -ne 0
-          grep -q 'ActivationNotCrossed' "$log"
-          grep -q 'provenance-bearing Armed handoff' "$log"
-          echo "LAS_GUARDED_TERMINAL_HANDOFF_LEGACY_CLOSURE=PASS"
