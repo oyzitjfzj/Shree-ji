@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/private-promotion-activation-guarded-crossing-green-v1.yml"
-      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v1.b64"
+      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v1.part1"
+      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v1.part2"
+      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v1.part3"
   workflow_dispatch:
 
 permissions:
@@ -48,7 +50,10 @@ jobs:
 
           driver_b64="$RUNNER_TEMP/driver.b64"
           driver_enc="$RUNNER_TEMP/driver.enc"
-          curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-guarded-crossing-driver-v1.b64" -o "$driver_b64"
+          : >"$driver_b64"
+          for part in 1 2 3; do
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-guarded-crossing-driver-v1.part${part}" >>"$driver_b64"
+          done
           base64 -d "$driver_b64" >"$driver_enc"
           rm -f "$driver_b64"
           test "$(sha256sum "$driver_enc" | awk '{print $1}')" = "$EXPECTED_DRIVER_SHA256"
