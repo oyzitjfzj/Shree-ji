@@ -54,7 +54,7 @@ jobs:
           for part in 1 2 3; do
             curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-guarded-restart-evidence-driver-v1.part${part}" >>"$driver_b64"
           done
-          base64 -d "$driver_b64" >"$driver_enc"
+          tr -d '[:space:]' <"$driver_b64" | base64 -d >"$driver_enc"
           rm -f "$driver_b64"
           test "$(sha256sum "$driver_enc" | awk '{print $1}')" = "$EXPECTED_DRIVER_SHA256"
 
