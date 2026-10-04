@@ -12,7 +12,7 @@ permissions:
 
 env:
   TARGET_REF_HASH: ddab355e844c438545b265366dfd3be27830b044ac7e57329c6747e2635773c4
-  EXPECTED_HEAD_PROOF: b4d2980d32006775dcc537eadeb7ca5640a879614e29a02e260f6a63559517c5
+  EXPECTED_HEAD_PROOF: abb321a421cc4ebd84a042f62797aac8a4842ada30f5b608e46c67853d142a78
   EXPECTED_BASE_PROOF: 36f779ebc32446e2b0ef07f71106917595d524d784fb5ea94cd9bb54d533e6e7
 
 jobs:
@@ -70,22 +70,24 @@ jobs:
           echo "::add-mask::$start_sha"
           test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
 
-          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=3 origin "$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=4 origin "$matched_ref"
           test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
           git checkout -q --detach "$start_sha"
-          base_sha="$(git rev-parse HEAD~2)"
+          base_sha="$(git rev-parse HEAD~3)"
           echo "::add-mask::$base_sha"
           test "$(printf '%s' "$base_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_BASE_PROOF"
           test -f .verification/promotion-activation-guarded-epoch-binding-driver.sh
           test -f .verification/promotion-activation-guarded-epoch-binding-driver-v2.sh
-          chmod 700 .verification/promotion-activation-guarded-epoch-binding-driver-v2.sh
+          test -f .verification/promotion-activation-guarded-epoch-binding-driver-v3.sh
+          chmod 700 .verification/promotion-activation-guarded-epoch-binding-driver-v3.sh
 
-          BASE_SHA="$base_sha" .verification/promotion-activation-guarded-epoch-binding-driver-v2.sh
+          BASE_SHA="$base_sha" .verification/promotion-activation-guarded-epoch-binding-driver-v3.sh
           new_sha="$(git rev-parse HEAD)"
           echo "::add-mask::$new_sha"
           test "$(git rev-parse HEAD^)" = "$base_sha"
           test ! -e .verification/promotion-activation-guarded-epoch-binding-driver.sh
           test ! -e .verification/promotion-activation-guarded-epoch-binding-driver-v2.sh
+          test ! -e .verification/promotion-activation-guarded-epoch-binding-driver-v3.sh
 
           write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
           echo "::add-mask::$write_auth"
@@ -107,6 +109,7 @@ jobs:
           test "$(git rev-parse HEAD^)" = "$base_sha"
           test ! -e .verification/promotion-activation-guarded-epoch-binding-driver.sh
           test ! -e .verification/promotion-activation-guarded-epoch-binding-driver-v2.sh
+          test ! -e .verification/promotion-activation-guarded-epoch-binding-driver-v3.sh
 
           cargo +1.98.1 fmt --all -- --check
           git diff --check "$base_sha" "$new_sha"
