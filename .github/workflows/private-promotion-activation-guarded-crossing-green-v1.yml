@@ -5,9 +5,9 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/private-promotion-activation-guarded-crossing-green-v1.yml"
-      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v3.part1"
-      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v3.part2"
-      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v3.part3"
+      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v4.part1"
+      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v4.part2"
+      - ".github/private-patches/promotion-activation-guarded-crossing-driver-v4.part3"
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,7 @@ env:
   TARGET_REF_HASH: b773b1e8c6c1cbdfd3733d3029c1bf79473040b81131ffd4ac1ae055812ed196
   EXPECTED_HEAD_PROOF: 0fabd00fb4c8ded9c7c28dbd5f5012b2dd655a1d24bdfc3656abc5de9533419e
   EXPECTED_TREE_PROOF: b82b7aa6e3d5477e9461c70f6d180c8ce1f20e84e1059c6e245b28628bd6006e
-  EXPECTED_DRIVER_SHA256: 01eb8057a2be8549af1c66c3f9445811f471e74b9d3c7849b3338be298a824bc
+  EXPECTED_DRIVER_SHA256: d9ac426d4a4acd8eb0fb5e487e905d6b1e86be16ae28246102bd5ad0f7951a77
 
 jobs:
   red-green-verify-and-commit:
@@ -52,7 +52,7 @@ jobs:
           driver_enc="$RUNNER_TEMP/driver.enc"
           : >"$driver_b64"
           for part in 1 2 3; do
-            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-guarded-crossing-driver-v3.part${part}" >>"$driver_b64"
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-activation-guarded-crossing-driver-v4.part${part}" >>"$driver_b64"
           done
           base64 -d "$driver_b64" >"$driver_enc"
           rm -f "$driver_b64"
@@ -90,7 +90,7 @@ jobs:
           echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
 
-          driver_key="$(printf 'LAS_PROMOTION_ACTIVATION_GUARDED_CROSSING_DRIVER_V3\n%s\n%s' "$start_sha" "$tree" | sha256sum | awk '{print $1}')"
+          driver_key="$(printf 'LAS_PROMOTION_ACTIVATION_GUARDED_CROSSING_DRIVER_V4\n%s\n%s' "$start_sha" "$tree" | sha256sum | awk '{print $1}')"
           echo "::add-mask::$driver_key"
           export LAS_DRIVER_KEY="$driver_key"
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_DRIVER_KEY -in "$driver_enc" -out "$RUNNER_TEMP/driver.sh.gz"
