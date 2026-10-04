@@ -1,0 +1,129 @@
+name: Private promotion guarded terminal handoff GREEN verify v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-handoff-green-verify-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: d87ef3a547b8b8557a03701294477f54e3693775914299cf622c1896f68c1823
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: fd17e01701dd9fd5321c03ee1a0d8a57a5bb5eb75b4e10d63f0222505a140421
+  EXPECTED_PRIVATE_TREE_PROOF: 8a6f2a043e7be1edff8d25acea54b843af5fab7f70c96034a8b04110e8c523e7
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$matched_sha"
+          test "$(printf '%s' "$matched_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "LAS_GUARDED_TERMINAL_GREEN_HEAD=PASS"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$matched_sha"
+          git checkout -q --detach "$matched_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          echo "LAS_GUARDED_TERMINAL_GREEN_TREE=PASS"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Require formatting clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_GUARDED_TERMINAL_GREEN_FORMAT=PASS"
+
+      - name: Execute guarded terminal handoff tests
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_tests -- --test-threads=1
+          echo "LAS_GUARDED_TERMINAL_GREEN_TARGETED=PASS"
+
+      - name: Execute all library tests
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib -- --test-threads=1
+          echo "LAS_GUARDED_TERMINAL_GREEN_LIB=PASS"
+
+      - name: Require strict Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 clippy --locked --lib -- -D warnings
+          echo "LAS_GUARDED_TERMINAL_GREEN_CLIPPY=PASS"
+
+      - name: Execute canonical current-boundary verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          bash tools/verify_current_boundary.sh
+          echo "LAS_GUARDED_TERMINAL_GREEN_CANONICAL=PASS"
+
+      - name: Require unchanged exact snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(printf '%s' "$(git rev-parse HEAD)" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test "$(printf '%s' "$(git rev-parse 'HEAD^{tree}')" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          echo "LAS_GUARDED_TERMINAL_GREEN_EXACT_SNAPSHOT=PASS"
