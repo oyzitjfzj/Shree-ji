@@ -1,0 +1,117 @@
+name: Private promotion guarded restart evidence GREEN v1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-restart-evidence-green-v1.yml"
+      - ".github/private-patches/promotion-guarded-restart-evidence-driver-v1.part1"
+      - ".github/private-patches/promotion-guarded-restart-evidence-driver-v1.part2"
+      - ".github/private-patches/promotion-guarded-restart-evidence-driver-v1.part3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: b773b1e8c6c1cbdfd3733d3029c1bf79473040b81131ffd4ac1ae055812ed196
+  EXPECTED_HEAD_PROOF: 36f779ebc32446e2b0ef07f71106917595d524d784fb5ea94cd9bb54d533e6e7
+  EXPECTED_TREE_PROOF: 08f79e4fde24e7b1e29a05b2c95bcca3d1b015fdd1f337928e7a3031a5509749
+  EXPECTED_DRIVER_SHA256: 41f6b5d0032f6316a2b00976858e11262cde2069b8f33da1d058b88e845d2eb6
+
+jobs:
+  red-green-verify-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Verify and commit exact private candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          driver_b64="$RUNNER_TEMP/driver.b64"
+          driver_enc="$RUNNER_TEMP/driver.enc"
+          : >"$driver_b64"
+          for part in 1 2 3; do
+            curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/promotion-guarded-restart-evidence-driver-v1.part${part}" >>"$driver_b64"
+          done
+          base64 -d "$driver_b64" >"$driver_enc"
+          rm -f "$driver_b64"
+          test "$(sha256sum "$driver_enc" | awk '{print $1}')" = "$EXPECTED_DRIVER_SHA256"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+
+          driver_key="$(printf 'LAS_PROMOTION_ACTIVATION_GUARDED_RESTART_EVIDENCE_DRIVER_V1\n%s\n%s' "$start_sha" "$tree" | sha256sum | awk '{print $1}')"
+          echo "::add-mask::$driver_key"
+          export LAS_DRIVER_KEY="$driver_key"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_DRIVER_KEY -in "$driver_enc" -out "$RUNNER_TEMP/driver.sh.gz"
+          unset LAS_DRIVER_KEY driver_key
+          rm -f "$driver_enc"
+          gzip -dc "$RUNNER_TEMP/driver.sh.gz" >"$RUNNER_TEMP/driver.sh"
+          rm -f "$RUNNER_TEMP/driver.sh.gz"
+          chmod 700 "$RUNNER_TEMP/driver.sh"
+
+          START_SHA="$start_sha" START_TREE="$tree" "$RUNNER_TEMP/driver.sh"
+          rm -f "$RUNNER_TEMP/driver.sh"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$write_auth"
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          echo "LAS_PROMOTION_GUARDED_RESTART_EVIDENCE_PRIVATE_COMMIT=PASS"
+          echo "LAS_PROMOTION_GUARDED_RESTART_EVIDENCE_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
