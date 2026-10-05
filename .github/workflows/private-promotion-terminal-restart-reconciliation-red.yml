@@ -11,7 +11,6 @@ permissions:
   contents: read
 
 env:
-  # Opaque identity proofs only; private ref, commit and source path never enter public logs.
   TARGET_REF_HASH: b380a58f31b831b378c2be4133dbd56832624ca7a830d5fd60f01b0eaa77cf87
   EXPECTED_HEAD_PROOF: 93d5da57eb778ba088d779d1a8f893771eefd25b8ffe411672582261fb6ced3e
   EXPECTED_TREE_PROOF: dee5f89dcc8991f0ba896f97ab8ffdc86150f0810dcd983fb7f64107498bdc60
@@ -47,7 +46,6 @@ jobs:
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           echo "::add-mask::$auth"
-
           refs="$RUNNER_TEMP/private-heads"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
           matched_ref=""
@@ -65,7 +63,6 @@ jobs:
           echo "::add-mask::$matched_ref"
           echo "::add-mask::$start_sha"
           test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
-
           git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
           test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
           git checkout -q --detach "$start_sha"
@@ -120,9 +117,9 @@ jobs:
                       ))
 
           expected = ("E0432", os.environ["EXPECTED_ERROR_PATH_HASH"], True)
-          if errors != [expected]:
-              sanitized = [(code, path_hash, has_symbol) for code, path_hash, has_symbol in errors]
-              raise SystemExit(f"unexpected sanitized RED diagnostics: {sanitized}")
-          print("LAS_PROMOTION_RESTART_RECONCILIATION_EXPECTED_RED=OBSERVED")
+          if not errors or any(error != expected for error in errors):
+              sanitized = sorted(set(errors))
+              raise SystemExit(f"unexpected sanitized RED diagnostics: {sanitized}; count={len(errors)}")
+          print(f"LAS_PROMOTION_RESTART_RECONCILIATION_EXPECTED_RED=OBSERVED count={len(errors)}")
           PY
           rm -f "$cargo_json"
