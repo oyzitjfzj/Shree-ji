@@ -1,0 +1,153 @@
+name: Private promotion terminal retirement fault tests apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-terminal-retirement-fault-tests-apply.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 98b01d796ffaad390d45b063ef2f95c583ea99f14d6163bde5fd5c2082d026eb
+  EXPECTED_HEAD_PROOF: 6a41e1adb0a9d79d680edadcabb6aee1eb7c2d544a8e4fce5f7d55d3f7eaad69
+  EXPECTED_TREE_PROOF: 774ae3bb2ae70defa323d9e729c4ffb82eccb712c84fa7688743274fb7ba7d69
+
+jobs:
+  apply-verify-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+      - name: Apply verify and commit exact private fault tests
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          echo "::add-mask::$write_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+
+          python3 tools/tmp_add_promotion_terminal_retirement_fault_tests.py >"$RUNNER_TEMP/patch.private.log" 2>&1
+          rm tools/tmp_add_promotion_terminal_retirement_fault_tests.py
+          cargo +1.98.1 fmt --all >>"$RUNNER_TEMP/patch.private.log" 2>&1
+          git diff --check >>"$RUNNER_TEMP/patch.private.log" 2>&1
+
+          git diff --name-only | sort >"$RUNNER_TEMP/actual-paths"
+          cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
+          src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs
+          tools/tmp_add_promotion_terminal_retirement_fault_tests.py
+          EOF
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
+          while read -r changed; do
+            grep -Fxq "$changed" "$RUNNER_TEMP/allowed-paths"
+          done <"$RUNNER_TEMP/actual-paths"
+          for required in \
+            src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs \
+            tools/tmp_add_promotion_terminal_retirement_fault_tests.py; do
+            grep -Fxq "$required" "$RUNNER_TEMP/actual-paths"
+          done
+          test ! -e tools/tmp_add_promotion_terminal_retirement_fault_tests.py
+          echo 'LAS_PROMOTION_RETIREMENT_FAULT_SCOPE=PASS'
+          echo "LAS_PROMOTION_RETIREMENT_FAULT_PATCH_LOG_SHA256=$(sha256sum "$RUNNER_TEMP/patch.private.log" | awk '{print $1}')"
+
+          run_stage() {
+            local stage="$1"
+            shift
+            local log="$RUNNER_TEMP/${stage}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "LAS_PROMOTION_RETIREMENT_FAULT_STAGE=${stage}"
+              echo "LAS_PROMOTION_RETIREMENT_FAULT_RC=${rc}"
+              echo "LAS_PROMOTION_RETIREMENT_FAULT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              exit "$rc"
+            fi
+            echo "LAS_PROMOTION_RETIREMENT_FAULT_${stage}=PASS"
+            echo "LAS_PROMOTION_RETIREMENT_FAULT_${stage}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            rm -f "$log"
+          }
+
+          run_stage fmt_check cargo +1.98.1 fmt --all -- --check
+          run_stage cargo_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          run_stage retirement_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_retirement_tests -- --test-threads=1
+          run_stage durability_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_durability_tests -- --test-threads=1
+          run_stage journal_persist_fault_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_journal_persist_red_tests -- --test-threads=1
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -A \
+            src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs \
+            tools/tmp_add_promotion_terminal_retirement_fault_tests.py
+          git diff --cached --check
+          git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
+          diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
+          git commit -q -m "Prove promotion retirement fails closed on journal uncertainty"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo 'LAS_PROMOTION_RETIREMENT_FAULT_PRIVATE_COMMIT=PASS'
+          echo "LAS_PROMOTION_RETIREMENT_FAULT_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PROMOTION_RETIREMENT_FAULT_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
