@@ -1,0 +1,139 @@
+name: Private promotion terminal retention release RED
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-terminal-retention-release-red.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: bfa498fd37132d8d3f5b65692a4745711849a1591a0dedf5b9f789fc1c2e03ff
+  EXPECTED_HEAD_PROOF: 5c4af9a6700d7f3a0823eab2a33310b39f118b3f06c0bbb20f5e3e59ac7c69fa
+  EXPECTED_TREE_PROOF: ec3a7293caa602c89a6616e6402186ae3fa961177e9a9ef05b3be0efbea63717
+  EXPECTED_ERROR_PATH_HASH: 49fdd52ec12f8c153d89b211dc93bd7cd14a0062d858b8451b4051bdae2612a0
+
+jobs:
+  register-and-prove-red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+      - name: Register exact private RED and prove missing boundary
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          echo "::add-mask::$write_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+
+          python3 tools/tmp_register_promotion_terminal_persist_red.py
+          cargo +1.98.1 fmt --all
+          git diff --check
+          test "$(git diff --name-only)" = "src/lib.rs"
+
+          cargo_json="$RUNNER_TEMP/red.jsonl"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --message-format=json >"$cargo_json" 2>/dev/null
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+
+          python3 - "$cargo_json" "$root" <<'PY'
+          import hashlib, json, os, sys
+          log_path, root = sys.argv[1], os.path.realpath(sys.argv[2])
+          errors = []
+          with open(log_path, encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
+                  spans = [s for s in (msg.get("spans") or []) if s.get("is_primary")]
+                  for span in spans or [{}]:
+                      filename = str(span.get("file_name") or "")
+                      absolute = os.path.realpath(os.path.join(root, filename)) if filename else ""
+                      rel = os.path.relpath(absolute, root).replace(os.sep, "/") if absolute else "NO_SPAN"
+                      errors.append((code, hashlib.sha256(rel.encode()).hexdigest()))
+          expected = ("E0432", os.environ["EXPECTED_ERROR_PATH_HASH"])
+          if errors != [expected]:
+              raise SystemExit(f"unexpected sanitized RED diagnostics: {errors}")
+          print("LAS_PROMOTION_RETENTION_RELEASE_EXPECTED_RED=OBSERVED")
+          PY
+          rm -f "$cargo_json"
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add src/lib.rs
+          git diff --cached --check
+          git commit -q -m "Register persisted terminal acknowledgement RED"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_sha"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo 'LAS_PROMOTION_RETENTION_RELEASE_RED_COMMIT=PASS'
+          echo "LAS_PROMOTION_RETENTION_RELEASE_RED_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
