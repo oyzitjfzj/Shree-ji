@@ -1,4 +1,4 @@
-name: Private promotion terminal retention propagation apply
+name: Private promotion terminal stable retirement apply
 
 on:
   push:
@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 98b01d796ffaad390d45b063ef2f95c583ea99f14d6163bde5fd5c2082d026eb
-  EXPECTED_HEAD_PROOF: 6832944a68a6ac768ccfc700c183db827a1997ea21c986a128cd71170393e09e
-  EXPECTED_TREE_PROOF: 8ed7716ddc24c48b95ff01ff084ee54c69c7936c01f3d374e590545f0917009d
+  EXPECTED_HEAD_PROOF: adfcd031fc83c514051c35bbc1b4a18c84c27669c87950adf4fce014dbca9254
+  EXPECTED_TREE_PROOF: 059465d21172fb91053728490ca42ce8371bc470c6bcb73e48ed9a2f5e417fed
 
 jobs:
   apply-verify-commit:
@@ -29,7 +29,7 @@ jobs:
           cargo +1.98.1 --version
           rustc +1.98.1 --version
 
-      - name: Apply verify and commit exact private propagation
+      - name: Apply verify and commit exact private stable retirement
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -86,24 +86,33 @@ jobs:
 
           git diff --name-only | sort >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
-          src/effect_fabric/root_guarded_effect_service.rs
+          src/effect_fabric/promotion_activation_guarded_terminal_durability.rs
+          src/effect_fabric/promotion_activation_guarded_terminal_durability_tests.rs
+          src/effect_fabric/promotion_activation_guarded_terminal_handoff_tests.rs
+          src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs
+          src/effect_fabric/root_guarded_durable_state.rs
           src/effect_fabric/root_guarded_executor.rs
-          src/effect_fabric/root_supervisor_active_runtime.rs
-          src/effect_fabric/root_supervisor_epoch_coordinator.rs
-          src/effect_fabric/root_supervisor_linux_guarded_session.rs
+          src/effect_fabric/root_guarded_reconciliation_evidence.rs
+          src/effect_fabric/root_guarded_restart_fence.rs
+          src/lib.rs
+          tools/tmp_apply_promotion_retention_propagation.py
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
           while read -r changed; do
             grep -Fxq "$changed" "$RUNNER_TEMP/allowed-paths"
           done <"$RUNNER_TEMP/actual-paths"
           for required in \
-            src/effect_fabric/root_guarded_effect_service.rs \
-            src/effect_fabric/root_supervisor_active_runtime.rs \
-            src/effect_fabric/root_supervisor_epoch_coordinator.rs \
-            src/effect_fabric/root_supervisor_linux_guarded_session.rs; do
+            src/effect_fabric/promotion_activation_guarded_terminal_durability.rs \
+            src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs \
+            src/effect_fabric/root_guarded_durable_state.rs \
+            src/effect_fabric/root_guarded_executor.rs \
+            src/effect_fabric/root_guarded_reconciliation_evidence.rs \
+            src/effect_fabric/root_guarded_restart_fence.rs \
+            src/lib.rs \
+            tools/tmp_apply_promotion_retention_propagation.py; do
             grep -Fxq "$required" "$RUNNER_TEMP/actual-paths"
           done
-          echo 'LAS_PROMOTION_RETENTION_PROPAGATION_SCOPE=PASS'
+          echo 'LAS_PROMOTION_STABLE_RETIREMENT_SCOPE=PASS'
 
           run_stage() {
             local stage="$1"
@@ -114,32 +123,40 @@ jobs:
             local rc=$?
             set -e
             if [[ $rc -ne 0 ]]; then
-              echo "LAS_PROMOTION_RETENTION_PROPAGATION_STAGE=${stage}"
-              echo "LAS_PROMOTION_RETENTION_PROPAGATION_RC=${rc}"
-              echo "LAS_PROMOTION_RETENTION_PROPAGATION_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_PROMOTION_STABLE_RETIREMENT_STAGE=${stage}"
+              echo "LAS_PROMOTION_STABLE_RETIREMENT_RC=${rc}"
+              echo "LAS_PROMOTION_STABLE_RETIREMENT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
               exit "$rc"
             fi
             rm -f "$log"
-            echo "LAS_PROMOTION_RETENTION_PROPAGATION_${stage}=PASS"
+            echo "LAS_PROMOTION_STABLE_RETIREMENT_${stage}=PASS"
           }
 
           run_stage fmt_check cargo +1.98.1 fmt --all -- --check
           run_stage cargo_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
           run_stage linux_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials
+          run_stage retirement_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_retirement_tests -- --test-threads=1
+          run_stage handoff_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_tests -- --test-threads=1
+          run_stage durability_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_durability_tests -- --test-threads=1
           run_stage retention_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_guarded_terminal_retention_red_tests -- --test-threads=1
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
-          git add \
-            src/effect_fabric/root_guarded_effect_service.rs \
+          git add -A -- \
+            src/effect_fabric/promotion_activation_guarded_terminal_durability.rs \
+            src/effect_fabric/promotion_activation_guarded_terminal_durability_tests.rs \
+            src/effect_fabric/promotion_activation_guarded_terminal_handoff_tests.rs \
+            src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs \
+            src/effect_fabric/root_guarded_durable_state.rs \
             src/effect_fabric/root_guarded_executor.rs \
-            src/effect_fabric/root_supervisor_active_runtime.rs \
-            src/effect_fabric/root_supervisor_epoch_coordinator.rs \
-            src/effect_fabric/root_supervisor_linux_guarded_session.rs
+            src/effect_fabric/root_guarded_reconciliation_evidence.rs \
+            src/effect_fabric/root_guarded_restart_fence.rs \
+            src/lib.rs \
+            tools/tmp_apply_promotion_retention_propagation.py
           git diff --cached --check
           git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
           diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
-          git commit -q -m "Propagate promotion terminal retention to Root ingress"
+          git commit -q -m "Require stable promotion acknowledgement for terminal retirement"
           test "$(git rev-parse HEAD^)" = "$start_sha"
           new_sha="$(git rev-parse HEAD)"
           new_tree="$(git rev-parse 'HEAD^{tree}')"
@@ -154,6 +171,6 @@ jobs:
 
           post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$post_sha" = "$new_sha"
-          echo 'LAS_PROMOTION_RETENTION_PROPAGATION_PRIVATE_COMMIT=PASS'
-          echo "LAS_PROMOTION_RETENTION_PROPAGATION_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          echo "LAS_PROMOTION_RETENTION_PROPAGATION_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+          echo 'LAS_PROMOTION_STABLE_RETIREMENT_PRIVATE_COMMIT=PASS'
+          echo "LAS_PROMOTION_STABLE_RETIREMENT_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PROMOTION_STABLE_RETIREMENT_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
