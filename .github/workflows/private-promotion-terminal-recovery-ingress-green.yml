@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: c382c1b702b9f5450e6b7d77c322fe3ae6d2ada5d8f609c498c8187ff34d7fcd
-  EXPECTED_HEAD_PROOF: e29f329e643e36d1aaa74ff44e4805d84aa2e8644a2128c9637f7ffb3e94fe5c
-  EXPECTED_TREE_PROOF: 323a9c2dc76ce66225683c0da56cd0e69455f6bfbb2ed4977a156e58aa83f3de
+  EXPECTED_HEAD_PROOF: 2702fc7d33217fd01b572b13dd8bf58265688eb6db6eed58ff71e2947ee71c2c
+  EXPECTED_TREE_PROOF: 5adaf2e7bbfa22444b130dc87f69c94bf4a15b9f3058817140c0aeb73d370c64
 
 jobs:
   green:
@@ -62,7 +62,7 @@ jobs:
           echo "::add-mask::$matched_ref"
           echo "::add-mask::$start_sha"
           test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2 origin "$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
           test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
           git checkout -q --detach "$start_sha"
           tree="$(git rev-parse 'HEAD^{tree}')"
@@ -72,222 +72,26 @@ jobs:
           unset PRIVATE_TOKEN auth matched_ref start_sha tree
           echo "LAS_PROMOTION_TERMINAL_RECOVERY_GREEN_RECOVERY=PASS"
 
-      - name: Apply bounded recovery-authority patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$GITHUB_WORKSPACE/target"
-          python3 - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one replacement, found {count}")
-              p.write_text(text.replace(old, new, 1))
-
-          state = "src/defence_evolution/promotion_transaction_state.rs"
-          state_anchor = '''impl TrustedPromotionTransactionIngress {
-              #[cfg(test)]
-              pub(crate) const fn from_test_boundary() -> Self {
-                  Self { seal: true }
-              }
-
-              const fn is_valid(&self) -> bool {
-                  self.seal
-              }
-          }
-          '''
-          state_replacement = state_anchor + '''
-          /// Reconstruct one validated durable promotion snapshot after process loss without
-          /// exposing the live mutation ingress to the recovery caller.
-          ///
-          /// The durable decoder still replays the coordinator's ordinary semantic transitions
-          /// and therefore preserves all invariant checks and a fresh process-local source fence.
-          /// The temporary ingress never leaves this function and cannot authorize a live
-          /// promotion crossing; callers receive only the reconstructed non-root state owner.
-          pub(crate) fn recover_promotion_transaction_after_process_loss<
-              const RECOVERIES: usize,
-              const CONSUMED: usize,
-          >(
-              snapshot: super::promotion_transaction_durability::PromotionTransactionDurableSnapshot,
-          ) -> Result<
-              PromotionTransactionCoordinator<RECOVERIES, CONSUMED>,
-              super::promotion_transaction_durability::PromotionTransactionDurabilityError,
-          > {
-              let recovery_replay_ingress = TrustedPromotionTransactionIngress { seal: true };
-              PromotionTransactionCoordinator::<RECOVERIES, CONSUMED>::recover_from_durable_snapshot(
-                  &recovery_replay_ingress,
-                  snapshot,
-              )
-          }
-          '''
-          replace_once(state, state_anchor, state_replacement)
-
-          terminal = "src/effect_fabric/promotion_activation_guarded_terminal_durability.rs"
-          replace_once(
-              terminal,
-              '''use crate::defence_evolution::promotion_transaction_state::{
-              PromotionTransactionCoordinator, TrustedPromotionTransactionIngress,
-          };
-          ''',
-              '''use crate::defence_evolution::promotion_transaction_state::{
-              PromotionTransactionCoordinator, TrustedPromotionTransactionIngress,
-              recover_promotion_transaction_after_process_loss,
-          };
-          ''',
-          )
-          replace_once(
-              terminal,
-              '''pub(super) fn recover_guarded_terminal_stable_acknowledgement<
-              S,
-              const RECOVERIES: usize,
-              const CONSUMED: usize,
-          >(
-              ingress: &TrustedPromotionTransactionIngress,
-              storage: &mut S,
-          ) -> Result<
-          ''',
-              '''pub(super) fn recover_guarded_terminal_stable_acknowledgement<
-              S,
-              const RECOVERIES: usize,
-              const CONSUMED: usize,
-          >(
-              storage: &mut S,
-          ) -> Result<
-          ''',
-          )
-          replace_once(
-              terminal,
-              '''    let recovered = recover_durable_guarded_terminal_snapshot::<RECOVERIES, CONSUMED>(
-                  ingress,
-                  PromotionTransactionDurableSnapshot::from_canonical_bytes(bytes),
-              )
-          ''',
-              '''    let recovered =
-                  recover_durable_guarded_terminal_snapshot_after_process_loss::<RECOVERIES, CONSUMED>(
-                      PromotionTransactionDurableSnapshot::from_canonical_bytes(bytes),
-                  )
-          ''',
-          )
-          old_decl = '''pub(super) fn recover_durable_guarded_terminal_snapshot<
-              const RECOVERIES: usize,
-              const CONSUMED: usize,
-          >(
-              ingress: &TrustedPromotionTransactionIngress,
-              snapshot: PromotionTransactionDurableSnapshot,
-          ) -> Result<
-              PromotionActivationGuardedTerminalDurableAcknowledgement<RECOVERIES, CONSUMED>,
-              PromotionActivationGuardedTerminalDurabilityError,
-          > {
-          '''
-          new_decl = '''pub(super) fn recover_durable_guarded_terminal_snapshot<
-              const RECOVERIES: usize,
-              const CONSUMED: usize,
-          >(
-              ingress: &TrustedPromotionTransactionIngress,
-              snapshot: PromotionTransactionDurableSnapshot,
-          ) -> Result<
-              PromotionActivationGuardedTerminalDurableAcknowledgement<RECOVERIES, CONSUMED>,
-              PromotionActivationGuardedTerminalDurabilityError,
-          > {
-              recover_durable_guarded_terminal_snapshot_with_recovery_source(
-                  Some(ingress),
-                  snapshot,
-              )
-          }
-
-          fn recover_durable_guarded_terminal_snapshot_after_process_loss<
-              const RECOVERIES: usize,
-              const CONSUMED: usize,
-          >(
-              snapshot: PromotionTransactionDurableSnapshot,
-          ) -> Result<
-              PromotionActivationGuardedTerminalDurableAcknowledgement<RECOVERIES, CONSUMED>,
-              PromotionActivationGuardedTerminalDurabilityError,
-          > {
-              recover_durable_guarded_terminal_snapshot_with_recovery_source(None, snapshot)
-          }
-
-          fn recover_durable_guarded_terminal_snapshot_with_recovery_source<
-              const RECOVERIES: usize,
-              const CONSUMED: usize,
-          >(
-              ingress: Option<&TrustedPromotionTransactionIngress>,
-              snapshot: PromotionTransactionDurableSnapshot,
-          ) -> Result<
-              PromotionActivationGuardedTerminalDurableAcknowledgement<RECOVERIES, CONSUMED>,
-              PromotionActivationGuardedTerminalDurabilityError,
-          > {
-          '''
-          replace_once(terminal, old_decl, new_decl)
-          replace_once(
-              terminal,
-              '''    let transaction =
-                  PromotionTransactionCoordinator::<RECOVERIES, CONSUMED>::recover_from_durable_snapshot(
-                      ingress,
-                      PromotionTransactionDurableSnapshot::from_canonical_bytes(semantic_bytes),
-                  )
-                  .map_err(PromotionActivationGuardedTerminalDurabilityError::Transaction)?;
-          ''',
-              '''    let semantic_snapshot =
-                  PromotionTransactionDurableSnapshot::from_canonical_bytes(semantic_bytes);
-              let transaction = match ingress {
-                  Some(live_ingress) => PromotionTransactionCoordinator::<RECOVERIES, CONSUMED>::
-                      recover_from_durable_snapshot(live_ingress, semantic_snapshot),
-                  None => recover_promotion_transaction_after_process_loss::<RECOVERIES, CONSUMED>(
-                      semantic_snapshot,
-                  ),
-              }
-              .map_err(PromotionActivationGuardedTerminalDurabilityError::Transaction)?;
-          ''',
-          )
-
-          restart = "src/effect_fabric/root_supervisor_promotion_restart.rs"
-          replace_once(
-              restart,
-              '''use crate::defence_evolution::promotion_transaction_journal_persist::PromotionTransactionJournalStorage;
-          use crate::defence_evolution::promotion_transaction_state::TrustedPromotionTransactionIngress;
-          ''',
-              '''use crate::defence_evolution::promotion_transaction_journal_persist::PromotionTransactionJournalStorage;
-          ''',
-          )
-          replace_once(
-              restart,
-              '''>(
-              ingress: &TrustedPromotionTransactionIngress,
-              promotion_storage: &mut P,
-          ''',
-              '''>(
-              promotion_storage: &mut P,
-          ''',
-          )
-          replace_once(
-              restart,
-              '''    >(ingress, promotion_storage)
-          ''',
-              '''    >(promotion_storage)
-          ''',
-          )
-          PY
-
-          cargo +1.98.1 fmt --all
-          git diff --check
-          changed="$(git diff --name-only | sort)"
-          expected="$(printf '%s\n' \
-            src/defence_evolution/promotion_transaction_state.rs \
-            src/effect_fabric/promotion_activation_guarded_terminal_durability.rs \
-            src/effect_fabric/root_supervisor_promotion_restart.rs | sort)"
-          test "$changed" = "$expected"
-          echo "LAS_PROMOTION_TERMINAL_RECOVERY_GREEN_PATCH_SCOPE=PASS"
-
-      - name: Verify exact GREEN
+      - name: Compile ingress-free process-loss recovery
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/target"
           cargo +1.98.1 check --locked --lib --tests
+          echo "LAS_PROMOTION_TERMINAL_RECOVERY_GREEN_COMPILE=PASS"
+
+      - name: Run exact recovery-ingress discriminator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
           cargo +1.98.1 test --locked terminal_restart_recovery_surface_does_not_require_live_promotion_mutation_authority -- --nocapture
-          echo "LAS_PROMOTION_TERMINAL_RECOVERY_WITHOUT_LIVE_INGRESS_GREEN=PASS"
+          echo "LAS_PROMOTION_TERMINAL_RECOVERY_GREEN_DISCRIMINATOR=PASS"
+
+      - name: Require canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_PROMOTION_TERMINAL_RECOVERY_GREEN_FMT=PASS"
