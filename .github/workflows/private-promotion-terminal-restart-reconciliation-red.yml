@@ -5,19 +5,30 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/private-promotion-terminal-restart-reconciliation-red.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  # SHA-256 of the exact private branch-head OID. The private ref/name and OID never enter logs.
+  # Opaque identity proofs only; private ref, commit and source path never enter public logs.
+  TARGET_REF_HASH: b380a58f31b831b378c2be4133dbd56832624ca7a830d5fd60f01b0eaa77cf87
   EXPECTED_HEAD_PROOF: 93d5da57eb778ba088d779d1a8f893771eefd25b8ffe411672582261fb6ced3e
+  EXPECTED_TREE_PROOF: dee5f89dcc8991f0ba896f97ab8ffdc86150f0810dcd983fb7f64107498bdc60
+  EXPECTED_ERROR_PATH_HASH: 02cab961f2709bbf336eeb7e5732f28e2c0108d98c51f85943d5eb13b8d511a0
+  EXPECTED_SYMBOL: recover_epoch_after_stable_promotion_terminal_ack
 
 jobs:
   red:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+
       - name: Recover exact private revision opaquely
         shell: bash
         env:
@@ -29,71 +40,89 @@ jobs:
           test -n "$PRIVATE_TOKEN"
           echo "::add-mask::$PRIVATE_REPOSITORY"
           echo "::add-mask::$PRIVATE_TOKEN"
-          mkdir target
-          cd target
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin '+refs/heads/*:refs/remotes/origin/*'
-          resolved=""
-          while IFS= read -r oid; do
-            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
-            if [[ "$proof" = "$EXPECTED_HEAD_PROOF" ]]; then
-              test -z "$resolved"
-              resolved="$oid"
+          echo "::add-mask::$auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
             fi
-          done < <(git for-each-ref --format='%(objectname)' refs/remotes/origin | sort -u)
-          test -n "$resolved"
-          echo "::add-mask::$resolved"
-          git checkout -q --detach "$resolved"
-          test -z "$(git status --porcelain --untracked-files=no)"
-          unset PRIVATE_TOKEN auth resolved
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref start_sha tree
           echo "LAS_PROMOTION_RESTART_RED_RECOVERY=PASS"
 
       - name: Require exact missing recovery-boundary RED
         shell: bash
         run: |
           set -euo pipefail
-          cd target
-          log="$RUNNER_TEMP/promotion-restart-red.private.log"
+          root="$GITHUB_WORKSPACE/target"
+          cd "$root"
+          cargo_json="$RUNNER_TEMP/promotion-restart-red.jsonl"
           set +e
-          cargo test --lib --no-run >"$log" 2>&1
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --message-format=json >"$cargo_json" 2>/dev/null
           rc=$?
           set -e
+          test "$rc" -ne 0
 
-          digest="$(sha256sum "$log" | awk '{print $1}')"
-          exact_symbol_marker=0
-          grep -q 'recover_epoch_after_stable_promotion_terminal_ack' "$log" && exact_symbol_marker=1
-          unresolved_import_marker=0
-          grep -Eq 'error\[E0432\]|unresolved import' "$log" && unresolved_import_marker=1
-          compile_marker=0
-          grep -q 'could not compile' "$log" && compile_marker=1
-          resource_marker=0
-          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137' "$log" && resource_marker=1
-          network_marker=0
-          grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
-          error_codes="$(grep -Eo 'error\[E[0-9]{4}\]' "$log" | sort -u | tr '\n' ',' | sed 's/,$//' || true)"
-          unexpected_codes="$(awk 'match($0,/error\[E[0-9]{4}\]/){code=substr($0,RSTART+6,5); if(code!="E0432") seen[code]=1} END{print length(seen)}' "$log")"
+          python3 - "$cargo_json" "$root" <<'PY'
+          import hashlib, json, os, sys
 
-          echo "LAS_PROMOTION_RESTART_RED_LOG_SHA256=$digest"
-          echo "LAS_PROMOTION_RESTART_RED_ERROR_CODES=$error_codes"
-          echo "LAS_PROMOTION_RESTART_RED_EXACT_SYMBOL_MARKER=$exact_symbol_marker"
-          echo "LAS_PROMOTION_RESTART_RED_UNRESOLVED_IMPORT_MARKER=$unresolved_import_marker"
-          echo "LAS_PROMOTION_RESTART_RED_COMPILE_MARKER=$compile_marker"
-          echo "LAS_PROMOTION_RESTART_RED_UNEXPECTED_CODE_COUNT=$unexpected_codes"
-          echo "LAS_PROMOTION_RESTART_RED_RESOURCE_MARKER=$resource_marker"
-          echo "LAS_PROMOTION_RESTART_RED_NETWORK_MARKER=$network_marker"
+          log_path, root = sys.argv[1], os.path.realpath(sys.argv[2])
+          errors = []
+          with open(log_path, encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
+                  text = str(msg.get("message") or "")
+                  rendered = str(msg.get("rendered") or "")
+                  spans = [s for s in (msg.get("spans") or []) if s.get("is_primary")]
+                  for span in spans or [{}]:
+                      filename = str(span.get("file_name") or "")
+                      absolute = os.path.realpath(os.path.join(root, filename)) if filename else ""
+                      rel = os.path.relpath(absolute, root).replace(os.sep, "/") if absolute else "NO_SPAN"
+                      errors.append((
+                          code,
+                          hashlib.sha256(rel.encode()).hexdigest(),
+                          os.environ["EXPECTED_SYMBOL"] in text or os.environ["EXPECTED_SYMBOL"] in rendered,
+                      ))
 
-          if [[ "$rc" -ne 0 \
-             && "$exact_symbol_marker" -eq 1 \
-             && "$unresolved_import_marker" -eq 1 \
-             && "$compile_marker" -eq 1 \
-             && "$unexpected_codes" -eq 0 \
-             && "$resource_marker" -eq 0 \
-             && "$network_marker" -eq 0 ]]; then
-            echo "LAS_PROMOTION_RESTART_RED_RESULT=EXPECTED_RED"
-            exit 0
-          fi
-
-          echo "LAS_PROMOTION_RESTART_RED_RESULT=UNEXPECTED"
-          exit 1
+          expected = ("E0432", os.environ["EXPECTED_ERROR_PATH_HASH"], True)
+          if errors != [expected]:
+              sanitized = [(code, path_hash, has_symbol) for code, path_hash, has_symbol in errors]
+              raise SystemExit(f"unexpected sanitized RED diagnostics: {sanitized}")
+          print("LAS_PROMOTION_RESTART_RECONCILIATION_EXPECTED_RED=OBSERVED")
+          PY
+          rm -f "$cargo_json"
