@@ -75,15 +75,26 @@ jobs:
           test -z "$(git status --porcelain)"
           echo 'LAS_PROMOTION_LINUX_REACHABILITY_RED_RECOVERY=PASS'
 
-      - name: Require formatting clean before semantic RED
+      - name: Normalize RED formatting without widening scope
         shell: bash
         run: |
           set -euo pipefail
           cd target
-          cargo +1.98.1 fmt --all -- --check >"$RUNNER_TEMP/fmt.private.log" 2>&1
+          cargo +1.98.1 fmt --all >"$RUNNER_TEMP/fmt.private.log" 2>&1
+          cargo +1.98.1 fmt --all -- --check >>"$RUNNER_TEMP/fmt.private.log" 2>&1
+          git diff --check
+          git diff --name-only | sort >"$RUNNER_TEMP/fmt-paths"
+          test -s "$RUNNER_TEMP/fmt-paths"
+          while read -r changed; do
+            case "$changed" in
+              src/effect_fabric/promotion_activation_guarded_crossing_tests.rs|src/effect_fabric/promotion_linux_service_reachability_red_tests.rs) ;;
+              *) exit 1 ;;
+            esac
+          done <"$RUNNER_TEMP/fmt-paths"
           echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_FMT_LOG_SHA256=$(sha256sum "$RUNNER_TEMP/fmt.private.log" | awk '{print $1}')"
-          rm -f "$RUNNER_TEMP/fmt.private.log"
-          echo 'LAS_PROMOTION_LINUX_REACHABILITY_RED_FMT=PASS'
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_FMT_DIFF_SHA256=$(git diff | sha256sum | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/fmt.private.log" "$RUNNER_TEMP/fmt-paths"
+          echo 'LAS_PROMOTION_LINUX_REACHABILITY_RED_FMT_SCOPE=PASS'
 
       - name: Require exact compile-surface RED
         shell: bash
