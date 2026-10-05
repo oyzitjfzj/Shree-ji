@@ -1,0 +1,124 @@
+name: Private Root-control production reachability RED
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-root-control-production-reachability-red.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 0a084b05882fb5ccff715106827022d54fe233ce64171a0bac64e22a2d90ba18
+  EXPECTED_HEAD_PROOF: 9d1dcad0b486f481f955d17111baa84dc6fe2320c11a01779b8d0541e016c762
+  EXPECTED_TREE_PROOF: 172dba925395bb964e9a1dadc03299483eb9c896027cffe42a794d67c3c118e6
+  EXPECTED_ERROR_PATH_HASH: 3073aef0dd6e3e1ab6d76f5b55482d1d0331c2905bf48d19abdcf3ec675b7ab1
+  EXPECTED_SYMBOL: RootFfiControlBackend
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref start_sha tree
+          echo "LAS_ROOT_CONTROL_PRODUCTION_RED_RECOVERY=PASS"
+
+      - name: Require exact production reachability RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/target"
+          cd "$root"
+          cargo_json="$RUNNER_TEMP/root-control-production-red.jsonl"
+          set +e
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials --message-format=json >"$cargo_json" 2>/dev/null
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+
+          python3 - "$cargo_json" "$root" <<'PY'
+          import hashlib, json, os, sys
+
+          log_path, root = sys.argv[1], os.path.realpath(sys.argv[2])
+          errors = []
+          with open(log_path, encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
+                  text = str(msg.get("message") or "")
+                  rendered = str(msg.get("rendered") or "")
+                  spans = [s for s in (msg.get("spans") or []) if s.get("is_primary")]
+                  for span in spans or [{}]:
+                      filename = str(span.get("file_name") or "")
+                      absolute = os.path.realpath(os.path.join(root, filename)) if filename else ""
+                      rel = os.path.relpath(absolute, root).replace(os.sep, "/") if absolute else "NO_SPAN"
+                      errors.append((
+                          code,
+                          hashlib.sha256(rel.encode()).hexdigest(),
+                          os.environ["EXPECTED_SYMBOL"] in text or os.environ["EXPECTED_SYMBOL"] in rendered,
+                      ))
+
+          expected = ("E0432", os.environ["EXPECTED_ERROR_PATH_HASH"], True)
+          if not errors or any(error != expected for error in errors):
+              raise SystemExit(f"unexpected sanitized RED diagnostics: {sorted(set(errors))}; count={len(errors)}")
+          print(f"LAS_ROOT_CONTROL_PRODUCTION_REACHABILITY_EXPECTED_RED=OBSERVED count={len(errors)}")
+          PY
+          rm -f "$cargo_json"
