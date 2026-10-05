@@ -84,7 +84,7 @@ jobs:
           cargo +1.98.1 fmt --all >>"$RUNNER_TEMP/patch.log" 2>&1
           git diff --check >>"$RUNNER_TEMP/patch.log" 2>&1
 
-          git diff --name-only | sort >"$RUNNER_TEMP/actual-paths"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
           src/effect_fabric/promotion_activation_guarded_terminal_durability.rs
           src/effect_fabric/promotion_activation_guarded_terminal_durability_tests.rs
