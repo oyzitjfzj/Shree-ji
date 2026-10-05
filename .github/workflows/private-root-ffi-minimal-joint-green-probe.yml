@@ -1,0 +1,163 @@
+name: Private minimal sealed Root FFI joint GREEN probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-root-ffi-minimal-joint-green-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+  EXPECTED_HEAD_PROOF: 64282b9a908572745e3a0a8006c056c5adbd9ba0aa9f36956f41e3120f44d0f0
+  EXPECTED_TREE_PROOF: 0ed1d15f58ff1d687be4cbd9800ef20e0b479b81b99d242356b41f47475ef926
+  PATCH_BLOB: b7b25b3960d3ca3a9cd40ffd252e198cb54845a9
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust and Ada toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"; ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"; unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"; export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          ALR_WS="$RUNNER_TEMP/alire-workspace"; mkdir -p "$ALR_WS"
+          (cd "$ALR_WS" && alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null)
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec "$ALR_PREFIX/bin/alr" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$GPRBUILD_WRAPPER"; echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
+
+      - name: Recover exact private candidate opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"; mkdir "$root"; cd "$root"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"; git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""; start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"; start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; test -n "$start_sha"
+          echo "::add-mask::$matched_ref"; echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"; git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref start_sha tree
+          echo "LAS_MINIMAL_JOINT_RECOVERY=PASS"
+
+      - name: Apply minimal synthesis transiently
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          patch_path=""
+          while IFS= read -r -d '' path; do
+            blob="$(git rev-parse "HEAD:$path")"
+            if [[ "$blob" = "$PATCH_BLOB" ]]; then test -z "$patch_path"; patch_path="$path"; fi
+          done < <(git ls-files -z)
+          test -n "$patch_path"; echo "::add-mask::$patch_path"
+          python3 "$patch_path"; rm "$patch_path"; cargo +1.98.1 fmt --all; git diff --check
+          tracked_count="$(git diff --name-only | wc -l | tr -d ' ')"
+          untracked_count="$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')"
+          test "$tracked_count" = "4"
+          test "$untracked_count" = "1"
+          echo "LAS_MINIMAL_JOINT_PATCH=PASS"
+
+      - name: Gate formatting default and Linux-only
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          run_private() {
+            stage="$1"; shift; log="$RUNNER_TEMP/${stage}.private.log"
+            if ! "$@" >"$log" 2>&1; then
+              echo "LAS_MINIMAL_JOINT_STAGE=$stage"; echo "LAS_MINIMAL_JOINT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1
+            fi
+            rm -f "$log"; echo "LAS_MINIMAL_JOINT_${stage}=PASS"
+          }
+          run_private fmt cargo +1.98.1 fmt --all -- --check
+          run_private default env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib
+          run_private linux env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features linux-peer-credentials
+
+      - name: Gate joint production compile with opaque classification
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          json="$RUNNER_TEMP/joint.jsonl"; err="$RUNNER_TEMP/joint.stderr"
+          set +e
+          env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials --message-format=json >"$json" 2>"$err"
+          rc=$?
+          set -e
+          python3 - "$json" <<'PY'
+          import collections, hashlib, json, sys
+          codes=collections.Counter(); owners=collections.Counter(); total=0
+          for raw in open(sys.argv[1], encoding='utf-8', errors='replace'):
+              try: obj=json.loads(raw)
+              except Exception: continue
+              if obj.get('reason')!='compiler-message': continue
+              msg=obj.get('message') or {}
+              if msg.get('level')!='error': continue
+              total += 1
+              codes[(msg.get('code') or {}).get('code') or 'NO_CODE'] += 1
+              primary=[s for s in (msg.get('spans') or []) if s.get('is_primary')]
+              path=str(primary[0].get('file_name') or 'NO_SPAN') if primary else 'NO_SPAN'
+              owners[hashlib.sha256(path.encode()).hexdigest()] += 1
+          print(f'LAS_MINIMAL_JOINT_ERROR_COUNT={total}')
+          for k,v in sorted(codes.items()): print(f'LAS_MINIMAL_JOINT_ERROR_CODE={k}:{v}')
+          for k,v in sorted(owners.items()): print(f'LAS_MINIMAL_JOINT_ERROR_PATH={k}:{v}')
+          PY
+          echo "LAS_MINIMAL_JOINT_STDERR_SHA256=$(sha256sum "$err" | awk '{print $1}')"
+          rm -f "$json" "$err"
+          test "$rc" -eq 0
+          echo "LAS_MINIMAL_JOINT_COMPILE=PASS"
+
+      - name: Gate joint Clippy
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/clippy.private.log"
+          if ! env GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >"$log" 2>&1; then
+            echo "LAS_MINIMAL_JOINT_STAGE=clippy"; echo "LAS_MINIMAL_JOINT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1
+          fi
+          rm -f "$log"; echo "LAS_MINIMAL_JOINT_CLIPPY=PASS"
+
+      - name: Gate focused Root FFI tests
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/tests.private.log"
+          if ! env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1 >"$log" 2>&1; then
+            echo "LAS_MINIMAL_JOINT_STAGE=tests"; echo "LAS_MINIMAL_JOINT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1
+          fi
+          rm -f "$log"; echo "LAS_MINIMAL_JOINT_TESTS=PASS"
+
+      - name: Mark exact minimal joint GREEN
+        shell: bash
+        run: echo "LAS_ROOT_FFI_MINIMAL_JOINT_GREEN=PASS"
