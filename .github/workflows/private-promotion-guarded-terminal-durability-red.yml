@@ -1,0 +1,115 @@
+name: Private promotion guarded terminal durability RED
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-durability-red.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 37e06fdb819169b6f4f76d2681410d69ce285497a9d0ee208ced41d3fae5b9d9
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2048 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=32768 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_RECOVERY=PASS"
+
+      - name: Install pinned Rust quality tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+      - name: Require formatting clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_FORMAT=PASS"
+
+      - name: Require RED target to compile warning-free
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_durability_tests --no-run
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_COMPILE=PASS"
+
+      - name: Require semantic v6 durability RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/guarded-terminal-durability-red.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_durability_tests -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          compile_marker=0
+          grep -q 'could not compile' "$log" && compile_marker=1
+          failed_marker=0
+          grep -q 'test result: FAILED' "$log" && failed_marker=1
+          assertion_marker=0
+          grep -Eq 'assertion .*failed|panicked at' "$log" && assertion_marker=1
+          expected_marker=0
+          grep -q 'GUARDED_TERMINAL_DURABILITY_V6_REQUIRED' "$log" && expected_marker=1
+          resource_marker=0
+          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137|stack overflow' "$log" && resource_marker=1
+          network_marker=0
+          grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_RC=$rc"
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_COMPILE_MARKER=$compile_marker"
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_FAILED_MARKER=$failed_marker"
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_ASSERTION_MARKER=$assertion_marker"
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_EXPECTED_MARKER=$expected_marker"
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_RESOURCE_MARKER=$resource_marker"
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_NETWORK_MARKER=$network_marker"
+          test "$rc" -ne 0
+          test "$compile_marker" -eq 0
+          test "$failed_marker" -eq 1
+          test "$assertion_marker" -eq 1
+          test "$expected_marker" -eq 1
+          test "$resource_marker" -eq 0
+          test "$network_marker" -eq 0
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_RED_RESULT=EXPECTED_RED"
