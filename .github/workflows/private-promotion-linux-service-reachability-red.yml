@@ -1,0 +1,131 @@
+name: Private promotion Linux service reachability RED
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-linux-service-reachability-red.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 98b01d796ffaad390d45b063ef2f95c583ea99f14d6163bde5fd5c2082d026eb
+  EXPECTED_HEAD_PROOF: aac8e6e7a34e0b9637f50c6bb3b47eae1f73105e3d6ac79d3dbbc3104eaa96a7
+  EXPECTED_TREE_PROOF: f92ac8469312cdba58c55ecbccedf927a96ee538becc18e0c32d13f2b0ec682f
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Recover exact private RED revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          echo 'LAS_PROMOTION_LINUX_REACHABILITY_RED_RECOVERY=PASS'
+
+      - name: Require formatting clean before semantic RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all -- --check >"$RUNNER_TEMP/fmt.private.log" 2>&1
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_FMT_LOG_SHA256=$(sha256sum "$RUNNER_TEMP/fmt.private.log" | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/fmt.private.log"
+          echo 'LAS_PROMOTION_LINUX_REACHABILITY_RED_FMT=PASS'
+
+      - name: Require exact compile-surface RED
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/promotion-linux-reachability-red.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib --features linux-peer-credentials promotion_activation_guarded_crossing_tests --no-run >"$log" 2>&1
+          rc=$?
+          set -e
+
+          e0599=0
+          grep -q 'E0599' "$log" && e0599=1
+          armed_surface=0
+          grep -q 'process_guarded_armed_promotion_root_only' "$log" && armed_surface=1
+          stable_surface=0
+          grep -q 'acknowledge_promotion_terminal_retention' "$log" && stable_surface=1
+          resource_marker=0
+          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137|stack overflow' "$log" && resource_marker=1
+          network_marker=0
+          grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
+
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_RC=$rc"
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_E0599=$e0599"
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_ARMED_SURFACE=$armed_surface"
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_STABLE_SURFACE=$stable_surface"
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_RESOURCE_MARKER=$resource_marker"
+          echo "LAS_PROMOTION_LINUX_REACHABILITY_RED_NETWORK_MARKER=$network_marker"
+
+          if [[ "$rc" -ne 0 \
+             && "$e0599" -eq 1 \
+             && "$armed_surface" -eq 1 \
+             && "$stable_surface" -eq 1 \
+             && "$resource_marker" -eq 0 \
+             && "$network_marker" -eq 0 ]]; then
+            echo 'LAS_PROMOTION_LINUX_REACHABILITY_RED_RESULT=EXPECTED_RED'
+            exit 0
+          fi
+
+          echo 'LAS_PROMOTION_LINUX_REACHABILITY_RED_RESULT=UNEXPECTED'
+          exit 1
