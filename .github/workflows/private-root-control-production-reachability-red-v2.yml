@@ -1,0 +1,128 @@
+name: Private Root-control production reachability RED v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-root-control-production-reachability-red-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust and Ada build toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          ALR_WS="$RUNNER_TEMP/alire-workspace"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null
+          )
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec alr exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$GPRBUILD_WRAPPER"
+          echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
+
+      - name: Recover exact private RED revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "0a084b05882fb5ccff715106827022d54fe233ce64171a0bac64e22a2d90ba18" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "9d1dcad0b486f481f955d17111baa84dc6fe2320c11a01779b8d0541e016c762"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "172dba925395bb964e9a1dadc03299483eb9c896027cffe42a794d67c3c118e6"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref start_sha tree
+          echo "LAS_ROOT_CONTROL_PRODUCTION_RED_RECOVERY=PASS"
+
+      - name: Require exact compiler RED after complete Root FFI setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo_json="$RUNNER_TEMP/root-control-production-red.jsonl"
+          set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" \
+            cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials --message-format=json \
+            >"$cargo_json" 2>/dev/null
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          python3 - "$cargo_json" <<'PY'
+          import json, os, sys
+          symbol = "RootFfiControlBackend"
+          matches = []
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get("reason") != "compiler-message":
+                      continue
+                  msg = obj.get("message") or {}
+                  if msg.get("level") != "error":
+                      continue
+                  code = (msg.get("code") or {}).get("code") or "NO_CODE"
+                  text = f"{msg.get('message') or ''}\n{msg.get('rendered') or ''}"
+                  paths = [str(s.get("file_name") or "") for s in (msg.get("spans") or []) if s.get("is_primary")]
+                  path_ok = any(p.endswith("src/effect_fabric/root_control_production.rs") for p in paths)
+                  if code == "E0432" and symbol in text and path_ok:
+                      matches.append(code)
+          if matches != ["E0432"]:
+              raise SystemExit(f"expected one production-reachability E0432, observed {len(matches)}")
+          print("LAS_ROOT_CONTROL_PRODUCTION_REACHABILITY_EXPECTED_RED=OBSERVED")
+          PY
+          rm -f "$cargo_json"
