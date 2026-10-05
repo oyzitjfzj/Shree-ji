@@ -1,0 +1,108 @@
+name: Private Root FFI joint dead-code owner classifier
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-root-ffi-joint-dead-code-owners.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+  EXPECTED_HEAD_PROOF: f3177b3111b71fa9a885c23d5cf062d93fbdeb25cd900d3a4d2008b63ea7aab6
+  EXPECTED_TREE_PROOF: 6f60adcb47d43bb44b8e0154c67a7a14e2a5bc31c432335ef9636c100ddf86e5
+  PATCH_BLOB: ed3481149305c2d210b904c441a676cdf45bb753
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust and Ada toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"; ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"; unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"; export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          ALR_WS="$RUNNER_TEMP/alire-workspace"; mkdir -p "$ALR_WS"
+          (cd "$ALR_WS" && alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null)
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec "$ALR_PREFIX/bin/alr" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$GPRBUILD_WRAPPER"; echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
+
+      - name: Recover and patch exact candidate opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"; mkdir "$root"; cd "$root"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"; git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""; start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then test -z "$matched_ref"; matched_ref="$ref"; start_sha="$candidate_sha"; fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; test -n "$start_sha"; echo "::add-mask::$matched_ref"; echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"; test "$(git rev-parse FETCH_HEAD)" = "$start_sha"; git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"; test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          patch_path=""
+          while IFS= read -r -d '' path; do blob="$(git rev-parse "HEAD:$path")"; if [[ "$blob" = "$PATCH_BLOB" ]]; then test -z "$patch_path"; patch_path="$path"; fi; done < <(git ls-files -z)
+          test -n "$patch_path"; echo "::add-mask::$patch_path"; python3 "$patch_path"; rm "$patch_path"; cargo +1.98.1 fmt --all; git diff --check
+          echo "LAS_DEAD_OWNER_PREP=PASS"
+
+      - name: Emit only opaque dead-code ownership shape
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          json="$RUNNER_TEMP/joint.jsonl"
+          set +e
+          env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials --message-format=json >"$json" 2>/dev/null
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          python3 - "$json" <<'PY'
+          import collections, hashlib, json, sys
+          owners=collections.Counter(); kinds=collections.Counter(); total=0
+          for raw in open(sys.argv[1], encoding='utf-8', errors='replace'):
+              try: obj=json.loads(raw)
+              except Exception: continue
+              if obj.get('reason')!='compiler-message': continue
+              msg=obj.get('message') or {}
+              if msg.get('level')!='error': continue
+              code=(msg.get('code') or {}).get('code') or 'NO_CODE'
+              if code!='dead_code': raise SystemExit(f'unexpected error code: {code}')
+              total += 1
+              primary=[s for s in (msg.get('spans') or []) if s.get('is_primary')]
+              path=str(primary[0].get('file_name') or 'NO_SPAN') if primary else 'NO_SPAN'
+              owners[hashlib.sha256(path.encode()).hexdigest()] += 1
+              text=str(msg.get('message') or '')
+              kind='other'
+              for prefix,label in [('function ','function'),('associated function ','assoc_fn'),('method ','method'),('methods ','methods'),('struct ','struct'),('enum ','enum'),('variant ','variant'),('variants ','variants'),('constant ','const'),('static ','static'),('field ','field'),('fields ','fields'),('type alias ','type_alias')]:
+                  if text.startswith(prefix): kind=label; break
+              kinds[kind]+=1
+          print(f'LAS_DEAD_OWNER_TOTAL={total}')
+          for key,count in sorted(owners.items()): print(f'LAS_DEAD_OWNER_PATH={key}:{count}')
+          for key,count in sorted(kinds.items()): print(f'LAS_DEAD_OWNER_KIND={key}:{count}')
+          if total != 22: raise SystemExit(f'unexpected dead-code count: {total}')
+          PY
+          rm -f "$json"
+          echo "LAS_DEAD_OWNER_CLASSIFICATION=PASS"
