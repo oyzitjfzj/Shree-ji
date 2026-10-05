@@ -1,0 +1,144 @@
+name: Private promotion terminal retention release GREEN
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-terminal-retention-release-green.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: bfa498fd37132d8d3f5b65692a4745711849a1591a0dedf5b9f789fc1c2e03ff
+  EXPECTED_HEAD_PROOF: e8b1bc095f49dca3294f3bf375cba2ab53c1d7a7c9b1c5a85bae1214336ef2e1
+  EXPECTED_TREE_PROOF: 1803fd98119cad61fc99e34be1c61ed87963da887751b8a650a3abd3b27dba99
+
+jobs:
+  apply-verify-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+      - name: Apply exact persisted-proof implementation and verify
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          echo "::add-mask::$write_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+
+          python3 tools/tmp_apply_persisted_terminal_ack_green.py
+          cargo +1.98.1 fmt --all
+          git diff --check
+
+          git diff --name-only | sort >"$RUNNER_TEMP/actual-paths"
+          cat >"$RUNNER_TEMP/expected-paths" <<'EOF'
+          src/effect_fabric/promotion_activation_guarded_terminal_durability.rs
+          src/effect_fabric/promotion_activation_guarded_terminal_durability_tests.rs
+          src/effect_fabric/promotion_activation_guarded_terminal_persist_red_tests.rs
+          src/lib.rs
+          EOF
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/expected-paths"
+          diff -u "$RUNNER_TEMP/expected-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
+          echo 'LAS_PERSISTED_TERMINAL_ACK_SCOPE=PASS'
+
+          run_stage() {
+            local stage="$1"
+            shift
+            local log="$RUNNER_TEMP/${stage}.log"
+            set +e
+            "$@" >"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "LAS_PERSISTED_TERMINAL_ACK_STAGE=${stage}"
+              echo "LAS_PERSISTED_TERMINAL_ACK_RC=${rc}"
+              echo "LAS_PERSISTED_TERMINAL_ACK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              exit "$rc"
+            fi
+            rm -f "$log"
+            echo "LAS_PERSISTED_TERMINAL_ACK_${stage}=PASS"
+          }
+
+          run_stage fmt_check cargo +1.98.1 fmt --all -- --check
+          run_stage cargo_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          run_stage terminal_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_durability_tests -- --test-threads=1
+          run_stage journal_persist_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib promotion_journal_persist_red_tests -- --test-threads=1
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add \
+            src/effect_fabric/promotion_activation_guarded_terminal_durability.rs \
+            src/effect_fabric/promotion_activation_guarded_terminal_durability_tests.rs \
+            src/lib.rs
+          git add -u src/effect_fabric/promotion_activation_guarded_terminal_persist_red_tests.rs
+          git diff --cached --check
+          git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
+          diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
+          git commit -q -m "Bind promotion terminal acknowledgement to stable persistence"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo 'LAS_PERSISTED_TERMINAL_ACK_PRIVATE_COMMIT=PASS'
+          echo "LAS_PERSISTED_TERMINAL_ACK_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PERSISTED_TERMINAL_ACK_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
