@@ -1,0 +1,97 @@
+name: Private promotion terminal recovery ingress GREEN v3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-terminal-recovery-ingress-green-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: c382c1b702b9f5450e6b7d77c322fe3ae6d2ada5d8f609c498c8187ff34d7fcd
+  EXPECTED_HEAD_PROOF: 2702fc7d33217fd01b572b13dd8bf58265688eb6db6eed58ff71e2947ee71c2c
+  EXPECTED_TREE_PROOF: 5adaf2e7bbfa22444b130dc87f69c94bf4a15b9f3058817140c0aeb73d370c64
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+      - name: Recover exact private candidate opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref start_sha tree
+          echo "LAS_PROMOTION_TERMINAL_RECOVERY_GREEN_V3_RECOVERY=PASS"
+
+      - name: Verify source boundary shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          grep -q 'fn recover_promotion_transaction_after_process_loss' src/defence_evolution/promotion_transaction_state.rs
+          grep -q 'recover_durable_guarded_terminal_snapshot_after_process_loss' src/effect_fabric/promotion_activation_guarded_terminal_durability.rs
+          ! grep -A20 'fn recover_guarded_terminal_stable_acknowledgement' src/effect_fabric/promotion_activation_guarded_terminal_durability.rs | grep -q 'ingress: &TrustedPromotionTransactionIngress'
+          ! grep -A25 'fn recover_after_stable_promotion_terminal' src/effect_fabric/root_supervisor_promotion_restart.rs | grep -q 'TrustedPromotionTransactionIngress'
+          cargo +1.98.1 fmt --all -- --check
+          git diff --exit-code
+          echo "LAS_PROMOTION_TERMINAL_RECOVERY_GREEN_V3_SHAPE=PASS"
+
+      - name: Verify exact RED closure and relevant regression surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 check --locked --lib --tests
+          cargo +1.98.1 test --locked terminal_restart_recovery_surface_does_not_require_live_promotion_mutation_authority -- --nocapture
+          cargo +1.98.1 test --locked guarded_terminal_stable -- --nocapture
+          cargo +1.98.1 test --locked promotion_restart -- --nocapture
+          echo "LAS_PROMOTION_TERMINAL_RECOVERY_WITHOUT_LIVE_INGRESS_GREEN=PASS"
