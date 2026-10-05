@@ -87,6 +87,9 @@ jobs:
           import hashlib, json, os, re, sys
           path, root = sys.argv[1], os.path.realpath(sys.argv[2])
           categories = [
+              ("INNER_ATTRIBUTE", r"inner attribute|crate-level attribute|attribute.*not permitted"),
+              ("UNUSED_ATTRIBUTE", r"unused attribute|attribute.*ignored"),
+              ("UNSAFE_LINT", r"unsafe_code|unsafe code|forbid.*unsafe|deny.*unsafe"),
               ("MISSING_FIELD", r"missing field"),
               ("METHOD_NOT_FOUND", r"no method named|method .* not found"),
               ("UNUSED_IMPORT", r"unused import"),
@@ -103,6 +106,20 @@ jobs:
               ("MACRO", r"macro"),
               ("OTHER", r".*"),
           ]
+          fingerprints = {
+              "ATTR": r"attribute",
+              "FORBID": r"forbid",
+              "DENY": r"deny",
+              "UNSAFE": r"unsafe",
+              "MODULE": r"module",
+              "CRATE": r"crate",
+              "TEST": r"test",
+              "WARNING": r"warning",
+              "LINT": r"lint",
+              "DOC": r"documentation|doc comment|docs",
+              "EXPECTED": r"expected",
+              "FOUND": r"found",
+          }
           seen=set()
           for raw in open(path, encoding="utf-8", errors="replace"):
               try: obj=json.loads(raw)
@@ -117,11 +134,12 @@ jobs:
               for name, pat in categories:
                   if re.search(pat, text, re.I):
                       category=name; break
+              keys="+".join(k for k,p in fingerprints.items() if re.search(p, text, re.I)) or "NONE"
               spans=[s for s in (msg.get("spans") or []) if s.get("is_primary")]
               if not spans:
-                  key=(category,code,"NO_SPAN",0,0)
+                  key=(category,code,"NO_SPAN",0,0,keys)
                   if key not in seen:
-                      seen.add(key); print(f"LAS_DIAG={category}:{code}:NO_SPAN:0:0")
+                      seen.add(key); print(f"LAS_DIAG={category}:{code}:NO_SPAN:0:0:{keys}")
                   continue
               for span in spans:
                   filename=str(span.get("file_name") or "")
@@ -129,9 +147,9 @@ jobs:
                   rel=os.path.relpath(absolute, root).replace(os.sep,"/") if absolute==root or absolute.startswith(root+os.sep) else "<EXTERNAL>"
                   ph=hashlib.sha256(rel.encode()).hexdigest()
                   line=int(span.get("line_start") or 0); col=int(span.get("column_start") or 0)
-                  key=(category,code,ph,line,col)
+                  key=(category,code,ph,line,col,keys)
                   if key not in seen:
-                      seen.add(key); print(f"LAS_DIAG={category}:{code}:{ph}:{line}:{col}")
+                      seen.add(key); print(f"LAS_DIAG={category}:{code}:{ph}:{line}:{col}:{keys}")
           PY
           rm -f "$json"
           exit 0
