@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: c382c1b702b9f5450e6b7d77c322fe3ae6d2ada5d8f609c498c8187ff34d7fcd
-  EXPECTED_HEAD_PROOF: 2702fc7d33217fd01b572b13dd8bf58265688eb6db6eed58ff71e2947ee71c2c
-  EXPECTED_TREE_PROOF: 5adaf2e7bbfa22444b130dc87f69c94bf4a15b9f3058817140c0aeb73d370c64
+  EXPECTED_HEAD_PROOF: ee29e7b434af5819f4701a740d6990ad5dce6907921bad22c342d2fa564210c5
+  EXPECTED_TREE_PROOF: c71b87bf572a45008413c4789f682f39e892974b1bb8732072313cbff06c94cf
 
 jobs:
   green:
@@ -87,6 +87,14 @@ jobs:
           cd "$GITHUB_WORKSPACE/target"
           cargo +1.98.1 test --locked terminal_restart_recovery_surface_does_not_require_live_promotion_mutation_authority -- --nocapture
           echo "LAS_PROMOTION_TERMINAL_RECOVERY_GREEN_DISCRIMINATOR=PASS"
+
+      - name: Run retained-terminal recovery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cargo +1.98.1 test --locked promotion_activation_guarded_terminal_retirement_tests -- --nocapture
+          echo "LAS_PROMOTION_TERMINAL_RECOVERY_RELATED_TESTS=PASS"
 
       - name: Require canonical formatting
         shell: bash
