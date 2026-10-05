@@ -81,7 +81,7 @@ jobs:
           cd "$root"
           cargo_json="$RUNNER_TEMP/promotion-restart-red.jsonl"
           set +e
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --message-format=json >"$cargo_json" 2>/dev/null
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials --message-format=json >"$cargo_json" 2>/dev/null
           rc=$?
           set -e
           test "$rc" -ne 0
