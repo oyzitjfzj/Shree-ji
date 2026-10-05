@@ -1,0 +1,114 @@
+name: Private promotion guarded terminal durability GREEN
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-promotion-guarded-terminal-durability-green.yml"
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 6b4550d82477030e9d3c69d66876dd7896ebc26b73b7bfa06c126149c76d5276
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2048 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$oid"
+            fi
+          done < <(git rev-list --all --max-count=32768 | sort -u)
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_GREEN_RECOVERY=PASS"
+
+      - name: Install pinned Rust quality tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+
+      - name: Require formatting clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_GREEN_FORMAT=PASS"
+
+      - name: Require targeted v6 tests warning-free
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_durability_tests -- --test-threads=1
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_GREEN_TARGETED=PASS"
+
+      - name: Require existing terminal handoff regression
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_activation_guarded_terminal_handoff_tests -- --test-threads=1
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_GREEN_HANDOFF=PASS"
+
+      - name: Require promotion durability regression
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib promotion_transaction_durability -- --test-threads=1
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_GREEN_PROMOTION_DURABILITY=PASS"
+
+      - name: Require full library regression
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 test --locked --lib -- --test-threads=1
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_GREEN_FULL_LIB=PASS"
+
+      - name: Require strict Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings
+          echo "LAS_GUARDED_TERMINAL_DURABILITY_GREEN_CLIPPY=PASS"
