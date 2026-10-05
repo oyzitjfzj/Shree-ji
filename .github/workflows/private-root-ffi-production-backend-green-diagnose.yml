@@ -1,0 +1,129 @@
+name: Private Root FFI production backend GREEN diagnose
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-root-ffi-production-backend-green-diagnose.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install exact Rust and Ada build toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          echo "$ALR_PREFIX/bin" >> "$GITHUB_PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          ALR_WS="$RUNNER_TEMP/alire-workspace"
+          mkdir -p "$ALR_WS"
+          (
+            cd "$ALR_WS"
+            alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null
+          )
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec "$ALR_PREFIX/bin/alr" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$GPRBUILD_WRAPPER"
+          echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
+
+      - name: Diagnose exact patched private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "1f3f0bc4884665569948224427b6ba42ce02d4e447b4e099e044202a9133a111" ]]; then
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "19cef6692548f861bc149dec46450018aa46fce917be5ae5f9aced837e64ef0b"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach FETCH_HEAD
+          test "$(printf '%s' "$(git rev-parse 'HEAD^{tree}')" | sha256sum | awk '{print $1}')" = "c7d8147a031ec2df84efde55052cf39a775ba0895adc7f45ec72c2f4757414bc"
+          python3 tools/tmp_apply_root_ffi_production_backend.py
+          rm tools/tmp_apply_root_ffi_production_backend.py
+          cargo +1.98.1 fmt --all
+
+          json="$RUNNER_TEMP/root-ffi.jsonl"
+          err="$RUNNER_TEMP/root-ffi.stderr"
+          set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi --message-format=json >"$json" 2>"$err"
+          rc=$?
+          set -e
+          echo "LAS_ROOT_FFI_DIAG_RC=$rc"
+          python3 - "$json" "$err" <<'PY'
+          import hashlib, json, os, sys
+          json_path, stderr_path = sys.argv[1], sys.argv[2]
+          errors = []
+          for raw in open(json_path, encoding="utf-8", errors="replace"):
+              try:
+                  obj = json.loads(raw)
+              except Exception:
+                  continue
+              if obj.get("reason") != "compiler-message":
+                  continue
+              msg = obj.get("message") or {}
+              if msg.get("level") != "error":
+                  continue
+              code = (msg.get("code") or {}).get("code") or "NO_CODE"
+              text = f"{msg.get('message') or ''}\n{msg.get('rendered') or ''}"
+              paths = sorted({str(s.get('file_name') or '') for s in (msg.get('spans') or []) if s.get('is_primary')})
+              path_hashes = [hashlib.sha256(p.encode()).hexdigest() for p in paths]
+              shape = {
+                  "unresolved_import": "unresolved import" in text,
+                  "cannot_find": "cannot find" in text,
+                  "dead_code": "dead code" in text or "never used" in text or "never constructed" in text,
+                  "unexpected_cfg": "unexpected `cfg`" in text,
+                  "private": "private" in text,
+              }
+              errors.append((code, path_hashes, shape))
+          stderr = open(stderr_path, encoding="utf-8", errors="replace").read()
+          stderr_shape = {
+              "gprbuild": "gprbuild" in stderr,
+              "ada_bridge_failed": "Root Authority Ada bridge build failed" in stderr,
+              "failed_to_launch": "failed to launch" in stderr,
+              "compiler_error": "error[" in stderr or "error:" in stderr,
+          }
+          print(f"LAS_ROOT_FFI_DIAG_ERRORS={errors}")
+          print(f"LAS_ROOT_FFI_DIAG_STDERR={stderr_shape}")
+          PY
+          rm -f "$json" "$err"
+          test "$rc" -ne 0
