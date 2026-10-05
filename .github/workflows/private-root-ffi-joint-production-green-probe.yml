@@ -104,33 +104,62 @@ jobs:
           test -z "$(git status --porcelain | awk '$1 == "??" {print}')"
           echo "LAS_ROOT_FFI_JOINT_GREEN_PATCH=PASS"
 
-      - name: Verify exact patched candidate
+      - name: Gate 1 formatting
         shell: bash
         run: |
-          set -euo pipefail
-          cd "$GITHUB_WORKSPACE/target"
-          run_stage() {
-            stage="$1"; shift
-            log="$RUNNER_TEMP/${stage}.private.log"
-            set +e
-            "$@" >"$log" 2>&1
-            rc=$?
-            set -e
-            if [[ $rc -ne 0 ]]; then
-              echo "LAS_ROOT_FFI_JOINT_GREEN_STAGE=$stage"
-              echo "LAS_ROOT_FFI_JOINT_GREEN_RC=$rc"
-              echo "LAS_ROOT_FFI_JOINT_GREEN_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-              exit "$rc"
-            fi
-            echo "LAS_ROOT_FFI_JOINT_GREEN_${stage}=PASS"
-            echo "LAS_ROOT_FFI_JOINT_GREEN_${stage}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-            rm -f "$log"
-          }
-          run_stage fmt_check cargo +1.98.1 fmt --all -- --check
-          run_stage default_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib
-          run_stage linux_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features linux-peer-credentials
-          run_stage root_ffi_check env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi
-          run_stage joint_check env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials
-          run_stage joint_clippy env GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings
-          run_stage root_ffi_tests env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1
-          echo "LAS_ROOT_FFI_JOINT_PRODUCTION_GREEN=PASS"
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/g1.private.log"
+          if ! cargo +1.98.1 fmt --all -- --check >"$log" 2>&1; then echo "LAS_GATE=1"; echo "LAS_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1; fi
+          rm -f "$log"; echo "LAS_GATE_1=PASS"
+
+      - name: Gate 2 default compile
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/g2.private.log"
+          if ! env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib >"$log" 2>&1; then echo "LAS_GATE=2"; echo "LAS_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1; fi
+          rm -f "$log"; echo "LAS_GATE_2=PASS"
+
+      - name: Gate 3 Linux compile
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/g3.private.log"
+          if ! env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features linux-peer-credentials >"$log" 2>&1; then echo "LAS_GATE=3"; echo "LAS_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1; fi
+          rm -f "$log"; echo "LAS_GATE_3=PASS"
+
+      - name: Gate 4 isolated Root FFI compile
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/g4.private.log"
+          if ! env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi >"$log" 2>&1; then echo "LAS_GATE=4"; echo "LAS_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1; fi
+          rm -f "$log"; echo "LAS_GATE_4=PASS"
+
+      - name: Gate 5 joint production compile
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/g5.private.log"
+          if ! env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials >"$log" 2>&1; then echo "LAS_GATE=5"; echo "LAS_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1; fi
+          rm -f "$log"; echo "LAS_GATE_5=PASS"
+
+      - name: Gate 6 joint Clippy
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/g6.private.log"
+          if ! env GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >"$log" 2>&1; then echo "LAS_GATE=6"; echo "LAS_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1; fi
+          rm -f "$log"; echo "LAS_GATE_6=PASS"
+
+      - name: Gate 7 focused Root FFI tests
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/g7.private.log"
+          if ! env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1 >"$log" 2>&1; then echo "LAS_GATE=7"; echo "LAS_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1; fi
+          rm -f "$log"; echo "LAS_GATE_7=PASS"
+
+      - name: Mark exact joint GREEN
+        shell: bash
+        run: echo "LAS_ROOT_FFI_JOINT_PRODUCTION_GREEN=PASS"
