@@ -1,0 +1,153 @@
+name: Private minimal Root FFI baseline delta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-root-ffi-minimal-baseline-delta.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+  EXPECTED_HEAD_PROOF: 64282b9a908572745e3a0a8006c056c5adbd9ba0aa9f36956f41e3120f44d0f0
+  EXPECTED_TREE_PROOF: 0ed1d15f58ff1d687be4cbd9800ef20e0b479b81b99d242356b41f47475ef926
+  PATCH_BLOB: b7b25b3960d3ca3a9cd40ffd252e198cb54845a9
+
+jobs:
+  delta:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"; ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"; unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"; export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          ALR_WS="$RUNNER_TEMP/alire-workspace"; mkdir -p "$ALR_WS"
+          (cd "$ALR_WS" && alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null)
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec "$ALR_PREFIX/bin/alr" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$GPRBUILD_WRAPPER"; echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
+
+      - name: Recover exact private candidate opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"; mkdir "$root"; cd "$root"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"; git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""; start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then test -z "$matched_ref"; matched_ref="$ref"; start_sha="$candidate_sha"; fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; test -n "$start_sha"; echo "::add-mask::$matched_ref"; echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"; test "$(git rev-parse FETCH_HEAD)" = "$start_sha"; git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"; test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          echo "LAS_DELTA_RECOVERY=PASS"
+
+      - name: Capture exact pre-patch baseline warnings
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          json="$RUNNER_TEMP/baseline.jsonl"
+          set +e
+          env GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials --message-format=json >"$json" 2>/dev/null
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          python3 - "$json" "$RUNNER_TEMP/baseline.fp" <<'PY'
+          import hashlib,json,os,sys
+          src,out=sys.argv[1:]
+          fps=[]; errors=[]; path_hashes={}; base_hashes={}
+          for raw in open(src,encoding='utf-8',errors='replace'):
+              try:o=json.loads(raw)
+              except Exception:continue
+              if o.get('reason')!='compiler-message':continue
+              m=o.get('message') or {}; level=m.get('level')
+              primary=[s for s in (m.get('spans') or []) if s.get('is_primary')]
+              path=str(primary[0].get('file_name') or 'NO_SPAN') if primary else 'NO_SPAN'
+              if level=='warning':
+                  ph=hashlib.sha256(path.encode()).hexdigest(); bh=hashlib.sha256(os.path.basename(path).encode()).hexdigest()
+                  mh=hashlib.sha256(str(m.get('message') or '').encode()).hexdigest()
+                  fps.append((ph,mh)); path_hashes[ph]=path_hashes.get(ph,0)+1; base_hashes[bh]=base_hashes.get(bh,0)+1
+              elif level=='error': errors.append((m.get('code') or {}).get('code') or 'NO_CODE')
+          open(out,'w').write('\n'.join(':'.join(x) for x in sorted(fps)))
+          print(f'LAS_DELTA_BASE_WARNINGS={len(fps)}')
+          print(f'LAS_DELTA_BASE_ERRORS={sorted(errors)}')
+          for k,v in sorted(path_hashes.items()):print(f'LAS_DELTA_BASE_PATH={k}:{v}')
+          for k,v in sorted(base_hashes.items()):print(f'LAS_DELTA_BASE_BASENAME={k}:{v}')
+          if 'E0432' not in errors: raise SystemExit('expected joint RED missing')
+          PY
+          rm -f "$json"
+
+      - name: Apply minimal synthesis transiently
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          patch_path=""
+          while IFS= read -r -d '' path; do blob="$(git rev-parse "HEAD:$path")"; if [[ "$blob" = "$PATCH_BLOB" ]]; then test -z "$patch_path"; patch_path="$path"; fi; done < <(git ls-files -z)
+          test -n "$patch_path"; echo "::add-mask::$patch_path"; python3 "$patch_path"; rm "$patch_path"; cargo +1.98.1 fmt --all; git diff --check
+          echo "LAS_DELTA_PATCH=PASS"
+
+      - name: Prove candidate compiles and introduces no warnings
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          json="$RUNNER_TEMP/candidate.jsonl"
+          set +e
+          env GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials --message-format=json >"$json" 2>/dev/null
+          rc=$?
+          set -e
+          test "$rc" -eq 0
+          python3 - "$json" "$RUNNER_TEMP/candidate.fp" <<'PY'
+          import hashlib,json,os,sys
+          src,out=sys.argv[1:]
+          fps=[]; errors=[]; path_hashes={}; base_hashes={}
+          for raw in open(src,encoding='utf-8',errors='replace'):
+              try:o=json.loads(raw)
+              except Exception:continue
+              if o.get('reason')!='compiler-message':continue
+              m=o.get('message') or {}; level=m.get('level')
+              primary=[s for s in (m.get('spans') or []) if s.get('is_primary')]
+              path=str(primary[0].get('file_name') or 'NO_SPAN') if primary else 'NO_SPAN'
+              if level=='warning':
+                  ph=hashlib.sha256(path.encode()).hexdigest(); bh=hashlib.sha256(os.path.basename(path).encode()).hexdigest()
+                  mh=hashlib.sha256(str(m.get('message') or '').encode()).hexdigest()
+                  fps.append((ph,mh)); path_hashes[ph]=path_hashes.get(ph,0)+1; base_hashes[bh]=base_hashes.get(bh,0)+1
+              elif level=='error': errors.append((m.get('code') or {}).get('code') or 'NO_CODE')
+          open(out,'w').write('\n'.join(':'.join(x) for x in sorted(fps)))
+          print(f'LAS_DELTA_CANDIDATE_WARNINGS={len(fps)}')
+          print(f'LAS_DELTA_CANDIDATE_ERRORS={sorted(errors)}')
+          for k,v in sorted(path_hashes.items()):print(f'LAS_DELTA_CANDIDATE_PATH={k}:{v}')
+          for k,v in sorted(base_hashes.items()):print(f'LAS_DELTA_CANDIDATE_BASENAME={k}:{v}')
+          if errors:raise SystemExit('candidate compile errors present')
+          PY
+          rm -f "$json"
+          if ! cmp -s "$RUNNER_TEMP/baseline.fp" "$RUNNER_TEMP/candidate.fp"; then
+            echo "LAS_DELTA_WARNING_FINGERPRINT=CHANGED"; exit 1
+          fi
+          echo "LAS_DELTA_WARNING_FINGERPRINT=IDENTICAL"
+          echo "LAS_MINIMAL_JOINT_NONSTRICT_COMPILE=PASS"
