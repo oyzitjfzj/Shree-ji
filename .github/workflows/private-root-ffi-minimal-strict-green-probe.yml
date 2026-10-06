@@ -1,4 +1,4 @@
-name: Private Root FFI repaired candidate verifier
+name: Private Root FFI pruned strict candidate
 
 on:
   push:
@@ -12,13 +12,13 @@ permissions:
 
 env:
   TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
-  EXPECTED_HEAD_PROOF: ccda0ca5d418eb243ea7bb83fb5d05fe1a071c924d32b6d906da2b316c87d6de
-  EXPECTED_TREE_PROOF: af3fa8b5306c48073c75c00341599b30c256acbb75d11586d4fadc4c2a44fe01
+  EXPECTED_HEAD_PROOF: 8fa129bb9a41b0c7eb6f2a7dc21e8bfcac1522b5e6029482b446c90c44492a42
+  EXPECTED_TREE_PROOF: 22e7c9e4f5eba26f9ae02959ed917a9fe1cfd06a79346802ebb3914b00a5f43b
   MINIMAL_PATCH_BLOB: b7b25b3960d3ca3a9cd40ffd252e198cb54845a9
   ORACLE_GATE_BLOB: d0b0d3fef79247f78c5d2955325e446f408f743c
   CLIPPY_FIX_BLOB: 80ec12a2a5cef4748f8058c2db4d02e471dcaa4c
   INGRESS_CFG_FIX_BLOB: 1f698e9fc61771222f3be95ff76dc951c662c637
-  EXPECTED_BASELINE_DEAD_CODE_PATH_HASH: e7c97abbbf8610d2fe03d5c32ddca3954061e65d5670fc34f70ab93a3ecc18c3
+  ORACLE_PRUNE_BLOB: 63dbcfae0b7b1fb415289bbc1e480d96d595b0e1
 
 jobs:
   verify:
@@ -76,7 +76,7 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo "LAS_REPAIRED_RECOVERY=PASS"
+          echo "LAS_PRUNED_RECOVERY=PASS"
 
       - name: Apply exact transient candidate
         shell: bash
@@ -94,14 +94,19 @@ jobs:
           oracle="$(find_blob_path "$ORACLE_GATE_BLOB")"
           clippy_fix="$(find_blob_path "$CLIPPY_FIX_BLOB")"
           ingress_fix="$(find_blob_path "$INGRESS_CFG_FIX_BLOB")"
-          echo "::add-mask::$minimal"; echo "::add-mask::$oracle"; echo "::add-mask::$clippy_fix"; echo "::add-mask::$ingress_fix"
-          python3 "$minimal"; python3 "$oracle"; python3 "$clippy_fix"; python3 "$ingress_fix"
-          rm "$minimal" "$oracle" "$clippy_fix" "$ingress_fix"
+          prune="$(find_blob_path "$ORACLE_PRUNE_BLOB")"
+          for path in "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune"; do echo "::add-mask::$path"; done
+          python3 "$minimal"
+          python3 "$oracle"
+          python3 "$clippy_fix"
+          python3 "$ingress_fix"
+          python3 "$prune"
+          rm "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune"
           cargo +1.98.1 fmt --all
           git diff --check
-          echo "LAS_REPAIRED_PATCH=PASS"
+          echo "LAS_PRUNED_PATCH=PASS"
 
-      - name: Gate strict production builds
+      - name: Gate strict builds and Clippy
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
@@ -111,40 +116,24 @@ jobs:
           RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi >/dev/null
           RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials >/dev/null
           GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >/dev/null
-          echo "LAS_REPAIRED_STRICT_PRODUCTION=PASS"
+          echo "LAS_PRUNED_STRICT_BUILD=PASS"
 
-      - name: Confirm only pre-existing test-build dead code remains
+      - name: Gate focused Root FFI tests
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          json="$RUNNER_TEMP/test-build.jsonl"; set +e
-          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$json" 2>/dev/null
-          rc=$?; set -e
-          python3 - "$json" "$EXPECTED_BASELINE_DEAD_CODE_PATH_HASH" <<'PY'
-          import hashlib,json,sys
-          expected=sys.argv[2]; owners=[]; codes=[]
-          for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
-              try:o=json.loads(raw)
-              except Exception:continue
-              if o.get('reason')!='compiler-message':continue
-              m=o.get('message') or {}
-              if m.get('level')!='error':continue
-              code=(m.get('code') or {}).get('code') or 'NO_CODE'; codes.append(code)
-              for s in m.get('spans') or []:
-                  if s.get('is_primary') and s.get('file_name'):
-                      owners.append((code,hashlib.sha256(s['file_name'].encode()).hexdigest(),s.get('line_start') or 0))
-          unique=[]
-          for owner in owners:
-              if owner not in unique: unique.append(owner)
-          print(f'LAS_REPAIRED_TEST_BUILD_RC={sys.argv and "RECORDED"}')
-          print(f'LAS_REPAIRED_TEST_ERROR_COUNT={len(codes)}')
-          print(f'LAS_REPAIRED_TEST_OWNER_COUNT={len(unique)}')
-          for code,path_hash,line in unique:
-              print(f'LAS_REPAIRED_TEST_OWNER=CODE={code}:PATH_HASH={path_hash}:LINE={line}')
-          assert codes and all(code=='dead_code' for code in codes)
-          assert len(unique)==5
-          assert all(path_hash==expected for _,path_hash,_ in unique)
-          PY
-          rm -f "$json"
-          test "$rc" -ne 0
-          echo "LAS_REPAIRED_NO_NEW_TEST_BUILD_REGRESSION=PASS"
+          log="$RUNNER_TEMP/root-ffi-tests.private.log"
+          if ! RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1 >"$log" 2>&1; then
+            echo "LAS_PRUNED_TEST_STAGE=FAIL"
+            echo "LAS_PRUNED_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            exit 1
+          fi
+          count="$(grep -E '^test .* \.\.\. ok$' "$log" | wc -l | tr -d ' ')"
+          rm -f "$log"
+          test "$count" -gt 0
+          echo "LAS_PRUNED_ROOT_FFI_TEST_COUNT=$count"
+          echo "LAS_PRUNED_ROOT_FFI_TESTS=PASS"
+
+      - name: Mark candidate gate
+        shell: bash
+        run: echo "LAS_ROOT_FFI_PRUNED_STRICT_CANDIDATE=PASS"
