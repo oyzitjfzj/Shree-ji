@@ -1,4 +1,4 @@
-name: Current exact canonical 203 minus resumable 39
+name: Current exact canonical 203 acceptance
 
 on:
   push:
@@ -11,22 +11,23 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-exact-canonical-203-minus39-89140044
+  group: current-exact-canonical-203-a05ea795
   cancel-in-progress: true
 
 env:
-  TARGET_REF_HASH: 467d8341e1ee4c86da8481f0f6423e4cd20cac245d048a7ee053a0a26f010758
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 891400448d973198890c1e3109c417cca17fd69ace871f8ef01dfafe1689b2a9
-  EXPECTED_PRIVATE_TREE_PROOF: 651234d4e4cafebb657c2521b143dca3aef19a3d87f9375cacd0dec93c0da8ac
-  EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
+  TARGET_REF_HASH: e37294e79ca01e05fa7ae755e85883c645cd81171573b6a5382594265a4c7287
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 684b2c6332259882220d4452b1fb2cd61e9eae5ce827b4b05b02fb00f2762d1c
+  EXPECTED_PRIVATE_TREE_PROOF: 10ab2baa8ff9616740d0ee779dc929975e830cfe7c6b2c9cb5da0ac169d7b806
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_PROFILE39_RUNNER_BLOB: 39475a3fd64dcac34998f9eb947cd3acf7d9d653
   EXPECTED_TLC_PROFILE_COUNT: "203"
-  EXCLUDED_RESUMABLE_INDEX: "39"
   TLC_SHARD_COUNT: "32"
   JAVA_TOOL_OPTIONS: -Xmx5g
 
 jobs:
   pre_tlc:
     runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
       - name: Recover exact private materialized revision
         shell: bash
@@ -56,6 +57,7 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" = "$EXPECTED_PROFILE39_RUNNER_BLOB"
           test -z "$(git status --porcelain --untracked-files=no)"
           git checkout -q -B verify-target "$actual"
           echo "LAS_CURRENT_203_PRE_RECOVERY=PASS"
@@ -102,6 +104,7 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
     runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
       - name: Recover exact private materialized revision
         shell: bash
@@ -131,11 +134,12 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" = "$EXPECTED_PROFILE39_RUNNER_BLOB"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_CURRENT_203_SHARD_RECOVERY=PASS"
           unset PRIVATE_TOKEN auth matched_ref actual tree
 
-      - name: Run canonical TLC shard excluding profile 39
+      - name: Run exact canonical TLC shard
         shell: bash
         env:
           SHARD_INDEX: ${{ matrix.shard }}
@@ -146,12 +150,12 @@ jobs:
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" \
             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
           echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
-          map_py="$RUNNER_TEMP/tlc-map.py"; func_sh="$RUNNER_TEMP/tlc-function.sh"
+          map_py="$RUNNER_TEMP/tlc-map.py"; func_sh="$RUNNER_TEMP/tlc-functions.sh"
           python3 - tools/verify_codespaces_all.sh "$map_py" "$func_sh" <<'PY'
           from pathlib import Path
           import sys
           src=Path(sys.argv[1]).read_text(encoding="utf-8")
-          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'; me='\nPY\n\nrun_tlc_profile() {'
+          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'; me='\nPY\n\nPROFILE39_CFG='
           if src.count(mh)!=1 or src.count(me)!=1: raise SystemExit("canonical map anchors not unique")
           ms=src.index(mh)+len(mh); mx=src.index(me,ms)
           Path(sys.argv[2]).write_text(src[ms:mx]+"\n",encoding="utf-8")
@@ -163,26 +167,35 @@ jobs:
           TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
           python3 "$map_py" "$ROOT" >"$TLC_MAP"
           total="$(wc -l <"$TLC_MAP" | tr -d ' ')"; test "$total" = "$EXPECTED_TLC_PROFILE_COUNT"
+          PROFILE39_CFG="spec/defence_evolution/CandidateAssuranceEvidenceCase.cfg"
+          PROFILE39_HELPER_CFG="spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefix.cfg"
+          PROFILE39_RUNNER="tools/verification/run_candidate_assurance_profile39_compositional.sh"
+          test "$(awk -F '\t' -v p="$PROFILE39_CFG" '$1 == p {c++} END {print c+0}' "$TLC_MAP")" -eq 1
+          test "$(awk -F '\t' -v p="$PROFILE39_HELPER_CFG" '$1 == p {c++} END {print c+0}' "$TLC_MAP")" -eq 0
           TMP="$RUNNER_TEMP/tlc-shard-$SHARD_INDEX"; mkdir -p "$TMP"
           PASS=0; FAIL=0; FAILED=(); source "$func_sh"
           private_log="$RUNNER_TEMP/tlc-shard-$SHARD_INDEX.private.log"; : >"$private_log"
-          selected=0; skipped=0; index=0
+          selected=0; profile39_selected=0; index=0
           while IFS=$'\t' read -r cfg tla deadlock expectation; do
             [[ -n "$cfg" && -n "$tla" ]] || continue
-            if (( index == EXCLUDED_RESUMABLE_INDEX )); then
-              skipped=$((skipped + 1))
-            elif (( index % TLC_SHARD_COUNT == SHARD_INDEX )); then
+            if (( index % TLC_SHARD_COUNT == SHARD_INDEX )); then
               selected=$((selected + 1))
-              run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation" >>"$private_log" 2>&1
+              if [[ "$cfg" == "$PROFILE39_CFG" ]]; then
+                profile39_selected=$((profile39_selected + 1))
+                run_profile39_compositional >>"$private_log" 2>&1
+              else
+                run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation" >>"$private_log" 2>&1
+              fi
             fi
             index=$((index + 1))
           done <"$TLC_MAP"
           test "$index" -eq "$EXPECTED_TLC_PROFILE_COUNT"
-          test "$skipped" -eq 1
           test "$selected" -gt 0
+          test "$profile39_selected" -le 1
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_CURRENT_203_SHARD_INDEX=$SHARD_INDEX"
           echo "LAS_CURRENT_203_SHARD_PROFILE_COUNT=$selected"
+          echo "LAS_CURRENT_203_SHARD_PROFILE39_COUNT=$profile39_selected"
           echo "LAS_CURRENT_203_SHARD_FAIL_COUNT=$FAIL"
           if (( FAIL )); then
             echo "LAS_CURRENT_203_SHARD_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
@@ -197,12 +210,11 @@ jobs:
     needs: [pre_tlc, tlc]
     runs-on: ubuntu-24.04
     steps:
-      - name: Require exact 202-profile non-39 coverage
+      - name: Require exact canonical 203-profile coverage
         shell: bash
         run: |
           set -euo pipefail
           echo "LAS_CURRENT_203_EXPECTED_TOTAL=$EXPECTED_TLC_PROFILE_COUNT"
-          echo "LAS_CURRENT_203_EXCLUDED_INDEX=$EXCLUDED_RESUMABLE_INDEX"
           test "${{ needs.pre_tlc.result }}" = "success"
           test "${{ needs.tlc.result }}" = "success"
-          echo "LAS_CURRENT_203_MINUS39_RESULT=PASS"
+          echo "LAS_CURRENT_203_ACCEPTANCE=PASS"
