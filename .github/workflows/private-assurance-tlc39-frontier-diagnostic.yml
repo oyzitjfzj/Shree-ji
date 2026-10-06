@@ -1,0 +1,165 @@
+name: Private assurance TLC39 frontier diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ASSURANCE_TLC39_FRONTIER_DIAGNOSTIC"
+
+permissions:
+  contents: read
+
+env:
+  JAVA_TOOL_OPTIONS: -Xmx5g
+  TARGET_REF_HASH: e4599cd431d30b5e9d5d7f0716f2a9a69ffb884fb169adc498e73f3264887cb6
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 259eab1cbcb2839f96f3f03e3271f4841cd417c15c57245232ff2409ea2932d1
+  EXPECTED_TLC_PROFILE_COUNT: "202"
+  EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Reclaim runner storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          before_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          echo "LAS_TLC39_FRONTIER_FREE_KB_BEFORE=$before_kb"
+          for path in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift /opt/az /opt/hostedtoolcache/CodeQL; do
+            if [[ -e "$path" ]]; then
+              sudo rm -rf "$path"
+            fi
+          done
+          sudo apt-get clean
+          docker system prune --all --force >/dev/null 2>&1 || true
+          after_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          echo "LAS_TLC39_FRONTIER_FREE_KB_AFTER=$after_kb"
+          test "$after_kb" -ge 31457280
+
+      - name: Recover exact diagnostic private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=64 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              test -z "$resolved"
+              resolved="$candidate"
+            fi
+          done < <(git rev-list --max-count=64 FETCH_HEAD)
+          test -n "$resolved"
+          git checkout -q --detach "$resolved"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_TLC39_FRONTIER_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate proof ref_hash
+
+      - name: Run isolated canonical profile 39 diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          m = re.search(r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{', src, re.S)
+          if not m:
+              raise SystemExit("canonical TLC map generator unavailable")
+          Path(sys.argv[2]).write_text(m.group(1) + "\n", encoding="utf-8")
+          PY
+          map="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$RUNNER_TEMP/map.py" "$ROOT" >"$map"
+          test "$(wc -l <"$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
+          line="$(sed -n '40p' "$map")"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
+          test -n "$cfg"
+          test -n "$tla"
+          test -z "$expectation"
+          cfg_dir="$(dirname "$cfg")"
+          cfg_base="$(basename "$cfg")"
+          tla_base="$(basename "$tla")"
+          log="$RUNNER_TEMP/tlc-private.log"
+          meta="$RUNNER_TEMP/tlc-meta"
+          mkdir -p "$meta"
+          args=(-workers auto -lncheck final -fp 0 -metadir "$meta")
+          [[ "$deadlock" == "1" ]] && args+=(-deadlock)
+          args+=(-config "$cfg_base" "$tla_base")
+          set +e
+          (cd "$cfg_dir"; java -XX:+UseParallelGC -jar "$TLA_JAR" "${args[@]}") >"$log" 2>&1
+          rc=$?
+          set -e
+          resource_marker=0
+          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137' "$log" && resource_marker=1
+          invariant_marker=0
+          grep -Eiq 'Invariant .* is violated|Property .* is violated' "$log" && invariant_marker=1
+          deadlock_marker=0
+          grep -Eiq 'Deadlock reached' "$log" && deadlock_marker=1
+          parser_marker=0
+          grep -Eiq 'Parsing or semantic analysis failed|SANY|parse error|semantic error' "$log" && parser_marker=1
+          disk_marker=0
+          grep -Eiq 'No space left on device|Disk quota exceeded|FileSystemException.*(space|disk)|IOException.*(space|disk)' "$log" && disk_marker=1
+          echo "LAS_TLC39_FRONTIER_RC=$rc"
+          echo "LAS_TLC39_FRONTIER_RESOURCE_MARKER=$resource_marker"
+          echo "LAS_TLC39_FRONTIER_INVARIANT_MARKER=$invariant_marker"
+          echo "LAS_TLC39_FRONTIER_DEADLOCK_MARKER=$deadlock_marker"
+          echo "LAS_TLC39_FRONTIER_PARSER_MARKER=$parser_marker"
+          echo "LAS_TLC39_FRONTIER_DISK_MARKER=$disk_marker"
+          python3 - "$log" <<'PY'
+          import re, sys
+          text=open(sys.argv[1],encoding="utf-8",errors="replace").read()
+          m=re.findall(r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue',text)
+          if m:
+              g,d,q=m[-1]
+              print("LAS_TLC39_FRONTIER_GENERATED="+g.replace(",",""))
+              print("LAS_TLC39_FRONTIER_DISTINCT="+d.replace(",",""))
+              print("LAS_TLC39_FRONTIER_QUEUE="+q.replace(",",""))
+          depth=re.findall(r'Search depth of complete state graph is ([0-9]+)',text)
+          if depth:
+              print("LAS_TLC39_FRONTIER_DEPTH="+depth[-1])
+          PY
+          meta_bytes="$(du -sb "$meta" 2>/dev/null | awk '{print $1}' || echo 0)"
+          free_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          echo "LAS_TLC39_FRONTIER_META_BYTES=$meta_bytes"
+          echo "LAS_TLC39_FRONTIER_FREE_KB_END=$free_kb"
+          if [[ "$rc" -eq 0 && "$resource_marker" -eq 0 && "$disk_marker" -eq 0 ]]; then
+            echo "LAS_TLC39_FRONTIER_RESULT=PASS"
+            exit 0
+          fi
+          echo "LAS_TLC39_FRONTIER_RESULT=FAIL"
+          exit 1
