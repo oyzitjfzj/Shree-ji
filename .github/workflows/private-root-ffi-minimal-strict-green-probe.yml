@@ -160,11 +160,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/clippy.private.log"
-          if ! GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >"$log" 2>&1; then
-            echo "LAS_STRICT_STAGE=clippy"; echo "LAS_STRICT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"; exit 1
-          fi
-          rm -f "$log"; echo "LAS_STRICT_CLIPPY=PASS"
+          json="$RUNNER_TEMP/clippy.jsonl"; set +e
+          GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --message-format=json --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >"$json" 2>/dev/null; rc=$?; set -e
+          python3 - "$json" <<'PY'
+          import collections,hashlib,json,sys
+          codes=collections.Counter(); paths=collections.Counter()
+          for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
+              try:o=json.loads(raw)
+              except Exception:continue
+              if o.get('reason')!='compiler-message':continue
+              m=o.get('message') or {}
+              if m.get('level')!='error':continue
+              code=(m.get('code') or {}).get('code') or 'NO_CODE'
+              codes[code]+=1
+              for s in m.get('spans') or []:
+                  if s.get('is_primary') and s.get('file_name'):
+                      paths[hashlib.sha256(s['file_name'].encode()).hexdigest()]+=1
+          print(f'LAS_STRICT_CLIPPY_ERROR_COUNT={sum(codes.values())}')
+          for k,v in sorted(codes.items()):print(f'LAS_STRICT_CLIPPY_ERROR_CODE={k}:{v}')
+          for k,v in sorted(paths.items()):print(f'LAS_STRICT_CLIPPY_PATH_HASH={k}:{v}')
+          PY
+          rm -f "$json"; test "$rc" -eq 0
+          echo "LAS_STRICT_CLIPPY=PASS"
 
       - name: Gate focused Root FFI tests
         shell: bash
