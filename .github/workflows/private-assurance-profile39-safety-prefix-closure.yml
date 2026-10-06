@@ -10,11 +10,12 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: e37294e79ca01e05fa7ae755e85883c645cd81171573b6a5382594265a4c7287
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 684b2c6332259882220d4452b1fb2cd61e9eae5ce827b4b05b02fb00f2762d1c
-  EXPECTED_PRIVATE_TREE_PROOF: 10ab2baa8ff9616740d0ee779dc929975e830cfe7c6b2c9cb5da0ac169d7b806
+  TARGET_REF_HASH: ed3bb0cf5d74f44e15d4ad6983d8f69de6f84c85ad861805ae2834a02dab9143
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b5112adc429935d9024eb5805c9c49dd2c0f2cb161849cc987f7ba20af212f5c
+  EXPECTED_PRIVATE_TREE_PROOF: 07b34736f34510f45a7cf6200057da51df415958c1f04281a583e87e4743fe97
   EXPECTED_CANONICAL_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
   EXPECTED_PROFILE39_RUNNER_BLOB: 39475a3fd64dcac34998f9eb947cd3acf7d9d653
+  EXPECTED_CANONICAL_CI_BLOB: 850143334887ea7996aa78d4ea3a0856170e8897
   EXPECTED_QUOTIENT_CHECKER_BLOB: 0cdf683516f05383d97228f315f2da34fd038aa0
   EXPECTED_CONTRACT_CHECKER_BLOB: 6c6b781b6109470cffaf3e080aece82e547176b2
   EXPECTED_DEPENDENCY_CHECKER_BLOB: 4d38410507f1c0c3829976e9b8e9a9aa772deb69
@@ -53,6 +54,7 @@ jobs:
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_CANONICAL_VERIFIER_BLOB"
           test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" = "$EXPECTED_PROFILE39_RUNNER_BLOB"
+          test "$(git hash-object .github/workflows/candidate-assurance-evidence-case-tlc.yml)" = "$EXPECTED_CANONICAL_CI_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_quotient.py)" = "$EXPECTED_QUOTIENT_CHECKER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_contract.py)" = "$EXPECTED_CONTRACT_CHECKER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_dependencies.py)" = "$EXPECTED_DEPENDENCY_CHECKER_BLOB"
@@ -66,14 +68,19 @@ jobs:
           echo "LAS_PROFILE39_CANONICAL_RECOVERY=PASS"
           unset PRIVATE_TOKEN auth matched actual tree
 
-      - name: Verify canonical shell wiring parses
+      - name: Verify canonical CI wiring and shell syntax
         shell: bash
         run: |
           set -euo pipefail
           cd target
           bash -n tools/verify_codespaces_all.sh
           bash -n tools/verification/run_candidate_assurance_profile39_compositional.sh
-          echo "LAS_PROFILE39_CANONICAL_SHELL_PARSE=PASS"
+          ci=.github/workflows/candidate-assurance-evidence-case-tlc.yml
+          grep -Fq 'releases/download/v1.7.4/tla2tools.jar' "$ci"
+          ! grep -Fq 'releases/download/v1.7.2/tla2tools.jar' "$ci"
+          grep -Fq 'run_candidate_assurance_profile39_compositional.sh' "$ci"
+          ! grep -Fq -- '-config CandidateAssuranceEvidenceCase.cfg' "$ci"
+          echo "LAS_PROFILE39_CANONICAL_CI_WIRING=PASS"
 
       - name: Fetch pinned TLA tools
         shell: bash
