@@ -178,7 +178,7 @@ jobs:
             index=$((index + 1))
           done <"$TLC_MAP"
           test "$index" -eq "$EXPECTED_TLC_PROFILE_COUNT"
-          if (( SHARD_INDEX == EXCLUDED_RESUMABLE_INDEX % TLC_SHARD_COUNT )); then test "$skipped" -eq 1; else test "$skipped" -eq 0; fi
+          test "$skipped" -eq 1
           test "$selected" -gt 0
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_CURRENT_202_SHARD_INDEX=$SHARD_INDEX"
