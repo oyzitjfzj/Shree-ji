@@ -1,0 +1,140 @@
+name: Private assurance TLC39 ancestor applicability
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ASSURANCE_TLC39_ANCESTOR_APPLICABILITY"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 31078e494efe33c36fd3a716ddc8d79278617b1c3ce84f89392e36bc2067510a
+  FINAL_SNAPSHOT_PROOF: a249d40448ad30229273b7d26ecb4978b4e6ae983bf3f5f982fe24dfcb3be6fb
+  ANCESTOR_SNAPSHOT_PROOF: a3ae225558e26838036a9f8ab67b176c0cf4c443f6feef7930c04c39337ef51c
+  EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
+  EXPECTED_ANCESTOR_PROFILE_COUNT: "202"
+  EXPECTED_FINAL_PROFILE_COUNT: "203"
+  TARGET_INDEX: "39"
+  EXPECTED_CFG_PATH_HASH: 186ddf4cbea68ae055b349ed7bb808aad5ed0146b3618b99754efa46c735e092
+  EXPECTED_TLA_PATH_HASH: 391c62071a571370904c26fdb39c647e1a17e7869a71072cd8e59a8f4967f0c1
+
+jobs:
+  applicability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Recover final and ancestor revisions opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=64 origin "$matched_ref"
+          final=""; ancestor=""
+          while read -r candidate; do
+            proof="$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')"
+            [[ "$proof" != "$FINAL_SNAPSHOT_PROOF" ]] || { test -z "$final"; final="$candidate"; }
+            [[ "$proof" != "$ANCESTOR_SNAPSHOT_PROOF" ]] || { test -z "$ancestor"; ancestor="$candidate"; }
+          done < <(git rev-list --max-count=64 FETCH_HEAD)
+          test -n "$final"; test -n "$ancestor"
+          echo "::add-mask::$final"; echo "::add-mask::$ancestor"
+          git merge-base --is-ancestor "$ancestor" "$final"
+          printf '%s\n' "$final" >"$RUNNER_TEMP/final-rev"
+          printf '%s\n' "$ancestor" >"$RUNNER_TEMP/ancestor-rev"
+          echo "LAS_TLC39_ANCESTOR_RELATION=PASS"
+          unset PRIVATE_TOKEN auth matched_ref candidate proof final ancestor
+
+      - name: Prove profile executable closure unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          final="$(cat "$RUNNER_TEMP/final-rev")"
+          ancestor="$(cat "$RUNNER_TEMP/ancestor-rev")"
+          echo "::add-mask::$final"; echo "::add-mask::$ancestor"
+
+          profile_fingerprint() {
+            local rev="$1" expected_count="$2" tag="$3"
+            git checkout -q --detach "$rev"
+            test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+            python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map-$tag.py" <<'PY'
+          from pathlib import Path
+          import re, sys
+          src=Path(sys.argv[1]).read_text(encoding="utf-8")
+          m=re.search(r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',src,re.S)
+          if not m: raise SystemExit("canonical TLC map generator unavailable")
+          Path(sys.argv[2]).write_text(m.group(1)+"\n",encoding="utf-8")
+          PY
+            local map="$RUNNER_TEMP/map-$tag.tsv"
+            python3 "$RUNNER_TEMP/map-$tag.py" "$ROOT" >"$map"
+            test "$(wc -l <"$map" | tr -d ' ')" = "$expected_count"
+            local line cfg tla deadlock expectation
+            line="$(sed -n "$((TARGET_INDEX + 1))p" "$map")"
+            IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
+            test -n "$cfg"; test -n "$tla"; test -z "$expectation"
+            test "$(printf '%s' "$cfg" | sha256sum | awk '{print $1}')" = "$EXPECTED_CFG_PATH_HASH"
+            test "$(printf '%s' "$tla" | sha256sum | awk '{print $1}')" = "$EXPECTED_TLA_PATH_HASH"
+            python3 - "$ROOT" "$cfg" "$tla" >"$RUNNER_TEMP/fingerprint-$tag" <<'PY'
+          from pathlib import Path
+          import hashlib, re, sys
+          root=Path(sys.argv[1]).resolve()
+          cfg=Path(sys.argv[2])
+          tla=Path(sys.argv[3])
+          seen=set()
+          blobs=[]
+          def add_file(path):
+              path=path.resolve()
+              rel=path.relative_to(root).as_posix()
+              if rel in seen: return
+              seen.add(rel)
+              data=path.read_bytes()
+              blobs.append((rel,data))
+              if path.suffix != '.tla': return
+              text=data.decode('utf-8')
+              modules=[]
+              for m in re.finditer(r'(?m)^\s*EXTENDS\s+([^\n]+)',text):
+                  modules += [x.strip() for x in m.group(1).split(',') if x.strip()]
+              modules += re.findall(r'\bINSTANCE\s+([A-Za-z][A-Za-z0-9_]*)',text)
+              for module in modules:
+                  candidates=[]
+                  local=path.parent/(module+'.tla')
+                  if local.is_file(): candidates=[local]
+                  else: candidates=list(root.rglob(module+'.tla'))
+                  if len(candidates)==1: add_file(candidates[0])
+                  elif len(candidates)>1: raise SystemExit('ambiguous local TLA dependency')
+          add_file(root/cfg); add_file(root/tla)
+          h=hashlib.sha256()
+          for rel,data in sorted(blobs):
+              h.update(rel.encode()); h.update(b'\0'); h.update(hashlib.sha256(data).digest()); h.update(b'\0')
+          print(h.hexdigest())
+          PY
+            test -s "$RUNNER_TEMP/fingerprint-$tag"
+            printf '%s' "$line" | sha256sum | awk '{print $1}' >"$RUNNER_TEMP/line-$tag"
+          }
+
+          profile_fingerprint "$ancestor" "$EXPECTED_ANCESTOR_PROFILE_COUNT" ancestor
+          profile_fingerprint "$final" "$EXPECTED_FINAL_PROFILE_COUNT" final
+          cmp --silent "$RUNNER_TEMP/fingerprint-ancestor" "$RUNNER_TEMP/fingerprint-final"
+          cmp --silent "$RUNNER_TEMP/line-ancestor" "$RUNNER_TEMP/line-final"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_TLC39_EXECUTABLE_CLOSURE_UNCHANGED=PASS"
+          echo "LAS_TLC39_ANCESTOR_APPLICABILITY=PASS"
