@@ -1,4 +1,4 @@
-name: Private Root FFI test-build class classifier
+name: Private Root FFI test-build owner classifier
 
 on:
   push:
@@ -73,40 +73,35 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo "LAS_TEST_BUILD_RECOVERY=PASS"
+          echo "LAS_TEST_OWNER_RECOVERY=PASS"
 
-      - name: Classify untouched baseline test build
+      - name: Map untouched baseline owners
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/baseline.log"; set +e
-          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$log" 2>&1
-          rc=$?; set -e
-          echo "LAS_BASELINE_TEST_BUILD_RC=$rc"
-          python3 - "$log" <<'PY'
-          import collections,json,sys
-          codes=collections.Counter(); cats=collections.Counter()
+          json="$RUNNER_TEMP/baseline.jsonl"; set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$json" 2>/dev/null
+          rc=$?; set -e; echo "LAS_BASELINE_OWNER_RC=$rc"
+          python3 - "$json" <<'PY'
+          import hashlib,json,sys
+          seen=set(); n=0
           for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
               try:o=json.loads(raw)
-              except Exception:
-                  low=raw.lower()
-                  if 'linking with' in low or 'linker' in low: cats['LINKER']+=1
-                  continue
-              if o.get('reason')!='compiler-message': continue
+              except Exception:continue
+              if o.get('reason')!='compiler-message':continue
               m=o.get('message') or {}
-              if m.get('level')!='error': continue
-              codes[(m.get('code') or {}).get('code') or 'NO_CODE']+=1
-              text=(m.get('message') or '').lower()
-              if 'linking with' in text or 'linker' in text: cats['LINKER']+=1
-              elif 'dead code' in text or 'never used' in text or 'never constructed' in text: cats['DEAD_CODE']+=1
-              elif 'unresolved import' in text or 'cannot find' in text: cats['RESOLUTION']+=1
-              elif 'mismatched types' in text or 'trait bound' in text: cats['TYPE']+=1
-              else: cats['OTHER_RUST']+=1
-          print('LAS_BASELINE_TEST_BUILD_ERROR_COUNT='+str(sum(codes.values())))
-          for k,v in sorted(codes.items()): print(f'LAS_BASELINE_TEST_BUILD_CODE={k}:{v}')
-          for k,v in sorted(cats.items()): print(f'LAS_BASELINE_TEST_BUILD_CATEGORY={k}:{v}')
+              if m.get('level')!='error':continue
+              code=(m.get('code') or {}).get('code') or 'NO_CODE'
+              for s in m.get('spans') or []:
+                  if not s.get('is_primary') or not s.get('file_name'):continue
+                  key=(code,s['file_name'],s.get('line_start') or 0)
+                  if key in seen:continue
+                  seen.add(key);n+=1
+                  ph=hashlib.sha256(s['file_name'].encode()).hexdigest()
+                  print(f'LAS_BASELINE_OWNER={n}:CODE={code}:PATH_HASH={ph}:LINE={s.get("line_start") or 0}')
+          print(f'LAS_BASELINE_OWNER_COUNT={n}')
           PY
-          rm -f "$log"
+          rm -f "$json"
 
       - name: Apply exact transient candidate
         shell: bash
@@ -126,41 +121,36 @@ jobs:
           echo "::add-mask::$minimal"; echo "::add-mask::$oracle"; echo "::add-mask::$clippy_fix"
           python3 "$minimal"; python3 "$oracle"; python3 "$clippy_fix"
           rm "$minimal" "$oracle" "$clippy_fix"
-          echo "LAS_TEST_BUILD_PATCH=PASS"
+          echo "LAS_TEST_OWNER_PATCH=PASS"
 
-      - name: Classify transient candidate test build
+      - name: Map transient candidate owners
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/candidate.log"; set +e
-          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$log" 2>&1
-          rc=$?; set -e
-          echo "LAS_CANDIDATE_TEST_BUILD_RC=$rc"
-          python3 - "$log" <<'PY'
-          import collections,json,sys
-          codes=collections.Counter(); cats=collections.Counter()
+          json="$RUNNER_TEMP/candidate.jsonl"; set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$json" 2>/dev/null
+          rc=$?; set -e; echo "LAS_CANDIDATE_OWNER_RC=$rc"
+          python3 - "$json" <<'PY'
+          import hashlib,json,sys
+          seen=set(); n=0
           for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
               try:o=json.loads(raw)
-              except Exception:
-                  low=raw.lower()
-                  if 'linking with' in low or 'linker' in low: cats['LINKER']+=1
-                  continue
-              if o.get('reason')!='compiler-message': continue
+              except Exception:continue
+              if o.get('reason')!='compiler-message':continue
               m=o.get('message') or {}
-              if m.get('level')!='error': continue
-              codes[(m.get('code') or {}).get('code') or 'NO_CODE']+=1
-              text=(m.get('message') or '').lower()
-              if 'linking with' in text or 'linker' in text: cats['LINKER']+=1
-              elif 'dead code' in text or 'never used' in text or 'never constructed' in text: cats['DEAD_CODE']+=1
-              elif 'unresolved import' in text or 'cannot find' in text: cats['RESOLUTION']+=1
-              elif 'mismatched types' in text or 'trait bound' in text: cats['TYPE']+=1
-              else: cats['OTHER_RUST']+=1
-          print('LAS_CANDIDATE_TEST_BUILD_ERROR_COUNT='+str(sum(codes.values())))
-          for k,v in sorted(codes.items()): print(f'LAS_CANDIDATE_TEST_BUILD_CODE={k}:{v}')
-          for k,v in sorted(cats.items()): print(f'LAS_CANDIDATE_TEST_BUILD_CATEGORY={k}:{v}')
+              if m.get('level')!='error':continue
+              code=(m.get('code') or {}).get('code') or 'NO_CODE'
+              for s in m.get('spans') or []:
+                  if not s.get('is_primary') or not s.get('file_name'):continue
+                  key=(code,s['file_name'],s.get('line_start') or 0)
+                  if key in seen:continue
+                  seen.add(key);n+=1
+                  ph=hashlib.sha256(s['file_name'].encode()).hexdigest()
+                  print(f'LAS_CANDIDATE_OWNER={n}:CODE={code}:PATH_HASH={ph}:LINE={s.get("line_start") or 0}')
+          print(f'LAS_CANDIDATE_OWNER_COUNT={n}')
           PY
-          rm -f "$log"
+          rm -f "$json"
 
       - name: Finish classifier
         shell: bash
-        run: echo "LAS_TEST_BUILD_CLASSIFIER=PASS"
+        run: echo "LAS_TEST_OWNER_CLASSIFIER=PASS"
