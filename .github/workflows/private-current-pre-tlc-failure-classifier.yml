@@ -1,0 +1,123 @@
+name: Classify current exact pre-TLC failures opaquely
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-current-pre-tlc-failure-classifier.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
+  EXPECTED_PRIVATE_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
+  EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Recover exact private materialized revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          git checkout -q -B verify-target "$actual"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+          echo "LAS_PRE_CLASSIFIER_RECOVERY=PASS"
+
+      - name: Run canonical pre-TLC and classify failures without names
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          verifier="tools/verify_codespaces_all.sh"
+          staged="$RUNNER_TEMP/verify-pre-tlc.sh"
+          python3 - "$verifier" "$staged" <<'PY'
+          from pathlib import Path
+          import sys
+          src=Path(sys.argv[1]).read_text(encoding='utf-8')
+          needle='TLC_MAP="$TMP/tlc-map.tsv"'
+          if src.count(needle) != 1:
+              raise SystemExit('canonical TLC boundary not unique')
+          insertion='''\necho "LAS_PRE_CLASSIFIER_CANONICAL_PRE_TLC_PASS=1"\nexit 0\n\n'''
+          Path(sys.argv[2]).write_text(src.replace(needle,insertion+needle,1),encoding='utf-8')
+          PY
+          chmod 0700 "$staged"
+          log="$RUNNER_TEMP/pre-tlc.private.log"
+          set +e
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target bash "$staged" >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_PRE_CLASSIFIER_RC=$rc"
+          echo "LAS_PRE_CLASSIFIER_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          if [[ "$rc" -eq 0 ]]; then
+            grep -q '^LAS_PRE_CLASSIFIER_CANONICAL_PRE_TLC_PASS=1$' "$log"
+            echo "LAS_PRE_CLASSIFIER_RESULT=PASS"
+            rm -f "$log"
+            exit 0
+          fi
+          python3 - "$verifier" "$log" <<'PY'
+          from pathlib import Path
+          import hashlib, re, sys
+          src=Path(sys.argv[1]).read_text(encoding='utf-8')
+          log=Path(sys.argv[2]).read_text(encoding='utf-8', errors='replace')
+          literals=[]
+          for m in re.finditer(r'(?m)^record\s+"([^"]+)"', src):
+              label=m.group(1)
+              literals.append(label)
+          failed=re.findall(r'(?m)^FAILED_CHECK=(.*)$', log)
+          print(f"LAS_PRE_CLASSIFIER_FAIL_COUNT={len(failed)}")
+          for idx,name in enumerate(failed,1):
+              ordinal=0
+              mode='unknown'
+              for pos,label in enumerate(literals,1):
+                  if name == label:
+                      ordinal=pos; mode='exact'; break
+                  prefix=label.split('$',1)[0]
+                  if '$' in label and prefix and name.startswith(prefix):
+                      ordinal=pos; mode='template'; break
+              digest=hashlib.sha256(name.encode()).hexdigest()
+              print(f"LAS_PRE_CLASSIFIER_FAIL_{idx}_ORDINAL={ordinal}")
+              print(f"LAS_PRE_CLASSIFIER_FAIL_{idx}_MODE={mode}")
+              print(f"LAS_PRE_CLASSIFIER_FAIL_{idx}_SHA256={digest}")
+          codes=sorted(set(re.findall(r'error\[(E[0-9]{4})\]', log)))
+          lints=sorted(set(re.findall(r'(?m)^error: .*?\n(?:.*\n){0,4}?\s*= note: `-D ([A-Za-z0-9_-]+)`', log)))
+          print('LAS_PRE_CLASSIFIER_RUST_ERROR_CODES=' + (','.join(codes) if codes else 'none'))
+          print('LAS_PRE_CLASSIFIER_DENY_LINT_COUNT=' + str(len(lints)))
+          resource=int(bool(re.search(r'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137|No space left on device',log,re.I)))
+          network=int(bool(re.search(r'Could not resolve host|network failure|failed to get|timed out.*download',log,re.I)))
+          print(f'LAS_PRE_CLASSIFIER_RESOURCE_MARKER={resource}')
+          print(f'LAS_PRE_CLASSIFIER_NETWORK_MARKER={network}')
+          PY
+          echo "LAS_PRE_CLASSIFIER_RESULT=FAIL_CLASSIFIED"
+          exit 1
