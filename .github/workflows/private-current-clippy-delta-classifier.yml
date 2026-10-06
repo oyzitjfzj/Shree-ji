@@ -1,0 +1,134 @@
+name: Classify current Clippy delta against parent baseline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-current-clippy-delta-classifier.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+  CURRENT_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
+  PARENT_PROOF: 536209980a14897d0236c766a09e6a7c1f09a2517d42b4b41377647d9c352b3c
+  CURRENT_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
+  PARENT_TREE_PROOF: df5d1f3ab3b217a27916608b9045adde4dee40a3ebe5b8ed55b762c8777f09b6
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust and Ada build toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 clippy >/dev/null
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"; ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"; unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"; export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          ALR_WS="$RUNNER_TEMP/alire-workspace"; mkdir -p "$ALR_WS"
+          (cd "$ALR_WS" && alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null)
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec "$ALR_PREFIX/bin/alr" exec -- gprbuild "\$@"
+          EOF
+          chmod +x "$GPRBUILD_WRAPPER"
+          echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
+
+      - name: Recover exact current and parent revisions opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2 origin "$matched_ref"
+          current="$(git rev-parse FETCH_HEAD)"; parent="$(git rev-parse FETCH_HEAD^)"
+          echo "::add-mask::$current"; echo "::add-mask::$parent"
+          test "$(printf '%s' "$current" | sha256sum | awk '{print $1}')" = "$CURRENT_PROOF"
+          test "$(printf '%s' "$parent" | sha256sum | awk '{print $1}')" = "$PARENT_PROOF"
+          current_tree="$(git rev-parse "$current^{tree}")"; parent_tree="$(git rev-parse "$parent^{tree}")"
+          echo "::add-mask::$current_tree"; echo "::add-mask::$parent_tree"
+          test "$(printf '%s' "$current_tree" | sha256sum | awk '{print $1}')" = "$CURRENT_TREE_PROOF"
+          test "$(printf '%s' "$parent_tree" | sha256sum | awk '{print $1}')" = "$PARENT_TREE_PROOF"
+          printf '%s\n' "$current" >"$RUNNER_TEMP/current.sha"
+          printf '%s\n' "$parent" >"$RUNNER_TEMP/parent.sha"
+          unset PRIVATE_TOKEN auth matched_ref current parent current_tree parent_tree
+          echo "LAS_CLIPPY_DELTA_RECOVERY=PASS"
+
+      - name: Compare exact Clippy signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          current="$(cat "$RUNNER_TEMP/current.sha")"; parent="$(cat "$RUNNER_TEMP/parent.sha")"
+          classify_log() {
+            revision="$1"; mode="$2"; log="$3"
+            python3 - "$revision" "$mode" "$log" <<'PY'
+          import hashlib, re, sys
+          rev, mode, path = sys.argv[1:]
+          text=open(path,encoding='utf-8',errors='replace').read()
+          # Public output contains only lint identifiers and cryptographic path/message signatures.
+          lints=[]
+          for x in re.findall(r'`-D ([A-Za-z0-9_:-]+)`', text):
+              if x not in lints: lints.append(x)
+          paths=[]
+          for p in re.findall(r'(?m)^\s*-->\s+([^:\n]+):\d+:\d+', text):
+              p=p.strip()
+              if p not in paths: paths.append(p)
+          msgs=[]
+          for m in re.findall(r'(?m)^error:\s*(.+)$', text):
+              # Hash message; do not expose potentially source-revealing text.
+              msgs.append(hashlib.sha256(m.strip().encode()).hexdigest())
+          canonical='\n'.join(sorted(lints)+sorted(hashlib.sha256(p.encode()).hexdigest() for p in paths)+sorted(msgs))
+          print(f'LAS_CLIPPY_{rev}_{mode}_LINTS=' + (','.join(sorted(lints)) if lints else 'none'))
+          print(f'LAS_CLIPPY_{rev}_{mode}_PATH_HASHES=' + (','.join(sorted(hashlib.sha256(p.encode()).hexdigest() for p in paths)) if paths else 'none'))
+          print(f'LAS_CLIPPY_{rev}_{mode}_ERROR_COUNT={len(msgs)}')
+          print(f'LAS_CLIPPY_{rev}_{mode}_SIGNATURE={hashlib.sha256(canonical.encode()).hexdigest()}')
+          PY
+          }
+          run_one() {
+            rev_label="$1"; sha="$2"; mode="$3"; shift 3
+            git checkout -q --detach "$sha"
+            git clean -fdx -q
+            log="$RUNNER_TEMP/${rev_label}-${mode}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            rc=$?
+            set -e
+            echo "LAS_CLIPPY_${rev_label}_${mode}_RC=$rc"
+            classify_log "$rev_label" "$mode" "$log"
+          }
+          for rev_label in PARENT CURRENT; do
+            if [[ "$rev_label" = PARENT ]]; then sha="$parent"; else sha="$current"; fi
+            run_one "$rev_label" "$sha" DEFAULT cargo +1.98.1 clippy --locked --all-targets -- -D warnings
+            run_one "$rev_label" "$sha" LINUX cargo +1.98.1 clippy --locked --features linux-peer-credentials --all-targets -- -D warnings
+            run_one "$rev_label" "$sha" ROOT env GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --features root-ffi --all-targets -- -D warnings
+            run_one "$rev_label" "$sha" ALL env GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --all-features --all-targets -- -D warnings
+          done
+          echo "LAS_CLIPPY_DELTA_COMPLETE=PASS"
