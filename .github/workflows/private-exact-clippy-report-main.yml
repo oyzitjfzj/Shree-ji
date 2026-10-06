@@ -2,39 +2,75 @@ name: Seal Clippy-clean Root FFI candidate after canonical pre-TLC
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    paths:
+      - ".github/workflows/private-exact-clippy-report-main.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: private-root-ffi-clippy-seal
+  cancel-in-progress: false
+
 jobs:
   seal:
     runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+      EXPECTED_PRIVATE_SNAPSHOT_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
+      EXPECTED_PRIVATE_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
     steps:
-      - name: Recover exact private candidate
+      - name: Recover exact private candidate opaquely
         shell: bash
         env:
-          PRIVATE_REPOSITORY: ${{ secrets.PRIVATE_REPOSITORY }}
-          PRIVATE_TOKEN: ${{ secrets.PRIVATE_TOKEN }}
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
-          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
-          mkdir target; cd target; git init -q
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"; cd "$root"; git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
-          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q origin refs/heads/tmp/root-control-production-composition-green-20261005
-          git checkout -q -B tmp/root-control-production-composition-green-20261005 FETCH_HEAD
-          test "$(git rev-parse HEAD)" = "2d0837c44b4255e5ff5411c4c44fcd7e6a453b23"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
+          matched_ref=""; matched_sha=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"; matched_sha="$sha"
+            fi
+          done < "$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"; test -n "$matched_sha"
+          echo "::add-mask::$matched_ref"; echo "::add-mask::$matched_sha"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q -B verify-target FETCH_HEAD
+          actual="$(git rev-parse HEAD)"; tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$actual"; echo "::add-mask::$tree"
+          test "$actual" = "$matched_sha"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+          printf '%s' "$matched_ref" > "$RUNNER_TEMP/private-ref"
+          printf '%s' "$actual" > "$RUNNER_TEMP/private-start-sha"
           printf '%s' "$auth" > "$RUNNER_TEMP/private-auth"
+          chmod 600 "$RUNNER_TEMP/private-ref" "$RUNNER_TEMP/private-start-sha" "$RUNNER_TEMP/private-auth"
           echo "LAS_SEAL_RECOVERY=PASS"
 
-      - name: Apply semantic Clippy cleanups
+      - name: Apply semantic lint cleanups and format
         shell: bash
         run: |
           set -euo pipefail
-          cd target
+          cd "$RUNNER_TEMP/private-target"
           python3 - <<'PY'
           from pathlib import Path
 
@@ -114,34 +150,67 @@ jobs:
           replace_exact(linux, old_linux_marker, new_linux_marker, 1, "linux compile-time marker")
           PY
 
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          cargo +1.98.1 fmt --all
           git diff --check
+
+          changed="$RUNNER_TEMP/seal-paths"
+          git diff --name-only > "$changed"
+          test "$(wc -l < "$changed" | tr -d ' ')" -eq 3
+          grep -Fxq 'src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs' "$changed"
+          grep -Fxq 'src/effect_fabric/promotion_terminal_recovery_ingress_red_tests.rs' "$changed"
+          grep -Fxq 'src/effect_fabric/promotion_linux_service_reachability_red_tests.rs' "$changed"
+
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
-          git add \
-            src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs \
-            src/effect_fabric/promotion_terminal_recovery_ingress_red_tests.rs \
-            src/effect_fabric/promotion_linux_service_reachability_red_tests.rs
+          git add -u
           git commit -q -m "Make promotion compile-time tests Clippy-clean"
-          test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_SEAL_PATCH_COMMIT=$(git rev-parse HEAD)"
+          new_sha="$(git rev-parse HEAD)"; new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"; echo "::add-mask::$new_tree"
+          printf '%s' "$new_sha" > "$RUNNER_TEMP/private-new-sha"
+          echo "LAS_SEAL_PATCH_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_SEAL_PATCH_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
 
-      - name: Run exact canonical pre-TLC verification
+      - name: Run canonical pre-TLC privately
         shell: bash
         run: |
           set -euo pipefail
-          cd target
+          cd "$RUNNER_TEMP/private-target"
           awk '/^TLC_MAP=/{exit} {print}' tools/verify_codespaces_all.sh > "$RUNNER_TEMP/verify-pre-tlc.sh"
           chmod +x "$RUNNER_TEMP/verify-pre-tlc.sh"
-          LAS_VERIFY_EXPECTED_BRANCH=tmp/root-control-production-composition-green-20261005 \
-            bash "$RUNNER_TEMP/verify-pre-tlc.sh"
+          log="$RUNNER_TEMP/pre-tlc.private.log"
+          set +e
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target bash "$RUNNER_TEMP/verify-pre-tlc.sh" >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "LAS_SEAL_PRE_TLC_RC=$rc"
+          echo "LAS_SEAL_PRE_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          if [[ "$rc" -ne 0 ]]; then
+            echo "LAS_SEAL_PRE_TLC=FAIL"
+            exit "$rc"
+          fi
+          rm -f "$log"
           echo "LAS_SEAL_PRE_TLC=PASS"
 
-      - name: Publish only the verified candidate
+      - name: Fast-forward only the verified private ref
         shell: bash
+        env:
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
         run: |
           set -euo pipefail
-          cd target
+          cd "$RUNNER_TEMP/private-target"
+          matched_ref="$(cat "$RUNNER_TEMP/private-ref")"
+          start_sha="$(cat "$RUNNER_TEMP/private-start-sha")"
+          new_sha="$(cat "$RUNNER_TEMP/private-new-sha")"
           auth="$(cat "$RUNNER_TEMP/private-auth")"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:refs/heads/tmp/root-control-production-composition-green-20261005
-          rm -f "$RUNNER_TEMP/private-auth"
+          echo "::add-mask::$matched_ref"; echo "::add-mask::$start_sha"; echo "::add-mask::$new_sha"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"; echo "::add-mask::$auth"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:"$matched_ref"
+          rm -f "$RUNNER_TEMP/private-auth" "$RUNNER_TEMP/private-ref" "$RUNNER_TEMP/private-start-sha" "$RUNNER_TEMP/private-new-sha"
           echo "LAS_SEAL_PUBLISHED=PASS"
+          echo "LAS_SEAL_PUBLISHED_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
