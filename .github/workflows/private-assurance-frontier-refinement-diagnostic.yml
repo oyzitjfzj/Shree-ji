@@ -1,0 +1,83 @@
+name: Private assurance frontier refinement diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ASSURANCE_FRONTIER_REFINEMENT_DIAGNOSTIC"
+
+permissions:
+  contents: read
+
+env:
+  JAVA_TOOL_OPTIONS: -Xmx5g
+  TARGET_REF_HASH: cfea257f56be059e1f6565654924f01a5dfec581efba0bb7672a59c550ca03c1
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 4d3899116e8d3d3e18e8d32f7e5b7aa64e450a7260dc4ead84a4fdb7304c18c8
+  EXPECTED_TLC_PROFILE_COUNT: "203"
+  REFINEMENT_CFG_HASH: 07deae307210aa4cd01cdf62d13a181345bb525783dd877e1d15c27c9a9abab0
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Recover exact candidate opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q; git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; refs="$RUNNER_TEMP/heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched=""
+          while read -r sha ref; do [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" != "$TARGET_REF_HASH" ]] || { test -z "$matched"; matched="$ref"; }; done <"$refs"
+          rm -f "$refs"; test -n "$matched"; echo "::add-mask::$matched"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=32 origin "$matched"
+          resolved=""
+          while read -r c; do [[ "$(printf '%s' "$c" | sha256sum | awk '{print $1}')" != "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]] || { test -z "$resolved"; resolved="$c"; }; done < <(git rev-list --max-count=32 FETCH_HEAD)
+          test -n "$resolved"; git checkout -q --detach "$resolved"; test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_FRONTIER_REFINEMENT_RECOVERY=PASS"; unset PRIVATE_TOKEN auth matched resolved c
+
+      - name: Run exact canonical refinement profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"; cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          python3 - tools/verify_codespaces_all.sh "$RUNNER_TEMP/map.py" <<'PY'
+          from pathlib import Path
+          import re,sys
+          s=Path(sys.argv[1]).read_text(encoding='utf-8'); m=re.search(r'python3 - "\$ROOT" > "\$TLC_MAP" <<\'PY\'\n(.*?)\nPY\n\nrun_tlc_profile\(\) \{',s,re.S)
+          if not m: raise SystemExit(2)
+          Path(sys.argv[2]).write_text(m.group(1)+'\n',encoding='utf-8')
+          PY
+          map="$RUNNER_TEMP/map.tsv"; python3 "$RUNNER_TEMP/map.py" "$ROOT" >"$map"; test "$(wc -l <"$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
+          line_no="$(python3 - "$map" "$REFINEMENT_CFG_HASH" <<'PY'
+          import hashlib,pathlib,sys
+          hits=[]
+          for i,l in enumerate(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()):
+              if hashlib.sha256(l.split('\t',1)[0].encode()).hexdigest()==sys.argv[2]: hits.append(i+1)
+          if len(hits)!=1: raise SystemExit(3)
+          print(hits[0])
+          PY
+          )"
+          line="$(sed -n "${line_no}p" "$map")"; IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"; test -z "$expectation"
+          cfg_dir="$(dirname "$cfg")"; cfg_base="$(basename "$cfg")"; tla_base="$(basename "$tla")"; log="$RUNNER_TEMP/refinement.log"
+          args=(-workers auto -lncheck final -fp 0); [[ "$deadlock" == "1" ]] && args+=(-deadlock); args+=(-config "$cfg_base" "$tla_base")
+          set +e; (cd "$cfg_dir"; java -XX:+UseParallelGC -jar "$TLA_JAR" "${args[@]}") >"$log" 2>&1; rc=$?; set -e
+          echo "LAS_FRONTIER_REFINEMENT_RC=$rc"
+          python3 - "$log" <<'PY'
+          import re,sys
+          t=open(sys.argv[1],encoding='utf-8',errors='replace').read(); m=re.findall(r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue',t)
+          if m:
+              g,d,q=m[-1]; print('LAS_FRONTIER_REFINEMENT_GENERATED='+g.replace(',','')); print('LAS_FRONTIER_REFINEMENT_DISTINCT='+d.replace(',','')); print('LAS_FRONTIER_REFINEMENT_QUEUE='+q.replace(',',''))
+          PY
+          test "$rc" -eq 0
+          ! grep -Eiq 'Invariant .* is violated|Property .* is violated|Deadlock reached|Parsing or semantic analysis failed|TLC threw an unexpected exception|TLC Bug|AssertionError' "$log"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_FRONTIER_REFINEMENT_RESULT=PASS"
