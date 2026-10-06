@@ -1,11 +1,11 @@
-name: Verify and apply current canonical Clippy repair v1
+name: Verify and apply current canonical Clippy repair v2
 
 on:
   push:
     branches: [main]
     paths:
       - ".github/workflows/private-current-canonical-clippy-repair-v1.yml"
-      - ".github/private-patches/current-canonical-clippy-repair-v1.enc.b64"
+      - ".github/private-patches/current-canonical-clippy-repair-v2.enc.b64"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ env:
   EXPECTED_PRIVATE_SNAPSHOT_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
   EXPECTED_PRIVATE_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
   EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
-  EXPECTED_DRIVER_SHA256: aac8cc459919aa3d2eedf2c0daaa927a712ca2eb219b75c669e2da1344aa6fdd
+  EXPECTED_DRIVER_SHA256: 581bb7814978f0f4aed9839f6d0c0e999a7e91ed6287cf85244373346514dcdf
 
 jobs:
   repair-verify-push:
@@ -115,7 +115,7 @@ jobs:
           echo "::add-mask::$start_tree"
 
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 -sS \
-            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/current-canonical-clippy-repair-v1.enc.b64" \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/private-patches/current-canonical-clippy-repair-v2.enc.b64" \
             >"$RUNNER_TEMP/driver.b64"
           base64 -d "$RUNNER_TEMP/driver.b64" >"$RUNNER_TEMP/driver.enc"
           rm -f "$RUNNER_TEMP/driver.b64"
