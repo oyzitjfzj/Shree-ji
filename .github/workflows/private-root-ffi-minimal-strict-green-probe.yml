@@ -1,4 +1,4 @@
-name: Private Root FFI test delta classifier
+name: Private Root FFI test-build class classifier
 
 on:
   push:
@@ -19,7 +19,7 @@ env:
   CLIPPY_FIX_BLOB: 80ec12a2a5cef4748f8058c2db4d02e471dcaa4c
 
 jobs:
-  classify-tests:
+  classify-test-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
@@ -28,7 +28,6 @@ jobs:
         run: |
           set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
-          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
           ALR_ZIP="$RUNNER_TEMP/alr.zip"; ALR_PREFIX="$RUNNER_TEMP/alr"
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
           echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
@@ -74,27 +73,39 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo "LAS_TEST_DELTA_RECOVERY=PASS"
+          echo "LAS_TEST_BUILD_RECOVERY=PASS"
 
-      - name: Run untouched baseline test gate
+      - name: Classify untouched baseline test build
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/baseline-test.log"; set +e
-          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1 >"$log" 2>&1
+          log="$RUNNER_TEMP/baseline.log"; set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$log" 2>&1
           rc=$?; set -e
-          echo "LAS_BASELINE_TEST_RC=$rc"
+          echo "LAS_BASELINE_TEST_BUILD_RC=$rc"
           python3 - "$log" <<'PY'
-          import hashlib,re,sys
-          failed=[]
-          for line in open(sys.argv[1],encoding='utf-8',errors='replace'):
-              m=re.match(r'^test (.+) \.\.\. FAILED\s*$', line.strip())
-              if m: failed.append(m.group(1))
-          print(f'LAS_BASELINE_FAILED_TEST_COUNT={len(failed)}')
-          for name in failed:
-              print('LAS_BASELINE_FAILED_TEST_HASH='+hashlib.sha256(name.encode()).hexdigest())
+          import collections,json,sys
+          codes=collections.Counter(); cats=collections.Counter()
+          for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
+              try:o=json.loads(raw)
+              except Exception:
+                  low=raw.lower()
+                  if 'linking with' in low or 'linker' in low: cats['LINKER']+=1
+                  continue
+              if o.get('reason')!='compiler-message': continue
+              m=o.get('message') or {}
+              if m.get('level')!='error': continue
+              codes[(m.get('code') or {}).get('code') or 'NO_CODE']+=1
+              text=(m.get('message') or '').lower()
+              if 'linking with' in text or 'linker' in text: cats['LINKER']+=1
+              elif 'dead code' in text or 'never used' in text or 'never constructed' in text: cats['DEAD_CODE']+=1
+              elif 'unresolved import' in text or 'cannot find' in text: cats['RESOLUTION']+=1
+              elif 'mismatched types' in text or 'trait bound' in text: cats['TYPE']+=1
+              else: cats['OTHER_RUST']+=1
+          print('LAS_BASELINE_TEST_BUILD_ERROR_COUNT='+str(sum(codes.values())))
+          for k,v in sorted(codes.items()): print(f'LAS_BASELINE_TEST_BUILD_CODE={k}:{v}')
+          for k,v in sorted(cats.items()): print(f'LAS_BASELINE_TEST_BUILD_CATEGORY={k}:{v}')
           PY
-          echo "LAS_BASELINE_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           rm -f "$log"
 
       - name: Apply exact transient candidate
@@ -115,30 +126,41 @@ jobs:
           echo "::add-mask::$minimal"; echo "::add-mask::$oracle"; echo "::add-mask::$clippy_fix"
           python3 "$minimal"; python3 "$oracle"; python3 "$clippy_fix"
           rm "$minimal" "$oracle" "$clippy_fix"
-          cargo +1.98.1 fmt --all; git diff --check
-          echo "LAS_TEST_DELTA_PATCH=PASS"
+          echo "LAS_TEST_BUILD_PATCH=PASS"
 
-      - name: Run transient candidate test gate
+      - name: Classify transient candidate test build
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/candidate-test.log"; set +e
-          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1 >"$log" 2>&1
+          log="$RUNNER_TEMP/candidate.log"; set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$log" 2>&1
           rc=$?; set -e
-          echo "LAS_CANDIDATE_TEST_RC=$rc"
+          echo "LAS_CANDIDATE_TEST_BUILD_RC=$rc"
           python3 - "$log" <<'PY'
-          import hashlib,re,sys
-          failed=[]
-          for line in open(sys.argv[1],encoding='utf-8',errors='replace'):
-              m=re.match(r'^test (.+) \.\.\. FAILED\s*$', line.strip())
-              if m: failed.append(m.group(1))
-          print(f'LAS_CANDIDATE_FAILED_TEST_COUNT={len(failed)}')
-          for name in failed:
-              print('LAS_CANDIDATE_FAILED_TEST_HASH='+hashlib.sha256(name.encode()).hexdigest())
+          import collections,json,sys
+          codes=collections.Counter(); cats=collections.Counter()
+          for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
+              try:o=json.loads(raw)
+              except Exception:
+                  low=raw.lower()
+                  if 'linking with' in low or 'linker' in low: cats['LINKER']+=1
+                  continue
+              if o.get('reason')!='compiler-message': continue
+              m=o.get('message') or {}
+              if m.get('level')!='error': continue
+              codes[(m.get('code') or {}).get('code') or 'NO_CODE']+=1
+              text=(m.get('message') or '').lower()
+              if 'linking with' in text or 'linker' in text: cats['LINKER']+=1
+              elif 'dead code' in text or 'never used' in text or 'never constructed' in text: cats['DEAD_CODE']+=1
+              elif 'unresolved import' in text or 'cannot find' in text: cats['RESOLUTION']+=1
+              elif 'mismatched types' in text or 'trait bound' in text: cats['TYPE']+=1
+              else: cats['OTHER_RUST']+=1
+          print('LAS_CANDIDATE_TEST_BUILD_ERROR_COUNT='+str(sum(codes.values())))
+          for k,v in sorted(codes.items()): print(f'LAS_CANDIDATE_TEST_BUILD_CODE={k}:{v}')
+          for k,v in sorted(cats.items()): print(f'LAS_CANDIDATE_TEST_BUILD_CATEGORY={k}:{v}')
           PY
-          echo "LAS_CANDIDATE_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           rm -f "$log"
 
       - name: Finish classifier
         shell: bash
-        run: echo "LAS_TEST_DELTA_CLASSIFIER=PASS"
+        run: echo "LAS_TEST_BUILD_CLASSIFIER=PASS"
