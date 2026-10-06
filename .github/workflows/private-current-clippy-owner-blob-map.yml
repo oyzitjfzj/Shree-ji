@@ -113,11 +113,6 @@ jobs:
                   findings.append((ph,blob,int(primary.get('line_start') or 0),int(primary.get('column_start') or 0),norm))
           findings=sorted(set(findings))
           actual={x[0] for x in findings}
-          if actual != expected:
-              print('LAS_OWNER_MAP_'+mode+'_EXPECTED_SET_MATCH=0')
-              print('LAS_OWNER_MAP_'+mode+'_ACTUAL_SET_DIGEST='+hashlib.sha256('\n'.join(sorted(actual)).encode()).hexdigest())
-              raise SystemExit(1)
-          print('LAS_OWNER_MAP_'+mode+'_EXPECTED_SET_MATCH=1')
           print('LAS_OWNER_MAP_'+mode+'_FINDING_COUNT='+str(len(findings)))
           for i,(ph,blob,line,col,lint) in enumerate(findings,1):
               print(f'LAS_OWNER_MAP_{mode}_{i}_PATH_HASH={ph}')
@@ -125,6 +120,11 @@ jobs:
               print(f'LAS_OWNER_MAP_{mode}_{i}_LINE={line}')
               print(f'LAS_OWNER_MAP_{mode}_{i}_COLUMN={col}')
               print(f'LAS_OWNER_MAP_{mode}_{i}_LINT={lint}')
+          if actual != expected:
+              print('LAS_OWNER_MAP_'+mode+'_EXPECTED_SET_MATCH=0')
+              print('LAS_OWNER_MAP_'+mode+'_ACTUAL_SET_DIGEST='+hashlib.sha256('\n'.join(sorted(actual)).encode()).hexdigest())
+              raise SystemExit(1)
+          print('LAS_OWNER_MAP_'+mode+'_EXPECTED_SET_MATCH=1')
           PY
             rm -f "$out" "$err"
           }
