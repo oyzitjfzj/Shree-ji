@@ -73,7 +73,12 @@ jobs:
           printf '%s' "$target_ref" > "$RUNNER_TEMP/private-target-ref"
           printf '%s' "$target_sha" > "$RUNNER_TEMP/private-target-start-sha"
           printf '%s' "$auth" > "$RUNNER_TEMP/private-auth"
-          chmod 600 "$RUNNER_TEMP"/private-*
+          chmod 600 \
+            "$RUNNER_TEMP/private-patch-ref" \
+            "$RUNNER_TEMP/private-patch-sha" \
+            "$RUNNER_TEMP/private-target-ref" \
+            "$RUNNER_TEMP/private-target-start-sha" \
+            "$RUNNER_TEMP/private-auth"
           echo "LAS_SEAL_RECOVERY=PASS"
 
       - name: Materialize private patch without staging history
@@ -117,6 +122,7 @@ jobs:
           new_sha="$(git rev-parse HEAD)"; new_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$new_sha"; echo "::add-mask::$new_tree"
           printf '%s' "$new_sha" > "$RUNNER_TEMP/private-new-sha"
+          chmod 600 "$RUNNER_TEMP/private-new-sha"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_SEAL_CHANGED_FILE_COUNT=3"
           echo "LAS_SEAL_PATCH_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
@@ -165,4 +171,10 @@ jobs:
           git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:"$target_ref"
           echo "LAS_SEAL_PUBLISHED=PASS"
           echo "LAS_SEAL_PUBLISHED_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          rm -f "$RUNNER_TEMP"/private-*
+          rm -f \
+            "$RUNNER_TEMP/private-patch-ref" \
+            "$RUNNER_TEMP/private-patch-sha" \
+            "$RUNNER_TEMP/private-target-ref" \
+            "$RUNNER_TEMP/private-target-start-sha" \
+            "$RUNNER_TEMP/private-new-sha" \
+            "$RUNNER_TEMP/private-auth"
