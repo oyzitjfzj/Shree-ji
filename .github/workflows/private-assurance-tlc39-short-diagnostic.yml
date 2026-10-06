@@ -53,7 +53,7 @@ jobs:
             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
           echo "$TLA_SHA1  $RUNNER_TEMP/tla2tools.jar" | sha1sum --check --strict >/dev/null
 
-      - name: Measure canonical quotient state-space growth
+      - name: Measure canonical quotient state-space growth with gzip queue
         shell: bash
         env:
           JAVA_TOOL_OPTIONS: -Xmx5g
@@ -65,7 +65,7 @@ jobs:
           set +e
           timeout --signal=TERM --kill-after=30s 8m \
             java -XX:+UseParallelGC -jar "$RUNNER_TEMP/tla2tools.jar" \
-              -workers auto -lncheck final -fp 0 -metadir "$meta" \
+              -workers auto -lncheck final -fp 0 -gzip -metadir "$meta" \
               -config CandidateAssuranceEvidenceCase.cfg \
               CandidateAssuranceEvidenceCaseModel.tla >"$log" 2>&1
           rc=$?
@@ -89,6 +89,7 @@ jobs:
           PY
           end_free="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
           meta_bytes="$(du -sb "$meta" 2>/dev/null | awk '{print $1}' || echo 0)"
+          echo "LAS_TLC39_SHORT_MODE=GZIP"
           echo "LAS_TLC39_SHORT_RC=$rc"
           echo "LAS_TLC39_SHORT_INVARIANT_MARKER=$invariant"
           echo "LAS_TLC39_SHORT_PARSER_MARKER=$parser"
