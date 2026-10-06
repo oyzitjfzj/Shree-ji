@@ -1,4 +1,4 @@
-name: Seal Clippy-clean Root FFI candidate after canonical pre-TLC
+name: Seal private candidate after canonical pre-TLC
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: private-root-ffi-clippy-seal
+  group: private-candidate-seal
   cancel-in-progress: false
 
 jobs:
@@ -18,11 +18,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
+      PATCH_REF_HASH: 507ae9e2667c0e6622e45c683c8274d19fe200fd3c304c05fb6396013b8314a2
+      PATCH_SNAPSHOT_PROOF: 5bac996624aa46702d7df8e5836526e6579414ae0bb730b4b634d9d58db14dd3
+      PATCH_TREE_PROOF: c54afb29344360d05ca2ef37c55bd71af5ed6943491b2323ca63f632fa97c1fc
       TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
-      EXPECTED_PRIVATE_SNAPSHOT_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
-      EXPECTED_PRIVATE_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
+      TARGET_SNAPSHOT_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
+      TARGET_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
     steps:
-      - name: Recover exact private candidate opaquely
+      - name: Recover private patch source and target opaquely
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -40,143 +43,92 @@ jobs:
 
           refs="$RUNNER_TEMP/private-heads"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin > "$refs"
-          matched_ref=""; matched_sha=""
+          patch_ref=""; patch_sha=""; target_ref=""; target_sha=""
           while read -r sha ref; do
-            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
-              test -z "$matched_ref"
-              matched_ref="$ref"; matched_sha="$sha"
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" = "$PATCH_REF_HASH" ]]; then
+              test -z "$patch_ref"; patch_ref="$ref"; patch_sha="$sha"
+            fi
+            if [[ "$ref_hash" = "$TARGET_REF_HASH" ]]; then
+              test -z "$target_ref"; target_ref="$ref"; target_sha="$sha"
             fi
           done < "$refs"
           rm -f "$refs"
-          test -n "$matched_ref"; test -n "$matched_sha"
-          echo "::add-mask::$matched_ref"; echo "::add-mask::$matched_sha"
+          test -n "$patch_ref"; test -n "$patch_sha"; test -n "$target_ref"; test -n "$target_sha"
+          echo "::add-mask::$patch_ref"; echo "::add-mask::$patch_sha"
+          echo "::add-mask::$target_ref"; echo "::add-mask::$target_sha"
+          test "$(printf '%s' "$patch_sha" | sha256sum | awk '{print $1}')" = "$PATCH_SNAPSHOT_PROOF"
+          test "$(printf '%s' "$target_sha" | sha256sum | awk '{print $1}')" = "$TARGET_SNAPSHOT_PROOF"
 
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
-          git checkout -q -B verify-target FETCH_HEAD
-          actual="$(git rev-parse HEAD)"; tree="$(git rev-parse 'HEAD^{tree}')"
-          echo "::add-mask::$actual"; echo "::add-mask::$tree"
-          test "$actual" = "$matched_sha"
-          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
-          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
-          test -z "$(git status --porcelain --untracked-files=no)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2 origin "$patch_ref" "$target_ref"
+          patch_tree="$(git rev-parse "$patch_sha^{tree}")"
+          target_tree="$(git rev-parse "$target_sha^{tree}")"
+          echo "::add-mask::$patch_tree"; echo "::add-mask::$target_tree"
+          test "$(printf '%s' "$patch_tree" | sha256sum | awk '{print $1}')" = "$PATCH_TREE_PROOF"
+          test "$(printf '%s' "$target_tree" | sha256sum | awk '{print $1}')" = "$TARGET_TREE_PROOF"
+          test "$(git rev-parse "$patch_sha^")" = "$target_sha"
 
-          printf '%s' "$matched_ref" > "$RUNNER_TEMP/private-ref"
-          printf '%s' "$actual" > "$RUNNER_TEMP/private-start-sha"
+          printf '%s' "$patch_ref" > "$RUNNER_TEMP/private-patch-ref"
+          printf '%s' "$patch_sha" > "$RUNNER_TEMP/private-patch-sha"
+          printf '%s' "$target_ref" > "$RUNNER_TEMP/private-target-ref"
+          printf '%s' "$target_sha" > "$RUNNER_TEMP/private-target-start-sha"
           printf '%s' "$auth" > "$RUNNER_TEMP/private-auth"
-          chmod 600 "$RUNNER_TEMP/private-ref" "$RUNNER_TEMP/private-start-sha" "$RUNNER_TEMP/private-auth"
+          chmod 600 "$RUNNER_TEMP"/private-*
           echo "LAS_SEAL_RECOVERY=PASS"
 
-      - name: Apply semantic lint cleanups and format
+      - name: Materialize private patch without staging history
         shell: bash
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-target"
-          python3 - <<'PY'
-          from pathlib import Path
+          patch_sha="$(cat "$RUNNER_TEMP/private-patch-sha")"
+          target_sha="$(cat "$RUNNER_TEMP/private-target-start-sha")"
+          echo "::add-mask::$patch_sha"; echo "::add-mask::$target_sha"
 
-          def replace_exact(path: Path, old: str, new: str, expected: int, label: str) -> None:
-              text = path.read_text()
-              count = text.count(old)
-              if count != expected:
-                  raise SystemExit(f"{label}: expected {expected} matches, found {count}")
-              path.write_text(text.replace(old, new))
-
-          retirement = Path("src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs")
-          old_drop = '''    let stable = persist_guarded_terminal_stable_acknowledgement(
-              &ingress,
-              &mut mutation,
-              &mut promotion_storage,
-              &classified,
-          )
-          .expect("fixture must first persist a stable v6 record");
-          drop(stable);
-          '''
-          new_scope = '''    // Model process loss by ending the process-local witness lexically; calling
-              // `drop` on this non-Drop proof is a semantic no-op and obscures that intent.
-              {
-                  let _process_local_stable = persist_guarded_terminal_stable_acknowledgement(
-                      &ingress,
-                      &mut mutation,
-                      &mut promotion_storage,
-                      &classified,
-                  )
-                  .expect("fixture must first persist a stable v6 record");
-              }
-          '''
-          replace_exact(retirement, old_drop, new_scope, 2, "process-local stable witness scope")
-
-          recovery = Path("src/effect_fabric/promotion_terminal_recovery_ingress_red_tests.rs")
-          old_runtime_marker = '''
-          #[test]
-          fn terminal_restart_recovery_surface_does_not_require_live_promotion_mutation_authority() {
-              // The generic helper above is compiled as the API discriminator. Runtime execution
-              // needs no storage fixture because the property under test is the callable surface.
-              assert!(true);
-          }
-          '''
-          new_runtime_marker = '''
-          // This cfg(test) module is itself the compile-time test: the generic discriminator above
-          // must type-check using only durable-storage authority. A constant runtime assertion would
-          // add no evidence and would weaken the signal of this surface check.
-          '''
-          replace_exact(recovery, old_runtime_marker, new_runtime_marker, 1, "recovery compile-time marker")
-
-          linux = Path("src/effect_fabric/promotion_linux_service_reachability_red_tests.rs")
-          replace_exact(linux, "#![allow(dead_code)]\n", "", 1, "linux blanket dead-code allowance")
-          old_attr = '''#[allow(clippy::too_many_arguments, clippy::type_complexity)]
-          fn require_live_promotion_surfaces<'''
-          new_attr = '''#[expect(
-              dead_code,
-              reason = "compile-time reachability discriminator is intentionally never called at runtime"
-          )]
-          #[allow(
-              clippy::type_complexity,
-              reason = "the discriminator deliberately names the complete live production owner shape"
-          )]
-          fn require_live_promotion_surfaces<'''
-          replace_exact(linux, old_attr, new_attr, 1, "linux targeted lint contract")
-          old_linux_marker = '''
-          #[test]
-          fn live_linux_owner_requires_promotion_execution_and_stable_retirement_surfaces() {
-              // The real discriminator is compile-time: the generic contract above must type-check.
-              assert!(true);
-          }
-          '''
-          new_linux_marker = '''
-          // This feature-gated test module is itself the reachability proof: compiling the generic
-          // discriminator above requires both live promotion execution and stable-retirement methods
-          // on the concrete Linux owner surface. No constant runtime assertion adds evidence.
-          '''
-          replace_exact(linux, old_linux_marker, new_linux_marker, 1, "linux compile-time marker")
-          PY
+          git checkout -q --detach "$patch_sha"
+          test -f tools/tmp_private_patch.py
+          python3 tools/tmp_private_patch.py >"$RUNNER_TEMP/patch.private.log" 2>&1
+          rm tools/tmp_private_patch.py
 
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
           rustup component add --toolchain 1.98.1 rustfmt >/dev/null
-          cargo +1.98.1 fmt --all
-          git diff --check
+          cargo +1.98.1 fmt --all >>"$RUNNER_TEMP/patch.private.log" 2>&1
+          git diff --check >>"$RUNNER_TEMP/patch.private.log" 2>&1
 
-          changed="$RUNNER_TEMP/seal-paths"
-          git diff --name-only > "$changed"
-          test "$(wc -l < "$changed" | tr -d ' ')" -eq 3
-          grep -Fxq 'src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs' "$changed"
-          grep -Fxq 'src/effect_fabric/promotion_terminal_recovery_ingress_red_tests.rs' "$changed"
-          grep -Fxq 'src/effect_fabric/promotion_linux_service_reachability_red_tests.rs' "$changed"
+          paths="$RUNNER_TEMP/patch-paths.private"
+          git diff --name-only "$target_sha" -- . > "$paths"
+          test "$(wc -l < "$paths" | tr -d ' ')" -eq 3
+          while IFS= read -r path; do
+            [[ "$path" = src/*.rs ]]
+          done < "$paths"
+
+          patch_file="$RUNNER_TEMP/materialized.patch"
+          git diff --binary "$target_sha" -- . > "$patch_file"
+          test -s "$patch_file"
+
+          git checkout -q -B verify-target "$target_sha"
+          git apply --index "$patch_file"
+          git diff --cached --check
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" -eq 3
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
-          git add -u
           git commit -q -m "Make promotion compile-time tests Clippy-clean"
           new_sha="$(git rev-parse HEAD)"; new_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$new_sha"; echo "::add-mask::$new_tree"
           printf '%s' "$new_sha" > "$RUNNER_TEMP/private-new-sha"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_SEAL_CHANGED_FILE_COUNT=3"
           echo "LAS_SEAL_PATCH_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
           echo "LAS_SEAL_PATCH_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP/patch.private.log" "$RUNNER_TEMP/patch-paths.private" "$RUNNER_TEMP/materialized.patch"
 
       - name: Run canonical pre-TLC privately
         shell: bash
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-target"
+          new_sha="$(cat "$RUNNER_TEMP/private-new-sha")"; echo "::add-mask::$new_sha"
           awk '/^TLC_MAP=/{exit} {print}' tools/verify_codespaces_all.sh > "$RUNNER_TEMP/verify-pre-tlc.sh"
           chmod +x "$RUNNER_TEMP/verify-pre-tlc.sh"
           log="$RUNNER_TEMP/pre-tlc.private.log"
@@ -193,24 +145,24 @@ jobs:
           rm -f "$log"
           echo "LAS_SEAL_PRE_TLC=PASS"
 
-      - name: Fast-forward only the verified private ref
+      - name: Fast-forward only the verified private target
         shell: bash
         env:
           PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-target"
-          matched_ref="$(cat "$RUNNER_TEMP/private-ref")"
-          start_sha="$(cat "$RUNNER_TEMP/private-start-sha")"
+          target_ref="$(cat "$RUNNER_TEMP/private-target-ref")"
+          start_sha="$(cat "$RUNNER_TEMP/private-target-start-sha")"
           new_sha="$(cat "$RUNNER_TEMP/private-new-sha")"
           auth="$(cat "$RUNNER_TEMP/private-auth")"
-          echo "::add-mask::$matched_ref"; echo "::add-mask::$start_sha"; echo "::add-mask::$new_sha"
+          echo "::add-mask::$target_ref"; echo "::add-mask::$start_sha"; echo "::add-mask::$new_sha"
           echo "::add-mask::$PRIVATE_WRITE_TOKEN"; echo "::add-mask::$auth"
 
-          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$target_ref" | awk '{print $1}')"
           echo "::add-mask::$remote_sha"
           test "$remote_sha" = "$start_sha"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:"$matched_ref"
-          rm -f "$RUNNER_TEMP/private-auth" "$RUNNER_TEMP/private-ref" "$RUNNER_TEMP/private-start-sha" "$RUNNER_TEMP/private-new-sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:"$target_ref"
           echo "LAS_SEAL_PUBLISHED=PASS"
           echo "LAS_SEAL_PUBLISHED_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          rm -f "$RUNNER_TEMP"/private-*
