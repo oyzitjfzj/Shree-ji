@@ -1,0 +1,66 @@
+name: Private assurance exact quotient pre-TLC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ASSURANCE_EXACT_QUOTIENT_PRE_TLC"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: cfea257f56be059e1f6565654924f01a5dfec581efba0bb7672a59c550ca03c1
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f4a53f879c80e4f68d0939b54ce2570f1ab87629b0b8678ded75303eab2d7934
+  EXPECTED_PRIVATE_TREE_PROOF: f6c57af5671f8e0ce6c5a3b0d44f303520eeee2569cf7fe312f709688a52a067
+  EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  pre_tlc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Recover exact bounded quotient candidate opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q; git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; refs="$RUNNER_TEMP/heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched=""
+          while read -r sha ref; do [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" != "$TARGET_REF_HASH" ]] || { test -z "$matched"; matched="$ref"; }; done <"$refs"
+          rm -f "$refs"; test -n "$matched"; echo "::add-mask::$matched"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"; tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"; git checkout -q -B verify-target "$actual"
+          echo "LAS_EXACT_Q_PRE_RECOVERY=PASS"; unset PRIVATE_TOKEN auth matched actual tree
+
+      - name: Run exact canonical pre-TLC verifier stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target; staged="$RUNNER_TEMP/verify-pre-tlc.sh"
+          python3 - tools/verify_codespaces_all.sh "$staged" <<'PY'
+          from pathlib import Path
+          import sys
+          src=Path(sys.argv[1]).read_text(encoding='utf-8'); needle='TLC_MAP="$TMP/tlc-map.tsv"'
+          if src.count(needle)!=1: raise SystemExit('canonical TLC boundary not unique')
+          insertion='''\nrecord "tracked tree unchanged after pre-TLC verification" bash -c '\n  test -z "$(git status --porcelain --untracked-files=no)"\n'\necho "LAS_EXACT_Q_PRE_TLC_RESULT=PASS"\nexit 0\n\n'''
+          Path(sys.argv[2]).write_text(src.replace(needle,insertion+needle,1),encoding='utf-8')
+          PY
+          chmod 0700 "$staged"; private_log="$RUNNER_TEMP/pre-tlc.private.log"
+          set +e; LAS_VERIFY_EXPECTED_BRANCH=verify-target bash "$staged" >"$private_log" 2>&1; rc=$?; set -e
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_EXACT_Q_PRE_TLC_RESULT=PASS$' "$private_log"; then rm -f "$private_log"; echo "LAS_EXACT_Q_PRE_TLC=PASS"; exit 0; fi
+          echo "LAS_EXACT_Q_PRE_TLC_RC=$rc"; echo "LAS_EXACT_Q_PRE_TLC_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+          fail_count="$(sed -n 's/^FAIL=//p' "$private_log" | tail -n 1 || true)"; [[ -z "$fail_count" ]] || echo "LAS_EXACT_Q_PRE_TLC_FAIL_COUNT=$fail_count"
+          exit 1
