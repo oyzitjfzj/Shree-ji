@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: current-exact-canonical-202-minus39-05a31407
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   TARGET_REF_HASH: 17fbea7e334794b8438a754d5d8e3cf2b298166f43e3d7de7c6701a0ae65cb96
