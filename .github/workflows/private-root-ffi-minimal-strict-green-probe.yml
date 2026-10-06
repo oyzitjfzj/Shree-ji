@@ -1,4 +1,4 @@
-name: Private Root FFI test-build owner classifier
+name: Private Root FFI repaired candidate verifier
 
 on:
   push:
@@ -12,22 +12,25 @@ permissions:
 
 env:
   TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
-  EXPECTED_HEAD_PROOF: f0124932d797beac5c8e994f89e94f63be3a67abc763101becb8f00d454c1ed0
-  EXPECTED_TREE_PROOF: fa7c58b8527c131656a60d395be62b140ef12c9632a2dc689745d2ee22b6c26c
+  EXPECTED_HEAD_PROOF: ccda0ca5d418eb243ea7bb83fb5d05fe1a071c924d32b6d906da2b316c87d6de
+  EXPECTED_TREE_PROOF: af3fa8b5306c48073c75c00341599b30c256acbb75d11586d4fadc4c2a44fe01
   MINIMAL_PATCH_BLOB: b7b25b3960d3ca3a9cd40ffd252e198cb54845a9
   ORACLE_GATE_BLOB: d0b0d3fef79247f78c5d2955325e446f408f743c
   CLIPPY_FIX_BLOB: 80ec12a2a5cef4748f8058c2db4d02e471dcaa4c
+  INGRESS_CFG_FIX_BLOB: 1f698e9fc61771222f3be95ff76dc951c662c637
+  EXPECTED_BASELINE_DEAD_CODE_PATH_HASH: e7c97abbbf8610d2fe03d5c32ddca3954061e65d5670fc34f70ab93a3ecc18c3
 
 jobs:
-  classify-test-build:
+  verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
-      - name: Install exact Rust and Ada toolchains
+      - name: Install exact toolchains
         shell: bash
         run: |
           set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
           ALR_ZIP="$RUNNER_TEMP/alr.zip"; ALR_PREFIX="$RUNNER_TEMP/alr"
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
           echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
@@ -45,7 +48,7 @@ jobs:
           chmod +x "$GPRBUILD_WRAPPER"
           echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
 
-      - name: Recover exact private candidate
+      - name: Recover exact private branch
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -73,35 +76,7 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo "LAS_TEST_OWNER_RECOVERY=PASS"
-
-      - name: Map untouched baseline owners
-        shell: bash
-        run: |
-          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          json="$RUNNER_TEMP/baseline.jsonl"; set +e
-          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$json" 2>/dev/null
-          rc=$?; set -e; echo "LAS_BASELINE_OWNER_RC=$rc"
-          python3 - "$json" <<'PY'
-          import hashlib,json,sys
-          seen=set(); n=0
-          for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
-              try:o=json.loads(raw)
-              except Exception:continue
-              if o.get('reason')!='compiler-message':continue
-              m=o.get('message') or {}
-              if m.get('level')!='error':continue
-              code=(m.get('code') or {}).get('code') or 'NO_CODE'
-              for s in m.get('spans') or []:
-                  if not s.get('is_primary') or not s.get('file_name'):continue
-                  key=(code,s['file_name'],s.get('line_start') or 0)
-                  if key in seen:continue
-                  seen.add(key);n+=1
-                  ph=hashlib.sha256(s['file_name'].encode()).hexdigest()
-                  print(f'LAS_BASELINE_OWNER={n}:CODE={code}:PATH_HASH={ph}:LINE={s.get("line_start") or 0}')
-          print(f'LAS_BASELINE_OWNER_COUNT={n}')
-          PY
-          rm -f "$json"
+          echo "LAS_REPAIRED_RECOVERY=PASS"
 
       - name: Apply exact transient candidate
         shell: bash
@@ -118,39 +93,58 @@ jobs:
           minimal="$(find_blob_path "$MINIMAL_PATCH_BLOB")"
           oracle="$(find_blob_path "$ORACLE_GATE_BLOB")"
           clippy_fix="$(find_blob_path "$CLIPPY_FIX_BLOB")"
-          echo "::add-mask::$minimal"; echo "::add-mask::$oracle"; echo "::add-mask::$clippy_fix"
-          python3 "$minimal"; python3 "$oracle"; python3 "$clippy_fix"
-          rm "$minimal" "$oracle" "$clippy_fix"
-          echo "LAS_TEST_OWNER_PATCH=PASS"
+          ingress_fix="$(find_blob_path "$INGRESS_CFG_FIX_BLOB")"
+          echo "::add-mask::$minimal"; echo "::add-mask::$oracle"; echo "::add-mask::$clippy_fix"; echo "::add-mask::$ingress_fix"
+          python3 "$minimal"; python3 "$oracle"; python3 "$clippy_fix"; python3 "$ingress_fix"
+          rm "$minimal" "$oracle" "$clippy_fix" "$ingress_fix"
+          cargo +1.98.1 fmt --all
+          git diff --check
+          echo "LAS_REPAIRED_PATCH=PASS"
 
-      - name: Map transient candidate owners
+      - name: Gate strict production builds
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          json="$RUNNER_TEMP/candidate.jsonl"; set +e
+          cargo +1.98.1 fmt --all -- --check
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib >/dev/null
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features linux-peer-credentials >/dev/null
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi >/dev/null
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials >/dev/null
+          GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >/dev/null
+          echo "LAS_REPAIRED_STRICT_PRODUCTION=PASS"
+
+      - name: Confirm only pre-existing test-build dead code remains
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          json="$RUNNER_TEMP/test-build.jsonl"; set +e
           RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run --message-format=json >"$json" 2>/dev/null
-          rc=$?; set -e; echo "LAS_CANDIDATE_OWNER_RC=$rc"
-          python3 - "$json" <<'PY'
+          rc=$?; set -e
+          python3 - "$json" "$EXPECTED_BASELINE_DEAD_CODE_PATH_HASH" <<'PY'
           import hashlib,json,sys
-          seen=set(); n=0
+          expected=sys.argv[2]; owners=[]; codes=[]
           for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
               try:o=json.loads(raw)
               except Exception:continue
               if o.get('reason')!='compiler-message':continue
               m=o.get('message') or {}
               if m.get('level')!='error':continue
-              code=(m.get('code') or {}).get('code') or 'NO_CODE'
+              code=(m.get('code') or {}).get('code') or 'NO_CODE'; codes.append(code)
               for s in m.get('spans') or []:
-                  if not s.get('is_primary') or not s.get('file_name'):continue
-                  key=(code,s['file_name'],s.get('line_start') or 0)
-                  if key in seen:continue
-                  seen.add(key);n+=1
-                  ph=hashlib.sha256(s['file_name'].encode()).hexdigest()
-                  print(f'LAS_CANDIDATE_OWNER={n}:CODE={code}:PATH_HASH={ph}:LINE={s.get("line_start") or 0}')
-          print(f'LAS_CANDIDATE_OWNER_COUNT={n}')
+                  if s.get('is_primary') and s.get('file_name'):
+                      owners.append((code,hashlib.sha256(s['file_name'].encode()).hexdigest(),s.get('line_start') or 0))
+          unique=[]
+          for owner in owners:
+              if owner not in unique: unique.append(owner)
+          print(f'LAS_REPAIRED_TEST_BUILD_RC={sys.argv and "RECORDED"}')
+          print(f'LAS_REPAIRED_TEST_ERROR_COUNT={len(codes)}')
+          print(f'LAS_REPAIRED_TEST_OWNER_COUNT={len(unique)}')
+          for code,path_hash,line in unique:
+              print(f'LAS_REPAIRED_TEST_OWNER=CODE={code}:PATH_HASH={path_hash}:LINE={line}')
+          assert codes and all(code=='dead_code' for code in codes)
+          assert len(unique)==5
+          assert all(path_hash==expected for _,path_hash,_ in unique)
           PY
           rm -f "$json"
-
-      - name: Finish classifier
-        shell: bash
-        run: echo "LAS_TEST_OWNER_CLASSIFIER=PASS"
+          test "$rc" -ne 0
+          echo "LAS_REPAIRED_NO_NEW_TEST_BUILD_REGRESSION=PASS"
