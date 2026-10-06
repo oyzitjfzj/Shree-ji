@@ -10,10 +10,10 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: f42f394a9e1e2cadec80f55806d5cc91f0fd194b9243f3c43fee010c94fcbbcc
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1cc08c2a48e469df54e0e8f50b5d0053a1307bee648c3eede68af9df9857b0a1
-  EXPECTED_PRIVATE_TREE_PROOF: 72afe75eb80e7023d918c7185ccb98fccce1b0fbd09c8f738e8b5097fb90e679
-  EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
+  TARGET_REF_HASH: e37294e79ca01e05fa7ae755e85883c645cd81171573b6a5382594265a4c7287
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 684b2c6332259882220d4452b1fb2cd61e9eae5ce827b4b05b02fb00f2762d1c
+  EXPECTED_PRIVATE_TREE_PROOF: 10ab2baa8ff9616740d0ee779dc929975e830cfe7c6b2c9cb5da0ac169d7b806
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
   JAVA_TOOL_OPTIONS: -Xmx5g
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
-      - name: Recover exact bounded quotient candidate opaquely
+      - name: Recover exact canonical candidate opaquely
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
