@@ -11,8 +11,10 @@ permissions:
 
 env:
   TARGET_REF_HASH: e37294e79ca01e05fa7ae755e85883c645cd81171573b6a5382594265a4c7287
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 2374ae4d0a820457aa98dad8b4cdc528a6fb81f7c5cc7ac4b2c4f9ee6f752511
-  EXPECTED_PRIVATE_TREE_PROOF: e9e1a6d2037f8cb80fbd0d471ca46a84e523932370e9a1caabf01e523c1b4e8d
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 684b2c6332259882220d4452b1fb2cd61e9eae5ce827b4b05b02fb00f2762d1c
+  EXPECTED_PRIVATE_TREE_PROOF: 10ab2baa8ff9616740d0ee779dc929975e830cfe7c6b2c9cb5da0ac169d7b806
+  EXPECTED_CANONICAL_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_PROFILE39_RUNNER_BLOB: 39475a3fd64dcac34998f9eb947cd3acf7d9d653
   EXPECTED_QUOTIENT_CHECKER_BLOB: 0cdf683516f05383d97228f315f2da34fd038aa0
   EXPECTED_CONTRACT_CHECKER_BLOB: 6c6b781b6109470cffaf3e080aece82e547176b2
   EXPECTED_DEPENDENCY_CHECKER_BLOB: 4d38410507f1c0c3829976e9b8e9a9aa772deb69
@@ -25,11 +27,11 @@ env:
   TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
 
 jobs:
-  proof_contract:
+  canonical_profile39:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
-      - name: Recover exact compositional candidate opaquely
+      - name: Recover exact canonical candidate opaquely
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -49,6 +51,8 @@ jobs:
           test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           git checkout -q --detach "$actual"; tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_CANONICAL_VERIFIER_BLOB"
+          test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" = "$EXPECTED_PROFILE39_RUNNER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_quotient.py)" = "$EXPECTED_QUOTIENT_CHECKER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_contract.py)" = "$EXPECTED_CONTRACT_CHECKER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_dependencies.py)" = "$EXPECTED_DEPENDENCY_CHECKER_BLOB"
@@ -59,23 +63,17 @@ jobs:
           test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefixModel.tla)" = "$EXPECTED_PREFIX_MODEL_BLOB"
           test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefix.cfg)" = "$EXPECTED_PREFIX_CFG_BLOB"
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_PROFILE39_PREFIX_RECOVERY=PASS"
+          echo "LAS_PROFILE39_CANONICAL_RECOVERY=PASS"
           unset PRIVATE_TOKEN auth matched actual tree
 
-      - name: Execute fail-closed compositional proof contracts
+      - name: Verify canonical shell wiring parses
         shell: bash
         run: |
           set -euo pipefail
           cd target
-          python3 tools/verification/verify_candidate_assurance_frontier_quotient.py
-          python3 tools/verification/verify_candidate_assurance_frontier_contract.py
-          python3 tools/verification/verify_candidate_assurance_frontier_dependencies.py
-          python3 tools/verification/verify_candidate_assurance_profile39_contract.py
-          python3 tools/verification/verify_candidate_assurance_safety_prefix_closure.py
-          python3 tools/verification/verify_candidate_assurance_terminal_suffix_closure.py
-          test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_PROFILE39_COMPOSITIONAL_PROOF_CONTRACT=PASS"
-          echo "LAS_PROFILE39_TERMINAL_SUFFIX_CLOSURE=PASS"
+          bash -n tools/verify_codespaces_all.sh
+          bash -n tools/verification/run_candidate_assurance_profile39_compositional.sh
+          echo "LAS_PROFILE39_CANONICAL_SHELL_PARSE=PASS"
 
       - name: Fetch pinned TLA tools
         shell: bash
@@ -86,88 +84,14 @@ jobs:
             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
           echo "$TLA_SHA1  $RUNNER_TEMP/tla2tools.jar" | sha1sum --check --strict >/dev/null
 
-      - name: Parse compositional proof modules
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd target/spec/defence_evolution
-          for module in \
-            CandidateAssuranceEvidenceCaseFrontierQuotient.tla \
-            CandidateAssuranceEvidenceCaseSafetyPrefix.tla \
-            CandidateAssuranceEvidenceCaseSafetyPrefixModel.tla \
-            CandidateAssuranceEvidenceCaseFrontierAbstractionProbe.tla; do
-            log="$RUNNER_TEMP/${module%.tla}.sany.log"
-            java -cp "$RUNNER_TEMP/tla2tools.jar" tla2sany.SANY "$module" 2>&1 | tee "$log"
-            if grep -Eiq '(^|[^A-Za-z])(error|parse error|semantic error)([^A-Za-z]|$)' "$log"; then
-              echo "SANY error in $module" >&2; exit 1
-            fi
-          done
-          echo "LAS_PROFILE39_PREFIX_SANY=PASS"
-
-      - name: Recheck frontier abstraction relation
-        shell: bash
-        env:
-          JAVA_TOOL_OPTIONS: -Xmx2g
-        run: |
-          set -euo pipefail
-          cd target/spec/defence_evolution
-          java -XX:+UseParallelGC -jar "$RUNNER_TEMP/tla2tools.jar" \
-            -workers auto -lncheck final -fp 0 \
-            -config CandidateAssuranceEvidenceCaseFrontierAbstractionProbe.cfg \
-            CandidateAssuranceEvidenceCaseFrontierAbstractionProbe.tla
-          echo "LAS_PROFILE39_PREFIX_ABSTRACTION_PROBE=PASS"
-
-  safety_prefix_tlc:
-    needs: proof_contract
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - name: Recover exact compositional candidate opaquely
-        shell: bash
-        env:
-          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
-          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-        run: |
-          set -euo pipefail
-          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
-          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
-          mkdir target; cd target; git init -q; git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
-          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; refs="$RUNNER_TEMP/heads"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
-          matched=""
-          while read -r sha ref; do [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" != "$TARGET_REF_HASH" ]] || { test -z "$matched"; matched="$ref"; }; done <"$refs"
-          rm -f "$refs"; test -n "$matched"; echo "::add-mask::$matched"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched"
-          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
-          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
-          git checkout -q --detach "$actual"; tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
-          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
-          test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_PROFILE39_PREFIX_TLC_RECOVERY=PASS"
-          unset PRIVATE_TOKEN auth matched actual tree
-
-      - name: Fetch pinned TLA tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
-            --output "$RUNNER_TEMP/tla2tools.jar" \
-            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
-          echo "$TLA_SHA1  $RUNNER_TEMP/tla2tools.jar" | sha1sum --check --strict >/dev/null
-
-      - name: Exhaustively check exact profile-39 safety prefix
+      - name: Execute canonical profile-39 compositional runner
         shell: bash
         env:
           JAVA_TOOL_OPTIONS: -Xmx5g
         run: |
           set -euo pipefail
-          cd target/spec/defence_evolution
-          meta="$RUNNER_TEMP/tlc-meta"; mkdir -p "$meta"
-          timeout --signal=TERM --kill-after=30s 50m \
-            java -XX:+UseParallelGC -jar "$RUNNER_TEMP/tla2tools.jar" \
-              -workers auto -lncheck final -fp 0 -gzip -metadir "$meta" \
-              -config CandidateAssuranceEvidenceCaseSafetyPrefix.cfg \
-              CandidateAssuranceEvidenceCaseSafetyPrefixModel.tla
+          cd target
+          bash tools/verification/run_candidate_assurance_profile39_compositional.sh \
+            "$RUNNER_TEMP/tla2tools.jar" "$RUNNER_TEMP/profile39"
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_CANONICAL_PROFILE39_SAFETY_PREFIX_TLC=PASS"
-          echo "LAS_CANONICAL_PROFILE39_COMPOSITIONAL_CLOSURE=PASS"
+          echo "LAS_CANONICAL_PROFILE39_RUNNER=PASS"
