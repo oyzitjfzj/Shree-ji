@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: 467d8341e1ee4c86da8481f0f6423e4cd20cac245d048a7ee053a0a26f010758
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 891400448d973198890c1e3109c417cca17fd69ace871f8ef01dfafe1689b2a9
+  TARGET_REF_HASH: 31078e494efe33c36fd3a716ddc8d79278617b1c3ce84f89392e36bc2067510a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: a249d40448ad30229273b7d26ecb4978b4e6ae983bf3f5f982fe24dfcb3be6fb
 
 jobs:
   diagnostic:
@@ -70,3 +70,11 @@ jobs:
           cd "$GITHUB_WORKSPACE/target"
           python3 tools/verification/verify_candidate_assurance_frontier_quotient.py
           echo "LAS_FRONTIER_QUOTIENT_STRUCTURE_DIAGNOSTIC=PASS"
+
+      - name: Run exact profile 39 safety-contract verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          python3 tools/verification/verify_candidate_assurance_profile39_contract.py
+          echo "LAS_PROFILE39_CONTRACT_DIAGNOSTIC=PASS"
