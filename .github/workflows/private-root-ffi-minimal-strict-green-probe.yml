@@ -1,4 +1,4 @@
-name: Private materialize verified production Root FFI candidate
+name: Private fresh verification of materialized Root FFI commit
 
 on:
   push:
@@ -12,17 +12,12 @@ permissions:
 
 env:
   TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
-  EXPECTED_HEAD_PROOF: 536209980a14897d0236c766a09e6a7c1f09a2517d42b4b41377647d9c352b3c
-  EXPECTED_TREE_PROOF: df5d1f3ab3b217a27916608b9045adde4dee40a3ebe5b8ed55b762c8777f09b6
-  MINIMAL_PATCH_BLOB: b7b25b3960d3ca3a9cd40ffd252e198cb54845a9
-  ORACLE_GATE_BLOB: d0b0d3fef79247f78c5d2955325e446f408f743c
-  CLIPPY_FIX_BLOB: 80ec12a2a5cef4748f8058c2db4d02e471dcaa4c
-  INGRESS_CFG_FIX_BLOB: 1f698e9fc61771222f3be95ff76dc951c662c637
-  ORACLE_PRUNE_BLOB: 63dbcfae0b7b1fb415289bbc1e480d96d595b0e1
+  EXPECTED_HEAD_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
+  EXPECTED_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
   PRODUCTION_PROBE_BLOB: 6e8386e273bab7685d8a43cb2fb319c3423e7c86
 
 jobs:
-  materialize:
+  fresh-verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -50,109 +45,66 @@ jobs:
           chmod +x "$GPRBUILD_WRAPPER"
           echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
 
-      - name: Recover exact private work branch
+      - name: Fresh checkout exact materialized private commit
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
-          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_READ_TOKEN"
-          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
           mkdir "$GITHUB_WORKSPACE/target"; cd "$GITHUB_WORKSPACE/target"; git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
-          auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
           refs="$RUNNER_TEMP/private-heads"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
-          matched_ref=""; start_sha=""
-          while read -r candidate_sha ref; do
+          matched_ref=""; resolved=""
+          while read -r sha ref; do
             if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
-              test -z "$matched_ref"; matched_ref="$ref"; start_sha="$candidate_sha"
+              test -z "$matched_ref"; matched_ref="$ref"; resolved="$sha"
             fi
           done <"$refs"
-          rm -f "$refs"; test -n "$matched_ref"; test -n "$start_sha"
-          echo "::add-mask::$matched_ref"; echo "::add-mask::$start_sha"
-          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          rm -f "$refs"; test -n "$matched_ref"; test -n "$resolved"
+          echo "::add-mask::$matched_ref"; echo "::add-mask::$resolved"
+          test "$(printf '%s' "$resolved" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=2 origin "$matched_ref"
-          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"; git checkout -q --detach "$start_sha"
+          test "$(git rev-parse FETCH_HEAD)" = "$resolved"; git checkout -q --detach "$resolved"
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          printf '%s' "$matched_ref" > "$RUNNER_TEMP/matched-ref"
-          printf '%s' "$start_sha" > "$RUNNER_TEMP/start-sha"
-          echo "LAS_MATERIALIZE_RECOVERY=PASS"
+          printf '%s' "$resolved" > "$RUNNER_TEMP/exact-sha"
+          printf '%s' "$tree" > "$RUNNER_TEMP/exact-tree"
 
-      - name: Apply verified source transformations and remove staging tools
-        shell: bash
-        run: |
-          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          find_blob_path() {
-            wanted="$1"; found=""
-            while IFS= read -r -d '' path; do
-              blob="$(git rev-parse "HEAD:$path")"
-              if [[ "$blob" = "$wanted" ]]; then test -z "$found"; found="$path"; fi
-            done < <(git ls-files -z)
-            test -n "$found"; printf '%s' "$found"
-          }
-          minimal="$(find_blob_path "$MINIMAL_PATCH_BLOB")"
-          oracle="$(find_blob_path "$ORACLE_GATE_BLOB")"
-          clippy_fix="$(find_blob_path "$CLIPPY_FIX_BLOB")"
-          ingress_fix="$(find_blob_path "$INGRESS_CFG_FIX_BLOB")"
-          prune="$(find_blob_path "$ORACLE_PRUNE_BLOB")"
-          probe="$(find_blob_path "$PRODUCTION_PROBE_BLOB")"
-          for path in "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune" "$probe"; do echo "::add-mask::$path"; done
-          cp "$probe" "$RUNNER_TEMP/production-probe.py"
-          python3 "$minimal"
-          python3 "$oracle"
-          python3 "$clippy_fix"
-          python3 "$ingress_fix"
-          python3 "$prune"
-          rm "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune" "$probe"
-          cargo +1.98.1 fmt --all
-          git diff --check
+          parent="$(git rev-parse HEAD^)"; echo "::add-mask::$parent"
+          probe_path=""
+          while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
+            blob="${meta##* }"
+            if [[ "$blob" = "$PRODUCTION_PROBE_BLOB" ]]; then
+              test -z "$probe_path"; probe_path="$path"
+            fi
+          done < <(git ls-tree -r -z "$parent")
+          test -n "$probe_path"; echo "::add-mask::$probe_path"
+          git show "$parent:$probe_path" > "$RUNNER_TEMP/production-probe.py"
+          test "$(git hash-object "$RUNNER_TEMP/production-probe.py")" = "$PRODUCTION_PROBE_BLOB"
+          echo "LAS_FRESH_EXACT_CHECKOUT=PASS"
 
-          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > "$RUNNER_TEMP/changed-paths"
-          python3 - "$RUNNER_TEMP/changed-paths" <<'PY'
-          import hashlib,sys
-          expected=set('''
-          b1a35a68f14e696205874893c07fd24fdb88882b47c23cc0e0c80a30c7d53759
-          3da08623fa3d1668411fa5b76fbbfd8f951ee22c93863c59a32ed4dcc2b5b40c
-          45c1e24e03af917c62fdc7ca7a0954e5988150a5ed281301628ce0a80cea5579
-          02fcdef639e2494ec8e406976b3c3723f9340145af9c18201f6570d0d716e0d3
-          e7c97abbbf8610d2fe03d5c32ddca3954061e65d5670fc34f70ab93a3ecc18c3
-          8f8687ed5dc8266fbbb01b217792cd7e887b1671cced4818e410960fe59ef42e
-          5dfcf85b09a9f80cfa38872c2ab5ae0288dce2d66ad648dde249c4bc71965745
-          8855c3f5f11ffe1e718f53776d3b750e370934f7fde5f6e22e14d4a204c814a5
-          78791ec0202d21df82236c925ad6f5b2cbf7eadeff9fd63d8ed5ac11cb62b761
-          5a64280a31c1a73fd1f276b2d3b8e01baafd4880fe31f30dd6aeb0cde81c276b
-          36b2ea0ea740e4b2485b26ae8995696dd38bb414f7b7c62a4bb9f5314f4fb9c8
-          5ab0a43ed21a5bef042d8ae3d081524a9a7842a471f0c106c9e940a9e741ce70
-          aaeb926a4dcf3647aea9d59ca84514f50a3e459a512823f94c281e7188f10eb6
-          '''.split())
-          paths=[line.rstrip('\n') for line in open(sys.argv[1],encoding='utf-8') if line.strip()]
-          actual={hashlib.sha256(p.encode()).hexdigest() for p in paths}
-          assert len(paths)==13, len(paths)
-          assert actual==expected, (len(actual),len(expected))
-          print('LAS_MATERIALIZE_SCOPE=PASS')
-          PY
-          rm -f "$RUNNER_TEMP/changed-paths"
-
-      - name: Verify materialized candidate comprehensively
+      - name: Fresh strict and full test matrix
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
           run_stage() {
             stage="$1"; shift
-            log="$RUNNER_TEMP/${stage}.private.log"
+            log="$RUNNER_TEMP/fresh-${stage}.private.log"
             set +e; "$@" >"$log" 2>&1; rc=$?; set -e
             if [[ $rc -ne 0 ]]; then
-              echo "LAS_MATERIALIZE_STAGE=$stage"
-              echo "LAS_MATERIALIZE_RC=$rc"
-              echo "LAS_MATERIALIZE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_FRESH_STAGE=$stage"
+              echo "LAS_FRESH_RC=$rc"
+              echo "LAS_FRESH_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
               exit "$rc"
             fi
             rm -f "$log"
-            echo "LAS_MATERIALIZE_${stage}=PASS"
+            echo "LAS_FRESH_${stage}=PASS"
           }
           run_stage fmt cargo +1.98.1 fmt --all -- --check
           run_stage default env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib
@@ -160,38 +112,19 @@ jobs:
           run_stage root env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi
           run_stage joint env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials
           run_stage clippy env GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings
-          run_stage focused env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1
           run_stage full_tests env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features -- --test-threads=1
-          echo "LAS_MATERIALIZE_COMPREHENSIVE=PASS"
-
-      - name: Commit exact verified private source
-        shell: bash
-        run: |
-          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          start_sha="$(cat "$RUNNER_TEMP/start-sha")"; echo "::add-mask::$start_sha"
-          git config user.name "LAS Verification Committer"
-          git config user.email "las-verification@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -q -m "Seal minimal production Root FFI boundary"
-          test "$(git rev-parse HEAD^)" = "$start_sha"
-          new_sha="$(git rev-parse HEAD)"
-          new_tree="$(git rev-parse 'HEAD^{tree}')"
-          echo "::add-mask::$new_sha"; echo "::add-mask::$new_tree"
-          printf '%s' "$new_sha" > "$RUNNER_TEMP/new-sha"
-          printf '%s' "$new_tree" > "$RUNNER_TEMP/new-tree"
           test -z "$(git status --porcelain)"
-          echo "LAS_MATERIALIZE_LOCAL_COMMIT=PASS"
+          echo "LAS_FRESH_MATERIALIZED_MATRIX=PASS"
 
-      - name: Re-execute exact production backend from materialized commit
+      - name: Fresh exact production execution from remote commit
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          new_sha="$(cat "$RUNNER_TEMP/new-sha")"; new_tree="$(cat "$RUNNER_TEMP/new-tree")"
-          echo "::add-mask::$new_sha"; echo "::add-mask::$new_tree"
+          exact_sha="$(cat "$RUNNER_TEMP/exact-sha")"; exact_tree="$(cat "$RUNNER_TEMP/exact-tree")"
+          echo "::add-mask::$exact_sha"; echo "::add-mask::$exact_tree"
           python3 "$RUNNER_TEMP/production-probe.py"
           cargo +1.98.1 fmt --all
-          log="$RUNNER_TEMP/materialized-production-probe.private.log"
+          log="$RUNNER_TEMP/fresh-production-probe.private.log"
           set +e
           RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib \
             --features root-ffi,linux-peer-credentials,root-ffi-production-probe \
@@ -199,39 +132,18 @@ jobs:
             -- --test-threads=1 >"$log" 2>&1
           rc=$?; set -e
           if [[ $rc -ne 0 ]]; then
-            echo "LAS_MATERIALIZED_PRODUCTION_PROBE_RC=$rc"
-            echo "LAS_MATERIALIZED_PRODUCTION_PROBE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            echo "LAS_FRESH_PRODUCTION_PROBE_RC=$rc"
+            echo "LAS_FRESH_PRODUCTION_PROBE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
             exit "$rc"
           fi
           count="$(grep -E '^test .*exact_production_backend_executes_real_ada_authority_and_revocation.* \.\.\. ok$' "$log" | wc -l | tr -d ' ')"
           test "$count" = "1"
           rm -f "$log"
-          git reset --hard -q "$new_sha"
-          test "$(git rev-parse 'HEAD^{tree}')" = "$new_tree"
+          git reset --hard -q "$exact_sha"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$exact_tree"
           test -z "$(git status --porcelain)"
-          echo "LAS_MATERIALIZED_EXACT_PRODUCTION_EXECUTION=PASS"
+          echo "LAS_FRESH_EXACT_PRODUCTION_EXECUTION=PASS"
 
-      - name: Push with exact lease and publish opaque proofs
+      - name: Mark fresh remote verification
         shell: bash
-        env:
-          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
-          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
-          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
-        run: |
-          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_READ_TOKEN"; test -n "$PRIVATE_WRITE_TOKEN"
-          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_READ_TOKEN"; echo "::add-mask::$PRIVATE_WRITE_TOKEN"
-          matched_ref="$(cat "$RUNNER_TEMP/matched-ref")"; start_sha="$(cat "$RUNNER_TEMP/start-sha")"
-          new_sha="$(cat "$RUNNER_TEMP/new-sha")"; new_tree="$(cat "$RUNNER_TEMP/new-tree")"
-          echo "::add-mask::$matched_ref"; echo "::add-mask::$start_sha"; echo "::add-mask::$new_sha"; echo "::add-mask::$new_tree"
-          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
-          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
-          echo "::add-mask::$read_auth"; echo "::add-mask::$write_auth"
-          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
-          test "$remote_sha" = "$start_sha"
-          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
-          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
-          test "$post_sha" = "$new_sha"
-          echo "LAS_MATERIALIZE_PUSH=PASS"
-          echo "LAS_MATERIALIZE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          echo "LAS_MATERIALIZE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+        run: echo "LAS_MATERIALIZED_REMOTE_COMMIT_VERIFIED=PASS"
