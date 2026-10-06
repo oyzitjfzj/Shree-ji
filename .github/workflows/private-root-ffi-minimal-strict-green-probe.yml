@@ -78,7 +78,9 @@ jobs:
 
           parent="$(git rev-parse HEAD^)"; echo "::add-mask::$parent"
           probe_path=""
-          while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
+          while IFS= read -r -d '' entry; do
+            meta="${entry%%$'\t'*}"
+            path="${entry#*$'\t'}"
             blob="${meta##* }"
             if [[ "$blob" = "$PRODUCTION_PROBE_BLOB" ]]; then
               test -z "$probe_path"; probe_path="$path"
