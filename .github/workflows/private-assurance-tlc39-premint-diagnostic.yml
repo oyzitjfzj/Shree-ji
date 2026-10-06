@@ -1,0 +1,139 @@
+name: Private assurance TLC39 pre-mint diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RUN_ASSURANCE_TLC39_PREMINT_DIAGNOSTIC"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: f42f394a9e1e2cadec80f55806d5cc91f0fd194b9243f3c43fee010c94fcbbcc
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 1cc08c2a48e469df54e0e8f50b5d0053a1307bee648c3eede68af9df9857b0a1
+  EXPECTED_PRIVATE_TREE_PROOF: 72afe75eb80e7023d918c7185ccb98fccce1b0fbd09c8f738e8b5097fb90e679
+  TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Recover exact candidate opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q; git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; refs="$RUNNER_TEMP/heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched=""
+          while read -r sha ref; do [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" != "$TARGET_REF_HASH" ]] || { test -z "$matched"; matched="$ref"; }; done <"$refs"
+          rm -f "$refs"; test -n "$matched"; echo "::add-mask::$matched"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"; tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_TLC39_PREMINT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched actual tree
+
+      - name: Fetch pinned TLA tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/tla2tools.jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "$TLA_SHA1  $RUNNER_TEMP/tla2tools.jar" | sha1sum --check --strict >/dev/null
+
+      - name: Measure exact pre-mint reachable state space
+        shell: bash
+        env:
+          JAVA_TOOL_OPTIONS: -Xmx5g
+        run: |
+          set -euo pipefail
+          cd target/spec/defence_evolution
+          cat > CandidateAssuranceEvidenceCasePreMintDiagnostic.tla <<'TLA'
+          -------- MODULE CandidateAssuranceEvidenceCasePreMintDiagnostic --------
+          EXTENDS CandidateAssuranceEvidenceCaseFrontierQuotient
+
+          PreMintNext ==
+              \/ \E e \in EvidenceIds : AddCensusEvidence(e)
+              \/ \E e \in EvidenceIds, role \in Roles : AddAssessment(e, role)
+              \/ \E e \in EvidenceIds : InvalidateEmpirical(e)
+              \/ \E e \in EvidenceIds, eligible \in BOOLEAN : SetRestrictionCoverage(e, eligible)
+              \/ \E p \in Pairs : AddSeparation(p)
+              \/ \E p \in Pairs : AddSharedCause(p)
+              \/ \E e \in EvidenceIds, applicable \in BOOLEAN : SetProofApplicability(e, applicable)
+              \/ \E complete \in BOOLEAN : SetArgumentComplete(complete)
+              \/ LatchSourceFault
+              \/ RejectCaseCapacity
+
+          PreMintSpec == Init /\ [][PreMintNext]_vars
+          =========================================================================
+          TLA
+          cat > CandidateAssuranceEvidenceCasePreMintDiagnostic.cfg <<'CFG'
+          SPECIFICATION PreMintSpec
+
+          CONSTANTS
+              MaxEvidence = 3
+              MaxFrontier = 6
+              CaseCapacity = 2
+              EvidenceKind <- EvidenceKindModel
+              InitialCandidateState = "CandidateStateUnchanged"
+              InitialClaimState = "ClaimStateUnchanged"
+              InitialPromotionState = "PromotionStateUnchanged"
+              InitialLiveState = "LiveStateUnchanged"
+              InitialAuthority = "RootAuthorityUnchanged"
+
+          CHECK_DEADLOCK FALSE
+          CFG
+          cat > CandidateAssuranceEvidenceCasePreMintDiagnosticModel.tla <<'TLA'
+          -------- MODULE CandidateAssuranceEvidenceCasePreMintDiagnosticModel --------
+          EXTENDS CandidateAssuranceEvidenceCasePreMintDiagnostic
+
+          EvidenceKindModel ==
+              [e \in 1..3 |->
+                  IF e = 1 THEN "Empirical"
+                  ELSE IF e = 2 THEN "Proof"
+                  ELSE "MissingResult"]
+          =========================================================================
+          TLA
+          log="$RUNNER_TEMP/tlc39-premint.log"; meta="$RUNNER_TEMP/tlc39-premint-meta"; mkdir -p "$meta"
+          set +e
+          timeout --signal=TERM --kill-after=30s 8m \
+            java -XX:+UseParallelGC -jar "$RUNNER_TEMP/tla2tools.jar" \
+              -workers auto -fp 0 -gzip -metadir "$meta" \
+              -config CandidateAssuranceEvidenceCasePreMintDiagnostic.cfg \
+              CandidateAssuranceEvidenceCasePreMintDiagnosticModel.tla >"$log" 2>&1
+          rc=$?
+          set -e
+          python3 - "$log" <<'PY'
+          import re, sys
+          text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
+          rows=re.findall(r'([0-9,]+) states generated.*?([0-9,]+) distinct states found.*?([0-9,]+) states left on queue', text)
+          if rows:
+              g,d,q=rows[-1]
+              print('LAS_TLC39_PREMINT_GENERATED='+g.replace(',',''))
+              print('LAS_TLC39_PREMINT_DISTINCT='+d.replace(',',''))
+              print('LAS_TLC39_PREMINT_QUEUE='+q.replace(',',''))
+          depths=re.findall(r'(?:Search depth|The depth) of (?:the )?(?:complete )?state graph is ([0-9]+)', text)
+          if depths: print('LAS_TLC39_PREMINT_DEPTH='+depths[-1])
+          PY
+          marker=0
+          grep -Eiq 'Invariant .* is violated|Property .* is violated|Parsing or semantic analysis failed|parse error|semantic error|OutOfMemoryError|No space left on device' "$log" && marker=1
+          echo "LAS_TLC39_PREMINT_RC=$rc"
+          echo "LAS_TLC39_PREMINT_FAILURE_MARKER=$marker"
+          echo "LAS_TLC39_PREMINT_META_BYTES=$(du -sb "$meta" 2>/dev/null | awk '{print $1}' || echo 0)"
+          echo "LAS_TLC39_PREMINT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          test "$marker" -eq 0
+          if [[ "$rc" -eq 0 ]]; then echo "LAS_TLC39_PREMINT_COMPLETED=YES"; exit 0; fi
+          if [[ "$rc" -eq 124 ]]; then echo "LAS_TLC39_PREMINT_COMPLETED=NO_DIAGNOSTIC_TIMEOUT"; exit 0; fi
+          echo "unexpected pre-mint TLC diagnostic rc=$rc" >&2; exit 1
