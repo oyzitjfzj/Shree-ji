@@ -10,11 +10,12 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: 467d8341e1ee4c86da8481f0f6423e4cd20cac245d048a7ee053a0a26f010758
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: ce0bcc5ffdcfca8bf6ffe169f1361a9112e4019148ce96825729d5fd5f56add0
-  EXPECTED_PRIVATE_TREE_PROOF: 0406ada589e0fb13c29af664563072211b9845548d2ee1b7088ad8123d93598c
+  TARGET_REF_HASH: f42f394a9e1e2cadec80f55806d5cc91f0fd194b9243f3c43fee010c94fcbbcc
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d03e1a73bbea2362937e074975282b819ee91673dbac53b9c4c00e21ce9ca674
+  EXPECTED_PRIVATE_TREE_PROOF: 6d32fb3ab3e953b071817c87ee63460a6fa025f0da67f5588feb988dd6eebd51
   EXPECTED_CHECKER_BLOB: 0cdf683516f05383d97228f315f2da34fd038aa0
   EXPECTED_CONTRACT_BLOB: 6c6b781b6109470cffaf3e080aece82e547176b2
+  EXPECTED_DEPENDENCY_BLOB: 4551fc53eadd8224f00b3826e98d2c2162bf94f5
   EXPECTED_PROFILE_CONTRACT_BLOB: 42d676b3226d1836d8791341a8fbfa2ace57e195
   TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
 
@@ -45,6 +46,7 @@ jobs:
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_quotient.py)" = "$EXPECTED_CHECKER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_contract.py)" = "$EXPECTED_CONTRACT_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_dependencies.py)" = "$EXPECTED_DEPENDENCY_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_profile39_contract.py)" = "$EXPECTED_PROFILE_CONTRACT_BLOB"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_FRONTIER_REFINEMENT_RECOVERY=PASS"
@@ -57,10 +59,12 @@ jobs:
           cd target
           python3 tools/verification/verify_candidate_assurance_frontier_quotient.py
           python3 tools/verification/verify_candidate_assurance_frontier_contract.py
+          python3 tools/verification/verify_candidate_assurance_frontier_dependencies.py
           python3 tools/verification/verify_candidate_assurance_profile39_contract.py
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_FRONTIER_REFINEMENT_STRUCTURE=PASS"
           echo "LAS_FRONTIER_REFINEMENT_NONVACUITY=PASS"
+          echo "LAS_FRONTIER_REFINEMENT_TRANSITIVE_DEPENDENCY=PASS"
           echo "LAS_FRONTIER_REFINEMENT_PROFILE39_CONTRACT=PASS"
 
       - name: Fetch pinned TLA tools
@@ -129,6 +133,7 @@ jobs:
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_quotient.py)" = "$EXPECTED_CHECKER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_contract.py)" = "$EXPECTED_CONTRACT_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_dependencies.py)" = "$EXPECTED_DEPENDENCY_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_profile39_contract.py)" = "$EXPECTED_PROFILE_CONTRACT_BLOB"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_CANONICAL_QUOTIENT_RECOVERY=PASS"
