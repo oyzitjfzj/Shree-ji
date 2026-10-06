@@ -111,7 +111,7 @@ jobs:
           git diff --binary "$target_sha" -- . > "$patch_file"
           test -s "$patch_file"
 
-          git checkout -q -B verify-target "$target_sha"
+          git checkout -q -f -B verify-target "$target_sha"
           git apply --index "$patch_file"
           git diff --cached --check
           test "$(git diff --cached --name-only | wc -l | tr -d ' ')" -eq 3
