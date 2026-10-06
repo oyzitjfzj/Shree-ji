@@ -1,0 +1,70 @@
+name: Capture exact Clippy diagnostics privately
+
+on:
+  push:
+    branches:
+      - diag/clippy-private-report-20261006
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 clippy >/dev/null
+
+      - name: Recover isolated private diagnostic branch
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.PRIVATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q origin refs/heads/diag/clippy-exact-20261006
+          git checkout -q -B diag/clippy-exact-20261006 FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "2d0837c44b4255e5ff5411c4c44fcd7e6a453b23"
+          printf '%s' "$auth" > "$RUNNER_TEMP/private-auth"
+
+      - name: Capture exact default and Linux Clippy diagnostics into private repo
+        shell: bash
+        env:
+          PRIVATE_TOKEN: ${{ secrets.PRIVATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd target
+          mkdir -p .diagnostics
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets -- -D warnings > "$RUNNER_TEMP/default.log" 2>&1
+          default_rc=$?
+          cargo +1.98.1 clippy --locked --features linux-peer-credentials --all-targets -- -D warnings > "$RUNNER_TEMP/linux.log" 2>&1
+          linux_rc=$?
+          set -e
+          {
+            echo "EXACT_BASE_SHA=2d0837c44b4255e5ff5411c4c44fcd7e6a453b23"
+            echo "DEFAULT_RC=$default_rc"
+            echo "LINUX_RC=$linux_rc"
+            echo "===== DEFAULT ====="
+            cat "$RUNNER_TEMP/default.log"
+            echo "===== LINUX ====="
+            cat "$RUNNER_TEMP/linux.log"
+          } > .diagnostics/clippy-current-20261006.txt
+          rm -f "$RUNNER_TEMP/default.log" "$RUNNER_TEMP/linux.log"
+          git config user.name "LAS Diagnostic Recorder"
+          git config user.email "las-diagnostic@users.noreply.github.com"
+          git add .diagnostics/clippy-current-20261006.txt
+          git commit -q -m "Record exact Clippy diagnostics"
+          auth="$(cat "$RUNNER_TEMP/private-auth")"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:refs/heads/diag/clippy-exact-20261006
+          rm -f "$RUNNER_TEMP/private-auth"
+          echo "LAS_PRIVATE_CLIPPY_REPORT=PASS"
