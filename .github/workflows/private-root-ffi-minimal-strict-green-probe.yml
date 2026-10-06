@@ -1,4 +1,4 @@
-name: Private Root FFI pruned strict candidate
+name: Private exact production Root FFI execution probe
 
 on:
   push:
@@ -12,16 +12,17 @@ permissions:
 
 env:
   TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
-  EXPECTED_HEAD_PROOF: 8fa129bb9a41b0c7eb6f2a7dc21e8bfcac1522b5e6029482b446c90c44492a42
-  EXPECTED_TREE_PROOF: 22e7c9e4f5eba26f9ae02959ed917a9fe1cfd06a79346802ebb3914b00a5f43b
+  EXPECTED_HEAD_PROOF: 536209980a14897d0236c766a09e6a7c1f09a2517d42b4b41377647d9c352b3c
+  EXPECTED_TREE_PROOF: df5d1f3ab3b217a27916608b9045adde4dee40a3ebe5b8ed55b762c8777f09b6
   MINIMAL_PATCH_BLOB: b7b25b3960d3ca3a9cd40ffd252e198cb54845a9
   ORACLE_GATE_BLOB: d0b0d3fef79247f78c5d2955325e446f408f743c
   CLIPPY_FIX_BLOB: 80ec12a2a5cef4748f8058c2db4d02e471dcaa4c
   INGRESS_CFG_FIX_BLOB: 1f698e9fc61771222f3be95ff76dc951c662c637
   ORACLE_PRUNE_BLOB: 63dbcfae0b7b1fb415289bbc1e480d96d595b0e1
+  PRODUCTION_PROBE_BLOB: 6e8386e273bab7685d8a43cb2fb319c3423e7c86
 
 jobs:
-  verify:
+  verify-production:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
@@ -32,7 +33,8 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
           rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
           ALR_ZIP="$RUNNER_TEMP/alr.zip"; ALR_PREFIX="$RUNNER_TEMP/alr"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
           echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
           mkdir -p "$ALR_PREFIX"; unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"; export PATH="$ALR_PREFIX/bin:$PATH"
           alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
@@ -76,9 +78,9 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo "LAS_PRUNED_RECOVERY=PASS"
+          echo "LAS_PRODUCTION_PROBE_RECOVERY=PASS"
 
-      - name: Apply exact transient candidate
+      - name: Apply exact transient candidate and probe
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
@@ -95,45 +97,51 @@ jobs:
           clippy_fix="$(find_blob_path "$CLIPPY_FIX_BLOB")"
           ingress_fix="$(find_blob_path "$INGRESS_CFG_FIX_BLOB")"
           prune="$(find_blob_path "$ORACLE_PRUNE_BLOB")"
-          for path in "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune"; do echo "::add-mask::$path"; done
+          probe="$(find_blob_path "$PRODUCTION_PROBE_BLOB")"
+          for path in "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune" "$probe"; do echo "::add-mask::$path"; done
           python3 "$minimal"
           python3 "$oracle"
           python3 "$clippy_fix"
           python3 "$ingress_fix"
           python3 "$prune"
-          rm "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune"
+          python3 "$probe"
+          rm "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune" "$probe"
           cargo +1.98.1 fmt --all
           git diff --check
-          echo "LAS_PRUNED_PATCH=PASS"
+          echo "LAS_PRODUCTION_PROBE_PATCH=PASS"
 
-      - name: Gate strict builds and Clippy
+      - name: Reconfirm strict production candidate
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
           cargo +1.98.1 fmt --all -- --check
           RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib >/dev/null
-          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features linux-peer-credentials >/dev/null
-          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi >/dev/null
           RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials >/dev/null
           GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >/dev/null
-          echo "LAS_PRUNED_STRICT_BUILD=PASS"
+          echo "LAS_PRODUCTION_PROBE_STRICT_BASE=PASS"
 
-      - name: Gate focused Root FFI tests
+      - name: Execute exact production Root FFI backend against Ada
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          log="$RUNNER_TEMP/root-ffi-tests.private.log"
-          if ! RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1 >"$log" 2>&1; then
-            echo "LAS_PRUNED_TEST_STAGE=FAIL"
-            echo "LAS_PRUNED_TEST_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-            exit 1
+          log="$RUNNER_TEMP/production-probe.private.log"
+          set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib \
+            --features root-ffi,linux-peer-credentials,root-ffi-production-probe \
+            exact_production_backend_executes_real_ada_authority_and_revocation \
+            -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          if [[ $rc -ne 0 ]]; then
+            echo "LAS_PRODUCTION_PROBE_RC=$rc"
+            echo "LAS_PRODUCTION_PROBE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            exit "$rc"
           fi
-          count="$(grep -E '^test .* \.\.\. ok$' "$log" | wc -l | tr -d ' ')"
+          count="$(grep -E '^test .*exact_production_backend_executes_real_ada_authority_and_revocation.* \.\.\. ok$' "$log" | wc -l | tr -d ' ')"
+          test "$count" = "1"
           rm -f "$log"
-          test "$count" -gt 0
-          echo "LAS_PRUNED_ROOT_FFI_TEST_COUNT=$count"
-          echo "LAS_PRUNED_ROOT_FFI_TESTS=PASS"
+          echo "LAS_PRODUCTION_ROOT_FFI_EXECUTION=PASS"
 
-      - name: Mark candidate gate
+      - name: Mark executable production proof
         shell: bash
-        run: echo "LAS_ROOT_FFI_PRUNED_STRICT_CANDIDATE=PASS"
+        run: echo "LAS_EXACT_PRODUCTION_ROOT_FFI_PROBE=PASS"
