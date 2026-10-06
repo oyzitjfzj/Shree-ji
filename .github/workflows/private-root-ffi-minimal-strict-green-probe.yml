@@ -1,4 +1,4 @@
-name: Private Root FFI Clippy owner map
+name: Private minimal Root FFI strict GREEN probe
 
 on:
   push:
@@ -12,24 +12,26 @@ permissions:
 
 env:
   TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
-  EXPECTED_HEAD_PROOF: bc4cd5a24c603672365c245c7f33c6ae918a520d3fd59ef77bcf8108c945baac
-  EXPECTED_TREE_PROOF: d1f30947744e6c756e44f89690fd5939416bea662e1c6745db392255254420d7
+  EXPECTED_HEAD_PROOF: f0124932d797beac5c8e994f89e94f63be3a67abc763101becb8f00d454c1ed0
+  EXPECTED_TREE_PROOF: fa7c58b8527c131656a60d395be62b140ef12c9632a2dc689745d2ee22b6c26c
   MINIMAL_PATCH_BLOB: b7b25b3960d3ca3a9cd40ffd252e198cb54845a9
   ORACLE_GATE_BLOB: d0b0d3fef79247f78c5d2955325e446f408f743c
+  CLIPPY_FIX_BLOB: 80ec12a2a5cef4748f8058c2db4d02e471dcaa4c
 
 jobs:
-  map-clippy:
+  strict-green:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
-      - name: Install exact toolchains
+      - name: Install exact Rust and Ada toolchains
         shell: bash
         run: |
           set -euo pipefail
           rustup toolchain install 1.98.1 --profile minimal >/dev/null
           rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
           ALR_ZIP="$RUNNER_TEMP/alr.zip"; ALR_PREFIX="$RUNNER_TEMP/alr"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
           echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" | sha256sum --check --strict >/dev/null
           mkdir -p "$ALR_PREFIX"; unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"; export PATH="$ALR_PREFIX/bin:$PATH"
           alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
@@ -45,7 +47,7 @@ jobs:
           chmod +x "$GPRBUILD_WRAPPER"
           echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
 
-      - name: Recover exact private candidate
+      - name: Recover exact private candidate opaquely
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -54,7 +56,7 @@ jobs:
           set -euo pipefail
           test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
           echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
-          mkdir "$GITHUB_WORKSPACE/target"; cd "$GITHUB_WORKSPACE/target"; git init -q
+          root="$GITHUB_WORKSPACE/target"; mkdir "$root"; cd "$root"; git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
           refs="$RUNNER_TEMP/private-heads"
@@ -73,9 +75,10 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo "LAS_OWNER_MAP_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref start_sha tree
+          echo "LAS_STRICT_RECOVERY=PASS"
 
-      - name: Apply transient candidate
+      - name: Apply exact transient candidate
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
@@ -87,44 +90,112 @@ jobs:
             done < <(git ls-files -z)
             test -n "$found"; printf '%s' "$found"
           }
-          minimal="$(find_blob_path "$MINIMAL_PATCH_BLOB")"; oracle="$(find_blob_path "$ORACLE_GATE_BLOB")"
-          echo "::add-mask::$minimal"; echo "::add-mask::$oracle"
-          python3 "$minimal"; python3 "$oracle"; rm "$minimal" "$oracle"
+          minimal="$(find_blob_path "$MINIMAL_PATCH_BLOB")"
+          oracle="$(find_blob_path "$ORACLE_GATE_BLOB")"
+          clippy_fix="$(find_blob_path "$CLIPPY_FIX_BLOB")"
+          echo "::add-mask::$minimal"; echo "::add-mask::$oracle"; echo "::add-mask::$clippy_fix"
+          python3 "$minimal"
+          python3 "$oracle"
+          python3 "$clippy_fix"
+          rm "$minimal" "$oracle" "$clippy_fix"
           cargo +1.98.1 fmt --all
           git diff --check
-          echo "LAS_OWNER_MAP_PATCH=PASS"
+          tracked_count="$(git diff --name-only | wc -l | tr -d ' ')"
+          untracked_count="$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')"
+          echo "LAS_STRICT_TRACKED_COUNT=$tracked_count"
+          echo "LAS_STRICT_UNTRACKED_COUNT=$untracked_count"
+          test "$tracked_count" = "9"; test "$untracked_count" = "1"
+          echo "LAS_STRICT_PATCH=PASS"
 
-      - name: Map Clippy owners without paths
+      - name: Gate formatting
         shell: bash
         run: |
           set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
-          json="$RUNNER_TEMP/clippy.jsonl"; set +e
-          GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --message-format=json --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >"$json" 2>/dev/null
-          rc=$?; set -e
+          cargo +1.98.1 fmt --all -- --check
+          echo "LAS_STRICT_FMT=PASS"
+
+      - name: Gate default compile
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib >/dev/null
+          echo "LAS_STRICT_DEFAULT=PASS"
+
+      - name: Gate Linux compile
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features linux-peer-credentials >/dev/null
+          echo "LAS_STRICT_LINUX=PASS"
+
+      - name: Gate isolated Root FFI compile
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          json="$RUNNER_TEMP/root.jsonl"; set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi --message-format=json >"$json" 2>/dev/null; rc=$?; set -e
           python3 - "$json" <<'PY'
-          import hashlib,json,subprocess,sys
-          seen=set(); count=0
+          import collections,json,sys
+          c=collections.Counter()
           for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
               try:o=json.loads(raw)
               except Exception:continue
               if o.get('reason')!='compiler-message':continue
               m=o.get('message') or {}
-              if m.get('level')!='error':continue
-              code=(m.get('code') or {}).get('code') or 'NO_CODE'
-              for s in m.get('spans') or []:
-                  path=s.get('file_name')
-                  if not s.get('is_primary') or not path:continue
-                  key=(code,path,s.get('line_start'))
-                  if key in seen:continue
-                  seen.add(key); count+=1
-                  ph=hashlib.sha256(path.encode()).hexdigest()
-                  try:
-                      blob=subprocess.check_output(['git','rev-parse',f'HEAD:{path}'],text=True,stderr=subprocess.DEVNULL).strip()
-                  except subprocess.CalledProcessError:
-                      blob='UNTRACKED'
-                  print(f'LAS_CLIPPY_OWNER={count}:CODE={code}:PATH_HASH={ph}:HEAD_BLOB={blob}:LINE={s.get("line_start",0)}')
-          print(f'LAS_CLIPPY_OWNER_COUNT={count}')
+              if m.get('level')=='error': c[(m.get('code') or {}).get('code') or 'NO_CODE']+=1
+          print(f'LAS_STRICT_ROOT_ERROR_COUNT={sum(c.values())}')
+          for k,v in sorted(c.items()):print(f'LAS_STRICT_ROOT_ERROR_CODE={k}:{v}')
           PY
-          rm -f "$json"
-          test "$rc" -ne 0
-          echo "LAS_OWNER_MAP=PASS"
+          rm -f "$json"; test "$rc" -eq 0
+          echo "LAS_STRICT_ROOT=PASS"
+
+      - name: Gate joint production compile
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          json="$RUNNER_TEMP/joint.jsonl"; set +e
+          RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials --message-format=json >"$json" 2>/dev/null; rc=$?; set -e
+          python3 - "$json" <<'PY'
+          import collections,json,sys
+          c=collections.Counter()
+          for raw in open(sys.argv[1],encoding='utf-8',errors='replace'):
+              try:o=json.loads(raw)
+              except Exception:continue
+              if o.get('reason')!='compiler-message':continue
+              m=o.get('message') or {}
+              if m.get('level')=='error': c[(m.get('code') or {}).get('code') or 'NO_CODE']+=1
+          print(f'LAS_STRICT_JOINT_ERROR_COUNT={sum(c.values())}')
+          for k,v in sorted(c.items()):print(f'LAS_STRICT_JOINT_ERROR_CODE={k}:{v}')
+          PY
+          rm -f "$json"; test "$rc" -eq 0
+          echo "LAS_STRICT_JOINT=PASS"
+
+      - name: Gate joint Clippy
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/clippy.private.log"
+          if ! GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings >"$log" 2>&1; then
+            echo "LAS_STRICT_STAGE=clippy"
+            echo "LAS_STRICT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            exit 1
+          fi
+          rm -f "$log"
+          echo "LAS_STRICT_CLIPPY=PASS"
+
+      - name: Gate focused Root FFI tests
+        shell: bash
+        run: |
+          set -euo pipefail; cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/tests.private.log"
+          if ! RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1 >"$log" 2>&1; then
+            echo "LAS_STRICT_STAGE=tests"
+            echo "LAS_STRICT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            exit 1
+          fi
+          rm -f "$log"
+          echo "LAS_STRICT_TESTS=PASS"
+
+      - name: Mark transient strict GREEN
+        shell: bash
+        run: echo "LAS_ROOT_FFI_MINIMAL_STRICT_GREEN=PASS"
