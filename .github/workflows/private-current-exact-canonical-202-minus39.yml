@@ -1,4 +1,4 @@
-name: Current exact canonical 202 minus resumable 39
+name: Current exact canonical 203 minus resumable 39
 
 on:
   push:
@@ -11,15 +11,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-exact-canonical-202-minus39-05a31407
+  group: current-exact-canonical-203-minus39-89140044
   cancel-in-progress: true
 
 env:
-  TARGET_REF_HASH: 17fbea7e334794b8438a754d5d8e3cf2b298166f43e3d7de7c6701a0ae65cb96
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 05a31407f482992bb2c3e46542b1696b6488350d07a2e21a8b463092a5e0c3ae
-  EXPECTED_PRIVATE_TREE_PROOF: 0b46e464c2c02e6293a3e1ea4f24493d6fa8e66fa020f95b90502f54ec9747c8
+  TARGET_REF_HASH: 467d8341e1ee4c86da8481f0f6423e4cd20cac245d048a7ee053a0a26f010758
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 891400448d973198890c1e3109c417cca17fd69ace871f8ef01dfafe1689b2a9
+  EXPECTED_PRIVATE_TREE_PROOF: 651234d4e4cafebb657c2521b143dca3aef19a3d87f9375cacd0dec93c0da8ac
   EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
-  EXPECTED_TLC_PROFILE_COUNT: "202"
+  EXPECTED_TLC_PROFILE_COUNT: "203"
   EXCLUDED_RESUMABLE_INDEX: "39"
   TLC_SHARD_COUNT: "32"
   JAVA_TOOL_OPTIONS: -Xmx5g
@@ -58,7 +58,7 @@ jobs:
           test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
           test -z "$(git status --porcelain --untracked-files=no)"
           git checkout -q -B verify-target "$actual"
-          echo "LAS_CURRENT_202_PRE_RECOVERY=PASS"
+          echo "LAS_CURRENT_203_PRE_RECOVERY=PASS"
           unset PRIVATE_TOKEN auth matched_ref actual tree
 
       - name: Run exact canonical pre-TLC verifier stage
@@ -74,7 +74,7 @@ jobs:
           needle='TLC_MAP="$TMP/tlc-map.tsv"'
           if src.count(needle) != 1:
               raise SystemExit("canonical TLC boundary not unique")
-          insertion='''\nrecord "tracked tree unchanged after pre-TLC verification" bash -c '\n  test -z "$(git status --porcelain --untracked-files=no)"\n'\necho "LAS_CURRENT_202_PRE_TLC_RESULT=PASS"\nexit 0\n\n'''
+          insertion='''\nrecord "tracked tree unchanged after pre-TLC verification" bash -c '\n  test -z "$(git status --porcelain --untracked-files=no)"\n'\necho "LAS_CURRENT_203_PRE_TLC_RESULT=PASS"\nexit 0\n\n'''
           Path(sys.argv[2]).write_text(src.replace(needle,insertion+needle,1),encoding="utf-8")
           PY
           chmod 0700 "$staged"
@@ -83,15 +83,15 @@ jobs:
           LAS_VERIFY_EXPECTED_BRANCH=verify-target bash "$staged" >"$private_log" 2>&1
           rc=$?
           set -e
-          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_CURRENT_202_PRE_TLC_RESULT=PASS$' "$private_log"; then
-            echo "LAS_CURRENT_202_PRE_TLC=PASS"
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_CURRENT_203_PRE_TLC_RESULT=PASS$' "$private_log"; then
+            echo "LAS_CURRENT_203_PRE_TLC=PASS"
             rm -f "$private_log"
             exit 0
           fi
-          echo "LAS_CURRENT_202_PRE_TLC_RC=$rc"
-          echo "LAS_CURRENT_202_PRE_TLC_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+          echo "LAS_CURRENT_203_PRE_TLC_RC=$rc"
+          echo "LAS_CURRENT_203_PRE_TLC_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
           fail_count="$(sed -n 's/^FAIL=//p' "$private_log" | tail -n 1 || true)"
-          [[ -z "$fail_count" ]] || echo "LAS_CURRENT_202_PRE_TLC_FAIL_COUNT=$fail_count"
+          [[ -z "$fail_count" ]] || echo "LAS_CURRENT_203_PRE_TLC_FAIL_COUNT=$fail_count"
           exit 1
 
   tlc:
@@ -132,10 +132,10 @@ jobs:
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_CURRENT_202_SHARD_RECOVERY=PASS"
+          echo "LAS_CURRENT_203_SHARD_RECOVERY=PASS"
           unset PRIVATE_TOKEN auth matched_ref actual tree
 
-      - name: Run canonical TLC shard excluding resumable profile 39
+      - name: Run canonical TLC shard excluding profile 39
         shell: bash
         env:
           SHARD_INDEX: ${{ matrix.shard }}
@@ -181,28 +181,28 @@ jobs:
           test "$skipped" -eq 1
           test "$selected" -gt 0
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "LAS_CURRENT_202_SHARD_INDEX=$SHARD_INDEX"
-          echo "LAS_CURRENT_202_SHARD_PROFILE_COUNT=$selected"
-          echo "LAS_CURRENT_202_SHARD_FAIL_COUNT=$FAIL"
+          echo "LAS_CURRENT_203_SHARD_INDEX=$SHARD_INDEX"
+          echo "LAS_CURRENT_203_SHARD_PROFILE_COUNT=$selected"
+          echo "LAS_CURRENT_203_SHARD_FAIL_COUNT=$FAIL"
           if (( FAIL )); then
-            echo "LAS_CURRENT_202_SHARD_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
-            echo "LAS_CURRENT_202_SHARD_RESULT=FAIL"
+            echo "LAS_CURRENT_203_SHARD_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+            echo "LAS_CURRENT_203_SHARD_RESULT=FAIL"
             exit 1
           fi
           rm -f "$private_log"
-          echo "LAS_CURRENT_202_SHARD_RESULT=PASS"
+          echo "LAS_CURRENT_203_SHARD_RESULT=PASS"
 
   aggregate:
     if: always()
     needs: [pre_tlc, tlc]
     runs-on: ubuntu-24.04
     steps:
-      - name: Require current exact 201-profile coverage
+      - name: Require exact 202-profile non-39 coverage
         shell: bash
         run: |
           set -euo pipefail
-          echo "LAS_CURRENT_202_EXPECTED_TOTAL=$EXPECTED_TLC_PROFILE_COUNT"
-          echo "LAS_CURRENT_202_EXCLUDED_RESUMABLE_INDEX=$EXCLUDED_RESUMABLE_INDEX"
+          echo "LAS_CURRENT_203_EXPECTED_TOTAL=$EXPECTED_TLC_PROFILE_COUNT"
+          echo "LAS_CURRENT_203_EXCLUDED_INDEX=$EXCLUDED_RESUMABLE_INDEX"
           test "${{ needs.pre_tlc.result }}" = "success"
           test "${{ needs.tlc.result }}" = "success"
-          echo "LAS_CURRENT_202_MINUS39_RESULT=PASS"
+          echo "LAS_CURRENT_203_MINUS39_RESULT=PASS"
