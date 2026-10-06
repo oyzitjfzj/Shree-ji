@@ -97,7 +97,7 @@ jobs:
           set -euo pipefail
           cd target/spec/defence_evolution
           java -XX:+UseParallelGC -jar "$RUNNER_TEMP/tla2tools.jar" \
-            -workers 2 -fp 0 \
+            -workers auto -lncheck final -fp 0 \
             -config CandidateAssuranceEvidenceCaseFrontierAbstractionProbe.cfg \
             CandidateAssuranceEvidenceCaseFrontierAbstractionProbe.tla
           echo "LAS_FRONTIER_REFINEMENT_ABSTRACTION_PROBE=PASS"
@@ -150,9 +150,11 @@ jobs:
         run: |
           set -euo pipefail
           cd target/spec/defence_evolution
+          meta="$RUNNER_TEMP/tlc-meta"
+          mkdir -p "$meta"
           timeout --signal=TERM --kill-after=30s 105m \
             java -XX:+UseParallelGC -jar "$RUNNER_TEMP/tla2tools.jar" \
-              -workers 2 -fp 0 \
+              -workers auto -lncheck final -fp 0 -metadir "$meta" \
               -config CandidateAssuranceEvidenceCase.cfg \
               CandidateAssuranceEvidenceCaseModel.tla
           test -z "$(git status --porcelain --untracked-files=no)"
