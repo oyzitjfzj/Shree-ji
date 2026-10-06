@@ -1,4 +1,4 @@
-name: Private Root FFI production backend GREEN apply
+name: Private minimal Root FFI verified materialization
 
 on:
   push:
@@ -10,12 +10,23 @@ on:
 permissions:
   contents: read
 
+env:
+  TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+  EXPECTED_HEAD_PROOF: 536209980a14897d0236c766a09e6a7c1f09a2517d42b4b41377647d9c352b3c
+  EXPECTED_TREE_PROOF: df5d1f3ab3b217a27916608b9045adde4dee40a3ebe5b8ed55b762c8777f09b6
+  MINIMAL_PATCH_BLOB: b7b25b3960d3ca3a9cd40ffd252e198cb54845a9
+  ORACLE_GATE_BLOB: d0b0d3fef79247f78c5d2955325e446f408f743c
+  CLIPPY_FIX_BLOB: 80ec12a2a5cef4748f8058c2db4d02e471dcaa4c
+  INGRESS_CFG_FIX_BLOB: 1f698e9fc61771222f3be95ff76dc951c662c637
+  ORACLE_PRUNE_BLOB: 63dbcfae0b7b1fb415289bbc1e480d96d595b0e1
+  PRODUCTION_PROBE_BLOB: 6e8386e273bab7685d8a43cb2fb319c3423e7c86
+
 jobs:
-  apply-verify-commit:
+  materialize-verify-commit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
-      - name: Install exact Rust and Ada build toolchain
+      - name: Install exact Rust and Ada toolchains
         shell: bash
         run: |
           set -euo pipefail
@@ -32,12 +43,9 @@ jobs:
           export PATH="$ALR_PREFIX/bin:$PATH"
           echo "$ALR_PREFIX/bin" >> "$GITHUB_PATH"
           alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
-          ALR_WS="$RUNNER_TEMP/alire-workspace"
+          ALR_WS="$RUNNER_TEMP/alire-materialize"
           mkdir -p "$ALR_WS"
-          (
-            cd "$ALR_WS"
-            alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null
-          )
+          (cd "$ALR_WS" && alr -n init --in-place --no-skel --lib las_materialize_toolchain >/dev/null)
           GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
           cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
           #!/usr/bin/env bash
@@ -48,7 +56,7 @@ jobs:
           chmod +x "$GPRBUILD_WRAPPER"
           echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
 
-      - name: Apply verify and commit exact private GREEN
+      - name: Recover apply verify commit and push exact private candidate
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -78,7 +86,7 @@ jobs:
           matched_ref=""
           start_sha=""
           while read -r candidate_sha ref; do
-            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "1f3f0bc4884665569948224427b6ba42ce02d4e447b4e099e044202a9133a111" ]]; then
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
               test -z "$matched_ref"
               matched_ref="$ref"
               start_sha="$candidate_sha"
@@ -86,30 +94,80 @@ jobs:
           done <"$refs"
           rm -f "$refs"
           test -n "$matched_ref"
-          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "19cef6692548f861bc149dec46450018aa46fce917be5ae5f9aced837e64ef0b"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
           git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
           test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
           git checkout -q --detach "$start_sha"
           tree="$(git rev-parse 'HEAD^{tree}')"
-          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "c7d8147a031ec2df84efde55052cf39a775ba0895adc7f45ec72c2f4757414bc"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
+          echo "LAS_MINIMAL_MATERIALIZE_RECOVERY=PASS"
 
-          python3 tools/tmp_apply_root_ffi_production_backend.py
-          rm tools/tmp_apply_root_ffi_production_backend.py
+          find_blob_path() {
+            wanted="$1"
+            found=""
+            while IFS= read -r -d '' path; do
+              blob="$(git rev-parse "HEAD:$path")"
+              if [[ "$blob" = "$wanted" ]]; then
+                test -z "$found"
+                found="$path"
+              fi
+            done < <(git ls-files -z)
+            test -n "$found"
+            printf '%s' "$found"
+          }
+
+          minimal="$(find_blob_path "$MINIMAL_PATCH_BLOB")"
+          oracle="$(find_blob_path "$ORACLE_GATE_BLOB")"
+          clippy_fix="$(find_blob_path "$CLIPPY_FIX_BLOB")"
+          ingress_fix="$(find_blob_path "$INGRESS_CFG_FIX_BLOB")"
+          prune="$(find_blob_path "$ORACLE_PRUNE_BLOB")"
+          probe="$(find_blob_path "$PRODUCTION_PROBE_BLOB")"
+          for path in "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune" "$probe"; do
+            echo "::add-mask::$path"
+          done
+
+          python3 "$minimal"
+          python3 "$oracle"
+          python3 "$clippy_fix"
+          python3 "$ingress_fix"
+          python3 "$prune"
+
+          # The execution probe already passed against this exact production synthesis.
+          # Do not materialize its temporary feature/test constructors into source.
+          rm "$minimal" "$oracle" "$clippy_fix" "$ingress_fix" "$prune" "$probe"
+          if [[ -e tools/tmp_apply_root_ffi_joint_production_backend.py ]]; then
+            rm tools/tmp_apply_root_ffi_joint_production_backend.py
+          fi
+
           cargo +1.98.1 fmt --all
           git diff --check
 
           git diff --name-only | sort >"$RUNNER_TEMP/actual-paths"
-          cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
+          cat >"$RUNNER_TEMP/allowed-paths" <<'EOF_PATHS'
           src/effect_fabric/dispatch_commit.rs
-          src/effect_fabric/root_ffi.rs
+          src/effect_fabric/dispatch_commit/promotion_root_effect_bridge.rs
+          src/effect_fabric/root_ffi_production.rs
+          src/effect_fabric/root_ffi_production_composition.rs
+          src/effect_fabric/root_supervisor_promotion_restart.rs
+          src/effect_fabric/trusted_root_ingress.rs
           src/lib.rs
-          tools/tmp_apply_root_ffi_production_backend.py
-          EOF
+          tools/tmp_add_root_ffi_production_probe.py
+          tools/tmp_apply_root_ffi_joint_production_backend.py
+          tools/tmp_apply_root_ffi_minimal_joint_backend.py
+          tools/tmp_fix_root_ffi_production_ingress_cfg.py
+          tools/tmp_fix_stale_clippy_expectations.py
+          tools/tmp_gate_promotion_root_digest_oracle.py
+          tools/tmp_prune_unused_promotion_root_oracle_surface.py
+          EOF_PATHS
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
+          sort -o "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/allowed-paths"
           diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
-          test ! -e tools/tmp_apply_root_ffi_production_backend.py
-          echo "LAS_ROOT_FFI_GREEN_SCOPE=PASS"
+          echo "LAS_MINIMAL_MATERIALIZE_SCOPE=PASS"
 
           run_stage() {
             local stage="$1"
@@ -120,42 +178,44 @@ jobs:
             local rc=$?
             set -e
             if [[ $rc -ne 0 ]]; then
-              echo "LAS_ROOT_FFI_GREEN_STAGE=${stage}"
-              echo "LAS_ROOT_FFI_GREEN_RC=${rc}"
-              echo "LAS_ROOT_FFI_GREEN_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_MINIMAL_MATERIALIZE_STAGE=${stage}"
+              echo "LAS_MINIMAL_MATERIALIZE_RC=${rc}"
+              echo "LAS_MINIMAL_MATERIALIZE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
               exit "$rc"
             fi
-            echo "LAS_ROOT_FFI_GREEN_${stage}=PASS"
-            echo "LAS_ROOT_FFI_GREEN_${stage}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            echo "LAS_MINIMAL_MATERIALIZE_${stage}=PASS"
+            echo "LAS_MINIMAL_MATERIALIZE_${stage}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
             rm -f "$log"
           }
 
           run_stage fmt_check cargo +1.98.1 fmt --all -- --check
           run_stage default_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib
+          run_stage linux_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features linux-peer-credentials
           run_stage root_ffi_check env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi
-          run_stage root_linux_check env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials
-          run_stage root_linux_clippy env GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings
-          run_stage root_ffi_tests env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1
+          run_stage joint_check env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --lib --features root-ffi,linux-peer-credentials
+          run_stage joint_clippy env GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --lib --features root-ffi,linux-peer-credentials -- -D warnings
+          run_stage all_features_test_build env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi --no-run
+          run_stage all_features_tests env RUSTFLAGS=-Dwarnings GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --all-features root_ffi -- --test-threads=1
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
-          git add -A \
-            src/effect_fabric/dispatch_commit.rs \
-            src/effect_fabric/root_ffi.rs \
-            src/lib.rs \
-            tools/tmp_apply_root_ffi_production_backend.py
+          git add -A
           git diff --cached --check
           git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
           diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
-          git commit -q -m "Compile sealed Root FFI backend in production supervisor"
+          git commit -q -m "Materialize minimal production Root FFI boundary"
           test "$(git rev-parse HEAD^)" = "$start_sha"
           new_sha="$(git rev-parse HEAD)"
           new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
           remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$remote_sha" = "$start_sha"
           git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
           post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$post_sha" = "$new_sha"
-          echo "LAS_ROOT_FFI_GREEN_PRIVATE_COMMIT=PASS"
-          echo "LAS_ROOT_FFI_GREEN_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          echo "LAS_ROOT_FFI_GREEN_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+
+          echo "LAS_MINIMAL_MATERIALIZE_PRIVATE_COMMIT=PASS"
+          echo "LAS_MINIMAL_MATERIALIZE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_MINIMAL_MATERIALIZE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
