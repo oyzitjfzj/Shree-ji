@@ -16,7 +16,7 @@ env:
   EXPECTED_CHECKER_BLOB: 0cdf683516f05383d97228f315f2da34fd038aa0
   EXPECTED_CONTRACT_BLOB: 6c6b781b6109470cffaf3e080aece82e547176b2
   EXPECTED_PROFILE_CONTRACT_BLOB: 42d676b3226d1836d8791341a8fbfa2ace57e195
-  TLA_SHA1: 7f21faa2cdae3189e7d5fadb4488f0dfcc658407
+  TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
 
 jobs:
   structural_probe:
@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
             --output "$RUNNER_TEMP/tla2tools.jar" \
-            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar"
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
           echo "$TLA_SHA1  $RUNNER_TEMP/tla2tools.jar" | sha1sum --check --strict
 
       - name: Parse quotient and abstraction probe
@@ -140,7 +140,7 @@ jobs:
           set -euo pipefail
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
             --output "$RUNNER_TEMP/tla2tools.jar" \
-            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar"
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
           echo "$TLA_SHA1  $RUNNER_TEMP/tla2tools.jar" | sha1sum --check --strict
 
       - name: Exhaustively check canonical profile-39 quotient
