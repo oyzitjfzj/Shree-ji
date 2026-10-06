@@ -1,0 +1,208 @@
+name: Current exact canonical 202 minus resumable 39
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-current-exact-canonical-202-minus39.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: current-exact-canonical-202-minus39-65306c52
+  cancel-in-progress: false
+
+env:
+  TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
+  EXPECTED_PRIVATE_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
+  EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
+  EXPECTED_TLC_PROFILE_COUNT: "202"
+  EXCLUDED_RESUMABLE_INDEX: "39"
+  TLC_SHARD_COUNT: "32"
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  pre_tlc:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Recover exact private materialized revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          git checkout -q -B verify-target "$actual"
+          echo "LAS_CURRENT_202_PRE_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Run exact canonical pre-TLC verifier stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          staged="$RUNNER_TEMP/verify-pre-tlc.sh"
+          python3 - tools/verify_codespaces_all.sh "$staged" <<'PY'
+          from pathlib import Path
+          import sys
+          src=Path(sys.argv[1]).read_text(encoding="utf-8")
+          needle='TLC_MAP="$TMP/tlc-map.tsv"'
+          if src.count(needle) != 1:
+              raise SystemExit("canonical TLC boundary not unique")
+          insertion='''\nrecord "tracked tree unchanged after pre-TLC verification" bash -c '\n  test -z "$(git status --porcelain --untracked-files=no)"\n'\necho "LAS_CURRENT_202_PRE_TLC_RESULT=PASS"\nexit 0\n\n'''
+          Path(sys.argv[2]).write_text(src.replace(needle,insertion+needle,1),encoding="utf-8")
+          PY
+          chmod 0700 "$staged"
+          private_log="$RUNNER_TEMP/pre-tlc.private.log"
+          set +e
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target bash "$staged" >"$private_log" 2>&1
+          rc=$?
+          set -e
+          if [[ "$rc" -eq 0 ]] && grep -q '^LAS_CURRENT_202_PRE_TLC_RESULT=PASS$' "$private_log"; then
+            echo "LAS_CURRENT_202_PRE_TLC=PASS"
+            rm -f "$private_log"
+            exit 0
+          fi
+          echo "LAS_CURRENT_202_PRE_TLC_RC=$rc"
+          echo "LAS_CURRENT_202_PRE_TLC_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+          fail_count="$(sed -n 's/^FAIL=//p' "$private_log" | tail -n 1 || true)"
+          [[ -z "$fail_count" ]] || echo "LAS_CURRENT_202_PRE_TLC_FAIL_COUNT=$fail_count"
+          exit 1
+
+  tlc:
+    needs: pre_tlc
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Recover exact private materialized revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_CURRENT_202_SHARD_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Run canonical TLC shard excluding resumable profile 39
+        shell: bash
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"; cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          map_py="$RUNNER_TEMP/tlc-map.py"; func_sh="$RUNNER_TEMP/tlc-function.sh"
+          python3 - tools/verify_codespaces_all.sh "$map_py" "$func_sh" <<'PY'
+          from pathlib import Path
+          import sys
+          src=Path(sys.argv[1]).read_text(encoding="utf-8")
+          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'; me='\nPY\n\nrun_tlc_profile() {'
+          if src.count(mh)!=1 or src.count(me)!=1: raise SystemExit("canonical map anchors not unique")
+          ms=src.index(mh)+len(mh); mx=src.index(me,ms)
+          Path(sys.argv[2]).write_text(src[ms:mx]+"\n",encoding="utf-8")
+          fh='run_tlc_profile() {\n'; lh="while IFS=$'\\t' read -r cfg tla deadlock expectation; do\n"
+          if src.count(fh)!=1 or src.count(lh)!=1: raise SystemExit("canonical runner anchors not unique")
+          fs=src.index(fh); fx=src.index(lh,fs)
+          Path(sys.argv[3]).write_text(src[fs:fx],encoding="utf-8")
+          PY
+          TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$map_py" "$ROOT" >"$TLC_MAP"
+          total="$(wc -l <"$TLC_MAP" | tr -d ' ')"; test "$total" = "$EXPECTED_TLC_PROFILE_COUNT"
+          TMP="$RUNNER_TEMP/tlc-shard-$SHARD_INDEX"; mkdir -p "$TMP"
+          PASS=0; FAIL=0; FAILED=(); source "$func_sh"
+          private_log="$RUNNER_TEMP/tlc-shard-$SHARD_INDEX.private.log"; : >"$private_log"
+          selected=0; skipped=0; index=0
+          while IFS=$'\t' read -r cfg tla deadlock expectation; do
+            [[ -n "$cfg" && -n "$tla" ]] || continue
+            if (( index == EXCLUDED_RESUMABLE_INDEX )); then
+              skipped=$((skipped + 1))
+            elif (( index % TLC_SHARD_COUNT == SHARD_INDEX )); then
+              selected=$((selected + 1))
+              run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation" >>"$private_log" 2>&1
+            fi
+            index=$((index + 1))
+          done <"$TLC_MAP"
+          test "$index" -eq "$EXPECTED_TLC_PROFILE_COUNT"
+          if (( SHARD_INDEX == EXCLUDED_RESUMABLE_INDEX % TLC_SHARD_COUNT )); then test "$skipped" -eq 1; else test "$skipped" -eq 0; fi
+          test "$selected" -gt 0
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_CURRENT_202_SHARD_INDEX=$SHARD_INDEX"
+          echo "LAS_CURRENT_202_SHARD_PROFILE_COUNT=$selected"
+          echo "LAS_CURRENT_202_SHARD_FAIL_COUNT=$FAIL"
+          if (( FAIL )); then
+            echo "LAS_CURRENT_202_SHARD_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+            echo "LAS_CURRENT_202_SHARD_RESULT=FAIL"
+            exit 1
+          fi
+          rm -f "$private_log"
+          echo "LAS_CURRENT_202_SHARD_RESULT=PASS"
+
+  aggregate:
+    if: always()
+    needs: [pre_tlc, tlc]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require current exact 201-profile coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "LAS_CURRENT_202_EXPECTED_TOTAL=$EXPECTED_TLC_PROFILE_COUNT"
+          echo "LAS_CURRENT_202_EXCLUDED_RESUMABLE_INDEX=$EXCLUDED_RESUMABLE_INDEX"
+          test "${{ needs.pre_tlc.result }}" = "success"
+          test "${{ needs.tlc.result }}" = "success"
+          echo "LAS_CURRENT_202_MINUS39_RESULT=PASS"
