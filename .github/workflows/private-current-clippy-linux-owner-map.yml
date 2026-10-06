@@ -1,0 +1,109 @@
+name: Map current Linux Clippy owners opaquely
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-current-clippy-linux-owner-map.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 2df69cb8a4bb6483271cad9822de8a4a7f09b30ed6c591040398170e851c9305
+  CURRENT_PROOF: 65306c5200b96bbc17d1a85b0eb042196d3c1f2a1d1630542aaddfc8134ca854
+  CURRENT_TREE_PROOF: a5bff9ef779be5f28fd84780411b1bbd36dbb3bcd729d76dc89cf4032013730d
+
+jobs:
+  map:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 clippy >/dev/null
+
+      - name: Recover exact private materialized revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$CURRENT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$CURRENT_TREE_PROOF"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+          echo "LAS_LINUX_OWNER_RECOVERY=PASS"
+
+      - name: Emit compiler JSON owner identities only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          out="$RUNNER_TEMP/linux.jsonl"
+          err="$RUNNER_TEMP/linux.stderr"
+          set +e
+          cargo +1.98.1 clippy --locked --features linux-peer-credentials --all-targets --message-format=json -- -D warnings >"$out" 2>"$err"
+          rc=$?
+          set -e
+          echo "LAS_LINUX_OWNER_CLIPPY_RC=$rc"
+          test "$rc" -ne 0
+          python3 - "$out" <<'PY'
+          import hashlib, json, pathlib, subprocess, sys
+          root=pathlib.Path.cwd().resolve()
+          findings=[]
+          with open(sys.argv[1],encoding='utf-8',errors='replace') as f:
+              for line in f:
+                  try: obj=json.loads(line)
+                  except Exception: continue
+                  if obj.get('reason') != 'compiler-message': continue
+                  msg=obj.get('message') or {}
+                  if msg.get('level') != 'error': continue
+                  code=((msg.get('code') or {}).get('code') or '').replace('_','-')
+                  if code not in {'clippy::assertions-on-constants','clippy::drop-non-drop'}:
+                      raise SystemExit('unexpected Clippy error family: '+code)
+                  primary=next((s for s in (msg.get('spans') or []) if s.get('is_primary')),None)
+                  if not primary: raise SystemExit('missing primary span')
+                  p=pathlib.Path(primary.get('file_name') or '')
+                  if p.is_absolute():
+                      rel=p.resolve().relative_to(root).as_posix()
+                  else:
+                      rel=p.as_posix()
+                  subprocess.run(['git','ls-files','--error-unmatch','--',rel],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                  blob=subprocess.check_output(['git','hash-object','--',rel],text=True).strip()
+                  findings.append((hashlib.sha256(rel.encode()).hexdigest(),blob,int(primary.get('line_start') or 0),int(primary.get('column_start') or 0),code))
+          findings=sorted(set(findings))
+          if not findings: raise SystemExit('no expected Clippy findings')
+          print('LAS_LINUX_OWNER_FINDING_COUNT='+str(len(findings)))
+          for i,(ph,blob,line,col,lint) in enumerate(findings,1):
+              print(f'LAS_LINUX_OWNER_{i}_PATH_HASH={ph}')
+              print(f'LAS_LINUX_OWNER_{i}_BLOB={blob}')
+              print(f'LAS_LINUX_OWNER_{i}_LINE={line}')
+              print(f'LAS_LINUX_OWNER_{i}_COLUMN={col}')
+              print(f'LAS_LINUX_OWNER_{i}_LINT={lint}')
+          PY
+          rm -f "$out" "$err"
+          echo "LAS_LINUX_OWNER_MAP=PASS"
