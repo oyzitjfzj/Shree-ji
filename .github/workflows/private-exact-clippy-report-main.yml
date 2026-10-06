@@ -1,4 +1,4 @@
-name: Capture exact private Clippy diagnostics on trusted runner
+name: Seal Clippy-clean Root FFI candidate after canonical pre-TLC
 
 on:
   push:
@@ -9,17 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  report:
+  seal:
     runs-on: ubuntu-24.04
     steps:
-      - name: Install exact Rust toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup toolchain install 1.98.1 --profile minimal >/dev/null
-          rustup component add --toolchain 1.98.1 clippy >/dev/null
-
-      - name: Recover isolated private diagnostic branch
+      - name: Recover exact private candidate
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.PRIVATE_REPOSITORY }}
@@ -31,38 +24,124 @@ jobs:
           mkdir target; cd target; git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q origin refs/heads/diag/clippy-exact-20261006
-          git checkout -q -B diag/clippy-exact-20261006 FETCH_HEAD
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q origin refs/heads/tmp/root-control-production-composition-green-20261005
+          git checkout -q -B tmp/root-control-production-composition-green-20261005 FETCH_HEAD
           test "$(git rev-parse HEAD)" = "2d0837c44b4255e5ff5411c4c44fcd7e6a453b23"
           printf '%s' "$auth" > "$RUNNER_TEMP/private-auth"
+          echo "LAS_SEAL_RECOVERY=PASS"
 
-      - name: Capture exact default and Linux Clippy diagnostics into private repo
+      - name: Apply semantic Clippy cleanups
         shell: bash
         run: |
           set -euo pipefail
           cd target
-          mkdir -p .diagnostics
-          set +e
-          cargo +1.98.1 clippy --locked --all-targets -- -D warnings > "$RUNNER_TEMP/default.log" 2>&1
-          default_rc=$?
-          cargo +1.98.1 clippy --locked --features linux-peer-credentials --all-targets -- -D warnings > "$RUNNER_TEMP/linux.log" 2>&1
-          linux_rc=$?
-          set -e
-          {
-            echo "EXACT_BASE_SHA=2d0837c44b4255e5ff5411c4c44fcd7e6a453b23"
-            echo "DEFAULT_RC=$default_rc"
-            echo "LINUX_RC=$linux_rc"
-            echo "===== DEFAULT ====="
-            cat "$RUNNER_TEMP/default.log"
-            echo "===== LINUX ====="
-            cat "$RUNNER_TEMP/linux.log"
-          } > .diagnostics/clippy-current-20261006.txt
-          rm -f "$RUNNER_TEMP/default.log" "$RUNNER_TEMP/linux.log"
-          git config user.name "LAS Diagnostic Recorder"
-          git config user.email "las-diagnostic@users.noreply.github.com"
-          git add .diagnostics/clippy-current-20261006.txt
-          git commit -q -m "Record exact Clippy diagnostics"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: Path, old: str, new: str, expected: int, label: str) -> None:
+              text = path.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{label}: expected {expected} matches, found {count}")
+              path.write_text(text.replace(old, new))
+
+          retirement = Path("src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs")
+          old_drop = '''    let stable = persist_guarded_terminal_stable_acknowledgement(
+              &ingress,
+              &mut mutation,
+              &mut promotion_storage,
+              &classified,
+          )
+          .expect("fixture must first persist a stable v6 record");
+          drop(stable);
+          '''
+          new_scope = '''    // Model process loss by ending the process-local witness lexically; calling
+              // `drop` on this non-Drop proof is a semantic no-op and obscures that intent.
+              {
+                  let _process_local_stable = persist_guarded_terminal_stable_acknowledgement(
+                      &ingress,
+                      &mut mutation,
+                      &mut promotion_storage,
+                      &classified,
+                  )
+                  .expect("fixture must first persist a stable v6 record");
+              }
+          '''
+          replace_exact(retirement, old_drop, new_scope, 2, "process-local stable witness scope")
+
+          recovery = Path("src/effect_fabric/promotion_terminal_recovery_ingress_red_tests.rs")
+          old_runtime_marker = '''
+          #[test]
+          fn terminal_restart_recovery_surface_does_not_require_live_promotion_mutation_authority() {
+              // The generic helper above is compiled as the API discriminator. Runtime execution
+              // needs no storage fixture because the property under test is the callable surface.
+              assert!(true);
+          }
+          '''
+          new_runtime_marker = '''
+          // This cfg(test) module is itself the compile-time test: the generic discriminator above
+          // must type-check using only durable-storage authority. A constant runtime assertion would
+          // add no evidence and would weaken the signal of this surface check.
+          '''
+          replace_exact(recovery, old_runtime_marker, new_runtime_marker, 1, "recovery compile-time marker")
+
+          linux = Path("src/effect_fabric/promotion_linux_service_reachability_red_tests.rs")
+          replace_exact(linux, "#![allow(dead_code)]\n", "", 1, "linux blanket dead-code allowance")
+          old_attr = '''#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+          fn require_live_promotion_surfaces<'''
+          new_attr = '''#[expect(
+              dead_code,
+              reason = "compile-time reachability discriminator is intentionally never called at runtime"
+          )]
+          #[allow(
+              clippy::type_complexity,
+              reason = "the discriminator deliberately names the complete live production owner shape"
+          )]
+          fn require_live_promotion_surfaces<'''
+          replace_exact(linux, old_attr, new_attr, 1, "linux targeted lint contract")
+          old_linux_marker = '''
+          #[test]
+          fn live_linux_owner_requires_promotion_execution_and_stable_retirement_surfaces() {
+              // The real discriminator is compile-time: the generic contract above must type-check.
+              assert!(true);
+          }
+          '''
+          new_linux_marker = '''
+          // This feature-gated test module is itself the reachability proof: compiling the generic
+          // discriminator above requires both live promotion execution and stable-retirement methods
+          // on the concrete Linux owner surface. No constant runtime assertion adds evidence.
+          '''
+          replace_exact(linux, old_linux_marker, new_linux_marker, 1, "linux compile-time marker")
+          PY
+
+          git diff --check
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add \
+            src/effect_fabric/promotion_activation_guarded_terminal_retirement_tests.rs \
+            src/effect_fabric/promotion_terminal_recovery_ingress_red_tests.rs \
+            src/effect_fabric/promotion_linux_service_reachability_red_tests.rs
+          git commit -q -m "Make promotion compile-time tests Clippy-clean"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_SEAL_PATCH_COMMIT=$(git rev-parse HEAD)"
+
+      - name: Run exact canonical pre-TLC verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          awk '/^TLC_MAP=/{exit} {print}' tools/verify_codespaces_all.sh > "$RUNNER_TEMP/verify-pre-tlc.sh"
+          chmod +x "$RUNNER_TEMP/verify-pre-tlc.sh"
+          LAS_VERIFY_EXPECTED_BRANCH=tmp/root-control-production-composition-green-20261005 \
+            bash "$RUNNER_TEMP/verify-pre-tlc.sh"
+          echo "LAS_SEAL_PRE_TLC=PASS"
+
+      - name: Publish only the verified candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
           auth="$(cat "$RUNNER_TEMP/private-auth")"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:refs/heads/diag/clippy-exact-20261006
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:refs/heads/tmp/root-control-production-composition-green-20261005
           rm -f "$RUNNER_TEMP/private-auth"
-          echo "LAS_PRIVATE_CLIPPY_REPORT=PASS"
+          echo "LAS_SEAL_PUBLISHED=PASS"
