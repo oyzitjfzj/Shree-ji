@@ -67,18 +67,22 @@ jobs:
           cd target
 
           run_mode() {
-            mode="$1"; expected="$2"; shift 2
+            mode="$1"; expected="$2"; feature="$3"
             out="$RUNNER_TEMP/${mode}.jsonl"
             err="$RUNNER_TEMP/${mode}.stderr"
             set +e
-            "$@" --message-format=json >"$out" 2>"$err"
+            if [[ "$feature" = none ]]; then
+              cargo +1.98.1 clippy --locked --all-targets --message-format=json -- -D warnings >"$out" 2>"$err"
+            else
+              cargo +1.98.1 clippy --locked --features "$feature" --all-targets --message-format=json -- -D warnings >"$out" 2>"$err"
+            fi
             rc=$?
             set -e
             echo "LAS_OWNER_MAP_${mode}_RC=$rc"
             test "$rc" -ne 0
 
             python3 - "$mode" "$expected" "$out" <<'PY'
-          import hashlib, json, os, pathlib, subprocess, sys
+          import hashlib, json, pathlib, subprocess, sys
           mode, expected_raw, jsonl = sys.argv[1:]
           expected=set(expected_raw.split(','))
           root=pathlib.Path.cwd().resolve()
@@ -94,8 +98,7 @@ jobs:
                   norm=code.replace('_','-')
                   if norm not in {'clippy::assertions-on-constants','clippy::drop-non-drop'}:
                       continue
-                  spans=msg.get('spans') or []
-                  primary=next((s for s in spans if s.get('is_primary')), None)
+                  primary=next((s for s in (msg.get('spans') or []) if s.get('is_primary')), None)
                   if not primary: continue
                   raw=primary.get('file_name') or ''
                   p=pathlib.Path(raw)
@@ -126,8 +129,6 @@ jobs:
             rm -f "$out" "$err"
           }
 
-          run_mode DEFAULT "$EXPECTED_DEFAULT_PATH_HASHES" \
-            cargo +1.98.1 clippy --locked --all-targets -- -D warnings
-          run_mode LINUX "$EXPECTED_LINUX_PATH_HASHES" \
-            cargo +1.98.1 clippy --locked --features linux-peer-credentials --all-targets -- -D warnings
+          run_mode DEFAULT "$EXPECTED_DEFAULT_PATH_HASHES" none
+          run_mode LINUX "$EXPECTED_LINUX_PATH_HASHES" linux-peer-credentials
           echo "LAS_OWNER_MAP_RESULT=PASS"
