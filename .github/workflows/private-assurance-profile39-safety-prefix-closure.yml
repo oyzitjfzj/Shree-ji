@@ -11,13 +11,14 @@ permissions:
 
 env:
   TARGET_REF_HASH: e37294e79ca01e05fa7ae755e85883c645cd81171573b6a5382594265a4c7287
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8284a1a96d4b204d11a86ffb9e705bfbb9944b625e3525e96cc0b4967c7bb4cf
-  EXPECTED_PRIVATE_TREE_PROOF: ff3d05ef50d622a7edfc4c84b68a8bdb1c6b46a4d123fee66f5c5f70ac6175fb
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 2374ae4d0a820457aa98dad8b4cdc528a6fb81f7c5cc7ac4b2c4f9ee6f752511
+  EXPECTED_PRIVATE_TREE_PROOF: e9e1a6d2037f8cb80fbd0d471ca46a84e523932370e9a1caabf01e523c1b4e8d
   EXPECTED_QUOTIENT_CHECKER_BLOB: 0cdf683516f05383d97228f315f2da34fd038aa0
   EXPECTED_CONTRACT_CHECKER_BLOB: 6c6b781b6109470cffaf3e080aece82e547176b2
   EXPECTED_DEPENDENCY_CHECKER_BLOB: 4d38410507f1c0c3829976e9b8e9a9aa772deb69
   EXPECTED_PROFILE_CHECKER_BLOB: 5b6aada4cf6a22ed1f7d1a8740521ee7fcc3da82
   EXPECTED_PREFIX_CHECKER_BLOB: ecdccd48cd9a893033ad2c6a76e4ff38e51160a7
+  EXPECTED_SUFFIX_CHECKER_BLOB: 0e496590ee97e92863201179d814a9a22057916d
   EXPECTED_PREFIX_MODULE_BLOB: 2c27605936564b29ac674e890f35065ebb371186
   EXPECTED_PREFIX_MODEL_BLOB: 264e9062f6dcf529fb7adc3ac56c7feda295811d
   EXPECTED_PREFIX_CFG_BLOB: c624fc4920e5595947be2625e36cd50ae0e955fc
@@ -53,6 +54,7 @@ jobs:
           test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_dependencies.py)" = "$EXPECTED_DEPENDENCY_CHECKER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_profile39_contract.py)" = "$EXPECTED_PROFILE_CHECKER_BLOB"
           test "$(git hash-object tools/verification/verify_candidate_assurance_safety_prefix_closure.py)" = "$EXPECTED_PREFIX_CHECKER_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_terminal_suffix_closure.py)" = "$EXPECTED_SUFFIX_CHECKER_BLOB"
           test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefix.tla)" = "$EXPECTED_PREFIX_MODULE_BLOB"
           test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefixModel.tla)" = "$EXPECTED_PREFIX_MODEL_BLOB"
           test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefix.cfg)" = "$EXPECTED_PREFIX_CFG_BLOB"
@@ -70,8 +72,10 @@ jobs:
           python3 tools/verification/verify_candidate_assurance_frontier_dependencies.py
           python3 tools/verification/verify_candidate_assurance_profile39_contract.py
           python3 tools/verification/verify_candidate_assurance_safety_prefix_closure.py
+          python3 tools/verification/verify_candidate_assurance_terminal_suffix_closure.py
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_PROFILE39_COMPOSITIONAL_PROOF_CONTRACT=PASS"
+          echo "LAS_PROFILE39_TERMINAL_SUFFIX_CLOSURE=PASS"
 
       - name: Fetch pinned TLA tools
         shell: bash
