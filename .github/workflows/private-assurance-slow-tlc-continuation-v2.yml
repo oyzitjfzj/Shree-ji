@@ -16,6 +16,11 @@ on:
         required: false
         default: ""
         type: string
+      resume_run_attempt:
+        description: Exact prior workflow run attempt containing the checkpoint
+        required: false
+        default: ""
+        type: string
       resume_artifact:
         description: Prior authenticated encrypted checkpoint artifact name
         required: false
@@ -38,6 +43,7 @@ jobs:
       index: ${{ fromJSON(inputs.index) }}
       segment: ${{ fromJSON(inputs.segment) }}
       resume_run_id: ${{ inputs.resume_run_id }}
+      resume_run_attempt: ${{ inputs.resume_run_attempt }}
       resume_artifact: ${{ inputs.resume_artifact }}
       expected_workflow_sha: ${{ inputs.expected_workflow_sha }}
     secrets: inherit
