@@ -7,11 +7,16 @@ on:
     paths:
       - "tools/audit_current_resumable_lineage_v2.py"
       - "tools/audit_current_resumable_lineage_v3.py"
+      - "tools/audit_current_resumable_lineage_v4.py"
       - ".github/workflows/current-resumable-lineage-audit.yml"
 
 permissions:
   contents: read
   actions: read
+
+concurrency:
+  group: current-exact-resumable-lineage-audit
+  cancel-in-progress: true
 
 jobs:
   audit:
@@ -22,12 +27,12 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - name: Reconstruct exact frozen resumable lineage with attempt history
+      - name: Reconstruct exact frozen resumable lineage with attempt and dispatch history
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 tools/audit_current_resumable_lineage_v3.py
+          python3 tools/audit_current_resumable_lineage_v4.py
           git diff --check
           test -z "$(git status --porcelain --untracked-files=no)"
