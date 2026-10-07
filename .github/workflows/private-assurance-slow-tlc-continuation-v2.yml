@@ -1,0 +1,43 @@
+name: Private assurance slow TLC continuation v2
+
+on:
+  workflow_dispatch:
+    inputs:
+      index:
+        description: Opaque canonical TLC profile index (profile 39 is intentionally rejected)
+        required: true
+        type: string
+      segment:
+        description: Continuation segment number
+        required: true
+        type: string
+      resume_run_id:
+        description: Prior workflow run containing authenticated encrypted checkpoint
+        required: false
+        default: ""
+        type: string
+      resume_artifact:
+        description: Prior authenticated encrypted checkpoint artifact name
+        required: false
+        default: ""
+        type: string
+      expected_workflow_sha:
+        description: Exact reusable-workflow commit SHA expected by this continuation
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  continuation:
+    uses: ./.github/workflows/_private-assurance-tlc-continuation-slice-v2.yml
+    with:
+      index: ${{ fromJSON(inputs.index) }}
+      segment: ${{ fromJSON(inputs.segment) }}
+      resume_run_id: ${{ inputs.resume_run_id }}
+      resume_artifact: ${{ inputs.resume_artifact }}
+      expected_workflow_sha: ${{ inputs.expected_workflow_sha }}
+    secrets: inherit
