@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/verification/verify_resumable_acceptance_chain.py"
       - "tools/verification/verify_resumable_acceptance_chain_v2.py"
+      - "tools/verification/verify_current_203_mixed_acceptance.py"
       - ".github/workflows/verify-resumable-acceptance-chain.yml"
 
 permissions:
@@ -37,10 +38,14 @@ jobs:
           cd target
           python3 -m py_compile \
             tools/verification/verify_resumable_acceptance_chain.py \
-            tools/verification/verify_resumable_acceptance_chain_v2.py
+            tools/verification/verify_resumable_acceptance_chain_v2.py \
+            tools/verification/verify_current_203_mixed_acceptance.py
           base="$(python3 tools/verification/verify_resumable_acceptance_chain.py --self-test)"
           test "$base" = "LAS_RESUMABLE_CHAIN_SELF_TEST=PASS"
           hardened="$(python3 tools/verification/verify_resumable_acceptance_chain_v2.py --self-test)"
           test "$hardened" = "LAS_RESUMABLE_CHAIN_V2_SELF_TEST=PASS"
+          mixed="$(python3 tools/verification/verify_current_203_mixed_acceptance.py --self-test)"
+          test "$mixed" = "LAS_CURRENT_203_MIXED_SELF_TEST=PASS"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_RESUMABLE_CHAIN_VERIFIER_SELF_TEST=PASS"
+          echo "LAS_CURRENT_203_MIXED_VERIFIER_SELF_TEST=PASS"
