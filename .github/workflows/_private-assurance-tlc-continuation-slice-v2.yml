@@ -1,0 +1,434 @@
+name: Private assurance resumable TLC slice v2
+
+on:
+  workflow_call:
+    inputs:
+      index:
+        required: true
+        type: number
+      segment:
+        required: true
+        type: number
+      resume_run_id:
+        required: false
+        type: string
+        default: ""
+      resume_artifact:
+        required: false
+        type: string
+        default: ""
+      expected_workflow_sha:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      LAS_PRIVATE_REPOSITORY:
+        required: true
+      LAS_PRIVATE_READ_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  JAVA_TOOL_OPTIONS: -Xmx5g
+  TARGET_REF_HASH: ed3bb0cf5d74f44e15d4ad6983d8f69de6f84c85ad861805ae2834a02dab9143
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b5112adc429935d9024eb5805c9c49dd2c0f2cb161849cc987f7ba20af212f5c
+  EXPECTED_PRIVATE_TREE_PROOF: 07b34736f34510f45a7cf6200057da51df415958c1f04281a583e87e4743fe97
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_TLC_PROFILE_COUNT: "203"
+  EXCLUDED_COMPOSITIONAL_PROFILE_INDEX: "39"
+  TLA_TOOLS_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+  TLA_TOOLS_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+  SLICE_SECONDS: "1800"
+
+jobs:
+  slice:
+    concurrency:
+      group: current-exact-resumable-v2-tlc-${{ inputs.index }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    env:
+      TARGET_INDEX: ${{ inputs.index }}
+      SEGMENT: ${{ inputs.segment }}
+      RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+      RESUME_ARTIFACT: ${{ inputs.resume_artifact }}
+      EXPECTED_WORKFLOW_SHA: ${{ inputs.expected_workflow_sha }}
+    steps:
+      - name: Validate continuation and immutable runner identity
+        shell: bash
+        env:
+          RUNNER_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          RUNNER_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          RUNNER_WORKFLOW_PATH: ${{ job.workflow_file_path }}
+        run: |
+          set -euo pipefail
+          test "$RUNNER_WORKFLOW_REPOSITORY" = "$GITHUB_REPOSITORY"
+          test "$RUNNER_WORKFLOW_PATH" = ".github/workflows/_private-assurance-tlc-continuation-slice-v2.yml"
+          test "$GITHUB_SHA" = "$RUNNER_WORKFLOW_SHA"
+          [[ "$RUNNER_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$TARGET_INDEX" -ge 0
+          test "$TARGET_INDEX" -lt "$EXPECTED_TLC_PROFILE_COUNT"
+          test "$TARGET_INDEX" -ne "$EXCLUDED_COMPOSITIONAL_PROFILE_INDEX"
+          test "$SEGMENT" -ge 1
+          if [[ "$SEGMENT" -eq 1 ]]; then
+            test -z "$RESUME_RUN_ID"
+            test -z "$RESUME_ARTIFACT"
+            test -z "$EXPECTED_WORKFLOW_SHA"
+          else
+            test -n "$RESUME_RUN_ID"
+            test -n "$RESUME_ARTIFACT"
+            test -n "$EXPECTED_WORKFLOW_SHA"
+            test "$EXPECTED_WORKFLOW_SHA" = "$RUNNER_WORKFLOW_SHA"
+            test "$RESUME_ARTIFACT" = "tlc-state-${TARGET_INDEX}-$((SEGMENT - 1))"
+          fi
+          echo "LAS_CURRENT_RESUME_V2_RUNNER_IDENTITY=PASS"
+
+      - name: Reclaim runner storage for exhaustive TLC
+        shell: bash
+        run: |
+          set -euo pipefail
+          before_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          echo "LAS_CURRENT_RESUME_V2_FREE_KB_BEFORE=$before_kb"
+          for path in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift /opt/az /opt/hostedtoolcache/CodeQL; do
+            [[ ! -e "$path" ]] || sudo rm -rf "$path"
+          done
+          sudo apt-get clean
+          docker system prune --all --force >/dev/null 2>&1 || true
+          after_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
+          echo "LAS_CURRENT_RESUME_V2_FREE_KB_AFTER=$after_kb"
+          test "$after_kb" -ge 31457280
+
+      - name: Recover exact private frozen candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"
+          echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_CURRENT_RESUME_V2_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Validate prior run provenance
+        if: inputs.resume_run_id != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNNER_WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          prior="$RUNNER_TEMP/prior-run.json"
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$RESUME_RUN_ID" >"$prior"
+          python3 - "$prior" "$RUNNER_WORKFLOW_SHA" "$GITHUB_REPOSITORY" <<'PY'
+          import json, sys
+          path, expected_sha, expected_repo = sys.argv[1:]
+          data = json.load(open(path, encoding="utf-8"))
+          allowed_paths = {
+              ".github/workflows/private-assurance-slow-tlc-continuation-v2.yml",
+              ".github/workflows/current-exact-resumable-frozen-bootstrap-v2.yml",
+          }
+          if data.get("head_sha") != expected_sha:
+              raise SystemExit("prior run head_sha does not match current reusable-workflow SHA")
+          repo = (data.get("head_repository") or {}).get("full_name")
+          if repo != expected_repo:
+              raise SystemExit("prior run repository mismatch")
+          if data.get("path") not in allowed_paths:
+              raise SystemExit(f"prior run workflow path not allowlisted: {data.get('path')!r}")
+          if data.get("event") != "workflow_dispatch":
+              raise SystemExit(f"prior run event is not workflow_dispatch: {data.get('event')!r}")
+          if data.get("status") not in {"in_progress", "completed"}:
+              raise SystemExit(f"prior run status is not resumable: {data.get('status')!r}")
+          if data.get("conclusion") not in {None, "success"}:
+              raise SystemExit(f"prior run conclusion is not acceptable: {data.get('conclusion')!r}")
+          print("LAS_CURRENT_RESUME_V2_PRIOR_RUN_PROVENANCE=PASS")
+          PY
+          rm -f "$prior"
+
+      - name: Download prior authenticated encrypted checkpoint
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ inputs.resume_artifact }}
+          path: ${{ runner.temp }}/resume
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.resume_run_id }}
+
+      - name: Authenticate and safely restore prior checkpoint
+        if: inputs.resume_run_id != ''
+        shell: bash
+        env:
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          RUNNER_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          RUNNER_WORKFLOW_PATH: ${{ job.workflow_file_path }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PRIVATE_TOKEN"
+          enc="$RUNNER_TEMP/resume/checkpoint.tar.gz.enc"
+          mac_file="$RUNNER_TEMP/resume/checkpoint.tar.gz.enc.hmac"
+          archive="$RUNNER_TEMP/checkpoint.tar.gz"
+          test -s "$enc"
+          test -s "$mac_file"
+          export LAS_CHECKPOINT_SECRET LAS_CHECKPOINT_MAC_KEY
+          LAS_CHECKPOINT_SECRET="$(printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0enc' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB" "$TARGET_INDEX" "$GITHUB_REPOSITORY" "$RUNNER_WORKFLOW_SHA" "$RUNNER_WORKFLOW_PATH" | sha256sum | awk '{print $1}')"
+          LAS_CHECKPOINT_MAC_KEY="$(printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0mac' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB" "$TARGET_INDEX" "$GITHUB_REPOSITORY" "$RUNNER_WORKFLOW_SHA" "$RUNNER_WORKFLOW_PATH" | sha256sum | awk '{print $1}')"
+          expected_mac="$(tr -d '[:space:]' <"$mac_file")"
+          actual_mac="$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$LAS_CHECKPOINT_MAC_KEY" "$enc" | awk '{print $NF}')"
+          test -n "$expected_mac"
+          test "$actual_mac" = "$expected_mac"
+          echo "LAS_CURRENT_RESUME_V2_CHECKPOINT_AUTH=PASS"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_CHECKPOINT_SECRET -in "$enc" -out "$archive"
+          test ! -e "$RUNNER_TEMP/tlc-meta"
+          python3 - "$archive" <<'PY'
+          import sys, tarfile
+          from pathlib import PurePosixPath
+          archive = sys.argv[1]
+          seen = set()
+          files = 0
+          with tarfile.open(archive, "r:gz") as tf:
+              for member in tf.getmembers():
+                  path = PurePosixPath(member.name)
+                  if not path.parts or path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"unsafe checkpoint member path: {member.name!r}")
+                  if path.parts[0] != "tlc-meta":
+                      raise SystemExit(f"checkpoint member escapes tlc-meta root: {member.name!r}")
+                  if member.name in seen:
+                      raise SystemExit(f"duplicate checkpoint member: {member.name!r}")
+                  seen.add(member.name)
+                  if member.issym() or member.islnk() or member.isdev() or member.isfifo():
+                      raise SystemExit(f"unsafe checkpoint member type: {member.name!r}")
+                  if not (member.isdir() or member.isfile()):
+                      raise SystemExit(f"unsupported checkpoint member type: {member.name!r}")
+                  if member.isfile():
+                      files += 1
+          if files == 0:
+              raise SystemExit("checkpoint archive contains no regular files")
+          print("LAS_CURRENT_RESUME_V2_ARCHIVE_PREFLIGHT=PASS")
+          PY
+          tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$RUNNER_TEMP"
+          manifest="$RUNNER_TEMP/tlc-meta/las-resume-manifest.txt"
+          test -s "$manifest"
+          grep -qx "snapshot=$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$manifest"
+          grep -qx "tree=$EXPECTED_PRIVATE_TREE_PROOF" "$manifest"
+          grep -qx "verifier=$EXPECTED_VERIFIER_BLOB" "$manifest"
+          grep -qx "index=$TARGET_INDEX" "$manifest"
+          grep -qx "segment=$((SEGMENT - 1))" "$manifest"
+          grep -qx "workflow_sha=$RUNNER_WORKFLOW_SHA" "$manifest"
+          grep -qx "workflow_path=$RUNNER_WORKFLOW_PATH" "$manifest"
+          grep -qx "producer_run=$RESUME_RUN_ID" "$manifest"
+          rm -f "$manifest" "$archive"
+          unset PRIVATE_TOKEN LAS_CHECKPOINT_SECRET LAS_CHECKPOINT_MAC_KEY expected_mac actual_mac
+
+      - name: Run exact canonical TLC slice
+        id: tlc
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"
+          cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "$TLA_TOOLS_SHA256  $TLA_JAR" | sha256sum --check --strict >/dev/null
+          echo "$TLA_TOOLS_SHA1  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          map_py="$RUNNER_TEMP/tlc-map.py"
+          python3 - tools/verify_codespaces_all.sh "$map_py" <<'PY'
+          from pathlib import Path
+          import sys
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          mh = 'python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'
+          me = '\nPY\n\nPROFILE39_CFG='
+          if src.count(mh) != 1 or src.count(me) != 1:
+              raise SystemExit("canonical map anchors not unique")
+          start = src.index(mh) + len(mh)
+          end = src.index(me, start)
+          Path(sys.argv[2]).write_text(src[start:end] + "\n", encoding="utf-8")
+          PY
+          map="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$map_py" "$ROOT" >"$map"
+          test "$(wc -l <"$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
+          line="$(sed -n "$((TARGET_INDEX + 1))p" "$map")"
+          test -n "$line"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
+          test -n "$cfg"
+          test -n "$tla"
+          test -z "$expectation"
+          test "$cfg" != "spec/defence_evolution/CandidateAssuranceEvidenceCase.cfg"
+          cfg_dir="$(dirname "$cfg")"
+          cfg_base="$(basename "$cfg")"
+          tla_base="$(basename "$tla")"
+          log="$RUNNER_TEMP/private-tlc.log"
+          meta="$RUNNER_TEMP/tlc-meta"
+          mkdir -p "$meta"
+          args=(-workers auto -lncheck final -fp 0 -checkpoint 5 -metadir "$meta")
+          if [[ -n "$RESUME_RUN_ID" ]]; then
+            mapfile -t recover_dirs < <(find "$meta" -type f -name 'vars.chkpt' -printf '%h\n' | sort -u)
+            test "${#recover_dirs[@]}" -eq 1
+            recover_dir="${recover_dirs[0]}"
+            test -f "$recover_dir/queue.chkpt"
+            echo "LAS_CURRENT_RESUME_V2_RECOVER_DIR=PASS"
+            args+=(-recover "$recover_dir")
+          fi
+          [[ "$deadlock" != "1" ]] || args+=(-deadlock)
+          args+=(-config "$cfg_base" "$tla_base")
+          set +e
+          (cd "$cfg_dir"; timeout --signal=KILL "$SLICE_SECONDS" java -XX:+UseParallelGC -jar "$TLA_JAR" "${args[@]}") >"$log" 2>&1
+          rc=$?
+          set -e
+          metrics="$(python3 - "$log" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+          matches = re.findall(r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue', text)
+          if matches:
+              g, d, q = matches[-1]
+              print(g.replace(',', ''), d.replace(',', ''), q.replace(',', ''))
+          else:
+              print('0 0 0')
+          PY
+          )"
+          read -r generated distinct queued <<<"$metrics"
+          echo "LAS_CURRENT_RESUME_V2_INDEX=$TARGET_INDEX"
+          echo "LAS_CURRENT_RESUME_V2_SEGMENT=$SEGMENT"
+          echo "LAS_CURRENT_RESUME_V2_GENERATED=$generated"
+          echo "LAS_CURRENT_RESUME_V2_DISTINCT=$distinct"
+          echo "LAS_CURRENT_RESUME_V2_QUEUE=$queued"
+          echo "LAS_CURRENT_RESUME_V2_RC=$rc"
+          echo "LAS_CURRENT_RESUME_V2_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "LAS_CURRENT_RESUME_V2_META_BYTES=$(du -sb "$meta" 2>/dev/null | awk '{print $1}' || echo 0)"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          severe='Invariant .* is violated|Property .* is violated|Temporal propert(y|ies).*violat|liveness.*violat|Deadlock reached|Parsing or semantic analysis failed|parse error|semantic error|(checkpoint|recover).*(error|fail|exception)|(error|fail|exception).*(checkpoint|recover)|fingerprint.*collision|collision.*fingerprint|OutOfMemoryError|Cannot allocate memory|No space left on device|Disk quota exceeded|Exception in thread|java\.lang\.|java\.io\.|java\.nio\.|TLC threw an unexpected exception|TLC Bug|AssertionError|An error occurred while running TLC'
+          if grep -Eiq "$severe" "$log"; then
+            rm -f "$log"
+            echo "status=fail" >>"$GITHUB_OUTPUT"
+            echo "LAS_CURRENT_RESUME_V2_RESULT=FAIL_CLOSED"
+            exit 1
+          fi
+          if [[ "$rc" -eq 0 ]]; then
+            rm -f "$log"
+            echo "status=pass" >>"$GITHUB_OUTPUT"
+            echo "LAS_CURRENT_RESUME_V2_RESULT=PASS"
+            exit 0
+          fi
+          if [[ "$rc" -eq 124 || "$rc" -eq 137 || "$rc" -eq 143 ]]; then
+            mapfile -t checkpoint_dirs < <(find "$meta" -type f -name 'vars.chkpt' -printf '%h\n' | sort -u)
+            test "${#checkpoint_dirs[@]}" -eq 1
+            test -f "${checkpoint_dirs[0]}/queue.chkpt"
+            rm -f "$log"
+            echo "status=slice" >>"$GITHUB_OUTPUT"
+            echo "LAS_CURRENT_RESUME_V2_RESULT=SLICE_CHECKPOINT"
+            exit 0
+          fi
+          rm -f "$log"
+          echo "status=fail" >>"$GITHUB_OUTPUT"
+          echo "LAS_CURRENT_RESUME_V2_RESULT=FAIL"
+          exit 1
+
+      - name: Seal authenticated encrypted checkpoint
+        if: steps.tlc.outputs.status == 'slice'
+        shell: bash
+        env:
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          RUNNER_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          RUNNER_WORKFLOW_PATH: ${{ job.workflow_file_path }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PRIVATE_TOKEN"
+          meta="$RUNNER_TEMP/tlc-meta"
+          printf 'snapshot=%s\ntree=%s\nverifier=%s\nindex=%s\nsegment=%s\nworkflow_sha=%s\nworkflow_path=%s\nproducer_run=%s\nproducer_attempt=%s\n' \
+            "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB" \
+            "$TARGET_INDEX" "$SEGMENT" "$RUNNER_WORKFLOW_SHA" "$RUNNER_WORKFLOW_PATH" \
+            "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >"$meta/las-resume-manifest.txt"
+          echo "LAS_CURRENT_RESUME_V2_METADATA_BYTES=$(du -sb "$meta" | awk '{print $1}')"
+          tar -C "$RUNNER_TEMP" -cf - tlc-meta | gzip -1 >"$RUNNER_TEMP/checkpoint.tar.gz"
+          export LAS_CHECKPOINT_SECRET LAS_CHECKPOINT_MAC_KEY
+          LAS_CHECKPOINT_SECRET="$(printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0enc' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB" "$TARGET_INDEX" "$GITHUB_REPOSITORY" "$RUNNER_WORKFLOW_SHA" "$RUNNER_WORKFLOW_PATH" | sha256sum | awk '{print $1}')"
+          LAS_CHECKPOINT_MAC_KEY="$(printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0%s\0mac' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB" "$TARGET_INDEX" "$GITHUB_REPOSITORY" "$RUNNER_WORKFLOW_SHA" "$RUNNER_WORKFLOW_PATH" | sha256sum | awk '{print $1}')"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt -pass env:LAS_CHECKPOINT_SECRET -in "$RUNNER_TEMP/checkpoint.tar.gz" -out "$RUNNER_TEMP/checkpoint.tar.gz.enc"
+          openssl dgst -sha256 -mac HMAC -macopt "hexkey:$LAS_CHECKPOINT_MAC_KEY" "$RUNNER_TEMP/checkpoint.tar.gz.enc" | awk '{print $NF}' >"$RUNNER_TEMP/checkpoint.tar.gz.enc.hmac"
+          test -s "$RUNNER_TEMP/checkpoint.tar.gz.enc"
+          test -s "$RUNNER_TEMP/checkpoint.tar.gz.enc.hmac"
+          echo "LAS_CURRENT_RESUME_V2_ARTIFACT_BYTES=$(stat -c '%s' "$RUNNER_TEMP/checkpoint.tar.gz.enc")"
+          rm -f "$RUNNER_TEMP/checkpoint.tar.gz"
+          unset PRIVATE_TOKEN LAS_CHECKPOINT_SECRET LAS_CHECKPOINT_MAC_KEY
+
+      - name: Upload authenticated encrypted checkpoint
+        if: steps.tlc.outputs.status == 'slice'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tlc-state-${{ inputs.index }}-${{ inputs.segment }}
+          path: |
+            ${{ runner.temp }}/checkpoint.tar.gz.enc
+            ${{ runner.temp }}/checkpoint.tar.gz.enc.hmac
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Dispatch next immutable-identity slice
+        if: steps.tlc.outputs.status == 'slice'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUNNER_WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          next="$((SEGMENT + 1))"
+          artifact="tlc-state-${TARGET_INDEX}-${SEGMENT}"
+          payload="$(python3 - "$TARGET_INDEX" "$next" "$GITHUB_RUN_ID" "$artifact" "$RUNNER_WORKFLOW_SHA" "$GITHUB_REF_NAME" <<'PY'
+          import json, sys
+          index, segment, run_id, artifact, workflow_sha, ref_name = sys.argv[1:]
+          print(json.dumps({
+              "ref": ref_name,
+              "inputs": {
+                  "index": index,
+                  "segment": segment,
+                  "resume_run_id": run_id,
+                  "resume_artifact": artifact,
+                  "expected_workflow_sha": workflow_sha,
+              },
+          }))
+          PY
+          )"
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/private-assurance-slow-tlc-continuation-v2.yml/dispatches" \
+            -d "$payload"
+          echo "LAS_CURRENT_RESUME_V2_NEXT_SEGMENT=$next"
