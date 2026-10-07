@@ -1,0 +1,115 @@
+name: Profile39 source-pin full closure
+
+on:
+  push:
+    branches:
+      - verify/profile39-source-pin-hardening-df76fbaf
+    paths:
+      - ".github/workflows/profile39-source-pin-full-closure.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 13015cceb3c8a5898a9c264c0e12015201046e0734622a015531487ebca1ef88
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 0b1fa256f70c7df159a33331a8c19a172a8d1a41635b55852c2f320ba8f09519
+  EXPECTED_PRIVATE_TREE_PROOF: 5b8926493e4cdede87beace4adba9c391983f04ece8ee324e2dc2e548e2f5e4d
+  EXPECTED_CANONICAL_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_PROFILE39_RUNNER_BLOB: d4fb4da631767669ba28ff5dde381949453bedf4
+  EXPECTED_SOURCE_PIN_CHECKER_BLOB: ec4a9b01aceac85be659c2ab1edd7f52600bb216
+  EXPECTED_CANONICAL_CI_BLOB: 850143334887ea7996aa78d4ea3a0856170e8897
+  EXPECTED_QUOTIENT_BLOB: 02e95cb6a5a41f40c05a800fd483ee663288b2c6
+  EXPECTED_QUOTIENT_CHECKER_BLOB: 0cdf683516f05383d97228f315f2da34fd038aa0
+  EXPECTED_CONTRACT_CHECKER_BLOB: 6c6b781b6109470cffaf3e080aece82e547176b2
+  EXPECTED_DEPENDENCY_CHECKER_BLOB: 4d38410507f1c0c3829976e9b8e9a9aa772deb69
+  EXPECTED_PROFILE_CHECKER_BLOB: 5b6aada4cf6a22ed1f7d1a8740521ee7fcc3da82
+  EXPECTED_PREFIX_CHECKER_BLOB: ecdccd48cd9a893033ad2c6a76e4ff38e51160a7
+  EXPECTED_SUFFIX_CHECKER_BLOB: 0e496590ee97e92863201179d814a9a22057916d
+  EXPECTED_PREFIX_MODULE_BLOB: 2c27605936564b29ac674e890f35065ebb371186
+  EXPECTED_PREFIX_MODEL_BLOB: 264e9062f6dcf529fb7adc3ac56c7feda295811d
+  EXPECTED_PREFIX_CFG_BLOB: c624fc4920e5595947be2625e36cd50ae0e955fc
+  TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+
+jobs:
+  canonical_profile39:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Recover exact private hardening candidate opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q; git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; refs="$RUNNER_TEMP/heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched=""
+          while read -r sha ref; do
+            [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" != "$TARGET_REF_HASH" ]] || {
+              test -z "$matched"
+              matched="$ref"
+            }
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched"; echo "::add-mask::$matched"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_CANONICAL_VERIFIER_BLOB"
+          test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" = "$EXPECTED_PROFILE39_RUNNER_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_profile39_source_pin.py)" = "$EXPECTED_SOURCE_PIN_CHECKER_BLOB"
+          test "$(git hash-object .github/workflows/candidate-assurance-evidence-case-tlc.yml)" = "$EXPECTED_CANONICAL_CI_BLOB"
+          test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseFrontierQuotient.tla)" = "$EXPECTED_QUOTIENT_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_quotient.py)" = "$EXPECTED_QUOTIENT_CHECKER_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_contract.py)" = "$EXPECTED_CONTRACT_CHECKER_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_frontier_dependencies.py)" = "$EXPECTED_DEPENDENCY_CHECKER_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_profile39_contract.py)" = "$EXPECTED_PROFILE_CHECKER_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_safety_prefix_closure.py)" = "$EXPECTED_PREFIX_CHECKER_BLOB"
+          test "$(git hash-object tools/verification/verify_candidate_assurance_terminal_suffix_closure.py)" = "$EXPECTED_SUFFIX_CHECKER_BLOB"
+          test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefix.tla)" = "$EXPECTED_PREFIX_MODULE_BLOB"
+          test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefixModel.tla)" = "$EXPECTED_PREFIX_MODEL_BLOB"
+          test "$(git hash-object spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefix.cfg)" = "$EXPECTED_PREFIX_CFG_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth matched actual tree
+          echo "LAS_PROFILE39_SOURCE_PIN_CANONICAL_RECOVERY=PASS"
+
+      - name: Verify canonical CI wiring and shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          bash -n tools/verify_codespaces_all.sh
+          bash -n tools/verification/run_candidate_assurance_profile39_compositional.sh
+          ci=.github/workflows/candidate-assurance-evidence-case-tlc.yml
+          grep -Fq 'releases/download/v1.7.4/tla2tools.jar' "$ci"
+          ! grep -Fq 'releases/download/v1.7.2/tla2tools.jar' "$ci"
+          grep -Fq 'run_candidate_assurance_profile39_compositional.sh' "$ci"
+          ! grep -Fq -- '-config CandidateAssuranceEvidenceCase.cfg' "$ci"
+          echo "LAS_PROFILE39_SOURCE_PIN_CANONICAL_CI_WIRING=PASS"
+
+      - name: Fetch pinned TLA tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/tla2tools.jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "$TLA_SHA1  $RUNNER_TEMP/tla2tools.jar" | sha1sum --check --strict >/dev/null
+
+      - name: Execute exact hardened profile-39 compositional runner
+        shell: bash
+        env:
+          JAVA_TOOL_OPTIONS: -Xmx5g
+        run: |
+          set -euo pipefail
+          cd target
+          bash tools/verification/run_candidate_assurance_profile39_compositional.sh \
+            "$RUNNER_TEMP/tla2tools.jar" "$RUNNER_TEMP/profile39"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_PROFILE39_SOURCE_PIN_FULL_CLOSURE=PASS"
