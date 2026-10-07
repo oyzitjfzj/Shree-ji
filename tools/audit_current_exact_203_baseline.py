@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Mechanically audit the frozen exact 203-profile baseline acceptance run.
 
-The baseline run intentionally stopped only because a known finite set of profiles exceeded
-the single-run window.  This auditor proves the immutable workflow binding, exact private
-candidate proofs embedded in that workflow, pre-TLC success, and exact set algebra:
-all non-deferred canonical profiles succeeded, while only the 12 resumable profiles were
-cancelled for continuation elsewhere.
+The baseline run stopped because ten long-running profiles exceeded the single-run window.
+Two additional profiles (133 and 145) were later included in the conservative resumable
+set even though they had already completed successfully here.  This auditor proves the
+immutable workflow binding, exact private candidate proofs, pre-TLC success, and exact
+baseline set algebra from GitHub's job evidence rather than from a hand-written handoff.
 """
 
 from __future__ import annotations
@@ -28,7 +28,11 @@ EXPECTED_PRIVATE_TREE_PROOF = "07b34736f34510f45a7cf6200057da51df415958c1f04281a
 EXPECTED_VERIFIER_BLOB = "8ea6dbe77db10592baf8f56c9719626c36687f9a"
 EXPECTED_PROFILE39_RUNNER_BLOB = "39475a3fd64dcac34998f9eb947cd3acf7d9d653"
 EXPECTED_PROFILE_COUNT = 203
-DEFERRED = frozenset({2, 28, 29, 36, 110, 115, 133, 145, 156, 157, 168, 172})
+BASELINE_DEFERRED = frozenset({2, 28, 29, 36, 110, 115, 156, 157, 168, 172})
+CONSERVATIVE_RESUMABLE = frozenset(
+    {2, 28, 29, 36, 110, 115, 133, 145, 156, 157, 168, 172}
+)
+REDUNDANT_REVERIFY = CONSERVATIVE_RESUMABLE - BASELINE_DEFERRED
 TLC_NAME = re.compile(r"tlc \((\d+)\)")
 
 
@@ -176,7 +180,7 @@ def audit() -> int:
 
     if set(profiles) != set(range(EXPECTED_PROFILE_COUNT)):
         missing = sorted(set(range(EXPECTED_PROFILE_COUNT)) - set(profiles))
-        extra = sorted(set(profiles) - set(range(EXPECTED_PROFILE_COUNT)))
+        extra = sorted(set(profiles) - set(range(EXPECTED_PROFILE_COUNT))
         fail(f"baseline TLC index coverage mismatch: missing={missing} extra={extra}")
 
     success: set[int] = set()
@@ -199,13 +203,17 @@ def audit() -> int:
 
     if other:
         fail(f"baseline contains non-success/non-cancelled TLC outcomes: {other}")
-    if cancelled != set(DEFERRED):
+    if cancelled != set(BASELINE_DEFERRED):
         fail(
-            f"deferred set mismatch: expected={sorted(DEFERRED)} actual={sorted(cancelled)}"
+            f"baseline deferred set mismatch: expected={sorted(BASELINE_DEFERRED)} actual={sorted(cancelled)}"
         )
-    expected_success = set(range(EXPECTED_PROFILE_COUNT)) - set(DEFERRED)
+    expected_success = set(range(EXPECTED_PROFILE_COUNT)) - set(BASELINE_DEFERRED)
     if success != expected_success:
-        fail("baseline success set is not exactly canonical minus deferred-12")
+        fail("baseline success set is not exactly canonical minus deferred-10")
+    if not REDUNDANT_REVERIFY <= success:
+        fail("conservative resumable extras were not already successful in baseline")
+    if REDUNDANT_REVERIFY != {133, 145}:
+        fail(f"unexpected redundant reverify set: {sorted(REDUNDANT_REVERIFY)}")
 
     print(f"LAS_CURRENT_203_BASELINE_RUN_ID={RUN_ID}")
     print(f"LAS_CURRENT_203_BASELINE_WORKFLOW_SHA={RUN_HEAD_SHA}")
@@ -214,6 +222,7 @@ def audit() -> int:
     print(f"LAS_CURRENT_203_BASELINE_SUCCESS_PROFILE_COUNT={len(success)}")
     print(f"LAS_CURRENT_203_BASELINE_DEFERRED_PROFILE_COUNT={len(cancelled)}")
     print("LAS_CURRENT_203_BASELINE_DEFERRED_PROFILES=" + ",".join(map(str, sorted(cancelled))))
+    print("LAS_CURRENT_203_BASELINE_REDUNDANT_REVERIFY_PROFILES=" + ",".join(map(str, sorted(REDUNDANT_REVERIFY))))
     print("LAS_CURRENT_203_BASELINE_EXACT_PRIVATE_BINDING=PASS")
     print("LAS_CURRENT_203_BASELINE_PRE_TLC=PASS")
     print("LAS_CURRENT_203_BASELINE_SET_ALGEBRA=PASS")
