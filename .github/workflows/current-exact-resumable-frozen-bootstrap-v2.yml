@@ -19,6 +19,7 @@ jobs:
       index: ${{ matrix.index }}
       segment: 1
       resume_run_id: ""
+      resume_run_attempt: ""
       resume_artifact: ""
       expected_workflow_sha: ""
     secrets: inherit
