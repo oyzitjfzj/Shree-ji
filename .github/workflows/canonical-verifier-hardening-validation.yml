@@ -1,0 +1,153 @@
+name: Canonical verifier hardening validation
+
+on:
+  push:
+    branches: [verify/canonical-verifier-hardening-20261007]
+    paths:
+      - ".github/workflows/canonical-verifier-hardening-validation.yml"
+      - ".verification/canonical-verifier-hardening.trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
+      EXPECTED_PRIVATE_SNAPSHOT_PROOF: d9f6d1c02ed3f3aad864bca2ffeffbd30fc27b2147e4d988f82854c19830437c
+      EXPECTED_PRIVATE_TREE_PROOF: 6a90aed21257fc8677675979d36b78bad64586329ba2d0f2540c57d7a242388f
+      EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+    steps:
+      - name: Recover exact private hardening base
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-canonical-hardening"
+          mkdir "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-canonical-hardening-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -qb verifier-validation "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" == "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_CANONICAL_HARDENING_EXACT_BASE=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Apply exact guarded hardening transform
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-canonical-hardening"; cd "$ROOT"
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          path = Path("tools/verify_codespaces_all.sh")
+          expected_blob = "8ea6dbe77db10592baf8f56c9719626c36687f9a"
+          actual_blob = subprocess.check_output(["git", "hash-object", str(path)], text=True).strip()
+          if actual_blob != expected_blob:
+              raise SystemExit(f"unexpected verifier base blob: {actual_blob}")
+
+          text = path.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  "set -u -o pipefail\n",
+                  "set -euo pipefail\n",
+              ),
+              (
+                  'if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then\n'
+                  '  echo "ERROR: tracked working tree is not clean; refusing to verify a mixed revision" >&2\n',
+                  'if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then\n'
+                  '  echo "ERROR: working tree is not clean; refusing to verify a mixed revision" >&2\n',
+              ),
+              (
+                  'HEAD="$(git rev-parse HEAD)"\n'
+                  'TMP="${TMPDIR:-/tmp}/las-verify-${HEAD:0:12}"\n'
+                  'mkdir -p "$TMP"\n',
+                  'HEAD="$(git rev-parse HEAD)"\n'
+                  'TMP_BASE="${TMPDIR:-/tmp}"\n'
+                  'mkdir -p "$TMP_BASE"\n'
+                  'TMP="$(mktemp -d "${TMP_BASE%/}/las-verify-${HEAD:0:12}.XXXXXX")"\n',
+              ),
+              (
+                  'echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR"   | sha1sum --check --strict\n',
+                  'echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR"   | sha1sum --check --strict\n'
+                  'echo "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  $TLA_JAR"   | sha256sum --check --strict\n',
+              ),
+              (
+                  'record "tracked tree unchanged after verification" bash -c \'\n'
+                  '  test -z "$(git status --porcelain --untracked-files=no)"\n'
+                  "'\n",
+                  'record "working tree unchanged after verification" bash -c \'\n'
+                  '  test -z "$(git status --porcelain --untracked-files=all)"\n'
+                  "'\n",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"guarded transform expected exactly one match, got {count}: {old!r}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+          bash -n tools/verify_codespaces_all.sh
+          git diff --check
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = 1
+          test "$(git diff --name-only)" = tools/verify_codespaces_all.sh
+          grep -qx 'set -euo pipefail' <(sed -n '2p' tools/verify_codespaces_all.sh)
+          grep -Fq 'git status --porcelain --untracked-files=all' tools/verify_codespaces_all.sh
+          test "$(grep -Fc 'git status --porcelain --untracked-files=all' tools/verify_codespaces_all.sh)" = 2
+          grep -Fq 'mktemp -d "${TMP_BASE%/}/las-verify-${HEAD:0:12}.XXXXXX"' tools/verify_codespaces_all.sh
+          grep -Fq '936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  $TLA_JAR' tools/verify_codespaces_all.sh
+          echo "LAS_CANONICAL_HARDENING_TRANSFORM=PASS"
+
+      - name: Prove untracked poison fails before setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-canonical-hardening"; cd "$ROOT"
+          touch verifier-validation-untracked-poison
+          log="$RUNNER_TEMP/canonical-untracked-negative.log"
+          set +e
+          LAS_VERIFY_EXPECTED_BRANCH=verifier-validation bash tools/verify_codespaces_all.sh >"$log" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -q 'ERROR: working tree is not clean; refusing to verify a mixed revision' "$log"
+          rm -f verifier-validation-untracked-poison
+          echo "LAS_CANONICAL_HARDENING_UNTRACKED_NEGATIVE=PASS"
+
+      - name: Verify exact minimal diff and emit patched bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-canonical-hardening"; cd "$ROOT"
+          test -z "$(git status --porcelain --untracked-files=all | grep -v '^ M tools/verify_codespaces_all.sh$' || true)"
+          git diff -- tools/verify_codespaces_all.sh
+          echo "LAS_CANONICAL_HARDENED_FILE_BASE64_BEGIN"
+          base64 -w0 tools/verify_codespaces_all.sh
+          echo
+          echo "LAS_CANONICAL_HARDENED_FILE_BASE64_END"
+          echo "LAS_CANONICAL_HARDENING_VALIDATION=PASS"
