@@ -79,6 +79,7 @@ jobs:
             --output "$TLA_JAR" \
             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
           test "$(sha1sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_TOOLS_SHA1"
+          echo "LAS_TLA_TOOLS_SHA256=$(sha256sum "$TLA_JAR" | awk '{print $1}')"
 
           blocker="$RUNNER_TEMP/preflight-bin"
           mkdir "$blocker"
