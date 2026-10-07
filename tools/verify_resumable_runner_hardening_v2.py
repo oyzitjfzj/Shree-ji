@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tarfile
@@ -82,7 +81,6 @@ def verify_runner_contract(text: str) -> None:
     ordered(text, "Validate prior run provenance", "Download prior authenticated encrypted checkpoint", "provenance before artifact")
     ordered(text, 'print("LAS_CURRENT_RESUME_V2_ARCHIVE_PREFLIGHT=PASS")', 'tar -xzf "$archive" --no-same-owner --no-same-permissions', "preflight before extract")
 
-    # Verify both restore and seal KDFs independently, including order and domain separation.
     tokens = [
         '"$PRIVATE_TOKEN"', '"$EXPECTED_PRIVATE_SNAPSHOT_PROOF"', '"$EXPECTED_PRIVATE_TREE_PROOF"',
         '"$EXPECTED_VERIFIER_BLOB"', '"$TARGET_INDEX"', '"$GITHUB_REPOSITORY"',
@@ -101,7 +99,6 @@ def verify_runner_contract(text: str) -> None:
             if "| sha256sum | awk '{print $1}')\"" not in line:
                 fail(f"{variable} derivation {n}: derivation hash changed")
 
-    # Manifest writer is positional; pin format and argument order so verifier is not vacuous.
     fmt = "printf 'snapshot=%s\\ntree=%s\\nverifier=%s\\nindex=%s\\nsegment=%s\\nworkflow_sha=%s\\nworkflow_path=%s\\nproducer_run=%s\\nproducer_attempt=%s\\n'"
     present(text, fmt, "manifest exact schema")
     arg1 = '"$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB"'
@@ -187,15 +184,41 @@ def mutate_and_expect_reject(runner: str, continuation: str, bootstrap: str, old
         return
     fail(f"self-test accepted invalid runner drift: {label}")
 
+def mutate_kdf_and_expect_reject(runner: str, continuation: str, bootstrap: str, variable: str, token: str, label: str) -> None:
+    lines = runner.splitlines()
+    candidates = [i for i, line in enumerate(lines) if line.strip().startswith(f'{variable}="$(printf ')]
+    if len(candidates) != 2:
+        fail(f"self-test fixture {label}: expected two {variable} derivations, got {len(candidates)}")
+    target = candidates[0]
+    if token not in lines[target]:
+        fail(f"self-test fixture {label}: token missing from selected derivation")
+    lines[target] = lines[target].replace(token, '""', 1)
+    bad = "\n".join(lines) + ("\n" if runner.endswith("\n") else "")
+    try:
+        verify_runner_contract(bad)
+        verify_callers(continuation, bootstrap)
+    except Error:
+        return
+    fail(f"self-test accepted invalid KDF drift: {label}")
+
 def self_test(runner: str, continuation: str, bootstrap: str) -> None:
     mutations = (
         ('test "$GITHUB_SHA" = "$RUNNER_WORKFLOW_SHA"', 'test -n "$RUNNER_WORKFLOW_SHA"', "remove commit equality"),
         ('test "$actual_mac" = "$expected_mac"', 'test -n "$actual_mac"', "remove MAC equality"),
         ('"expected_workflow_sha": workflow_sha', '"expected_workflow_sha": ""', "remove SHA handoff"),
-        ('"$RUNNER_WORKFLOW_SHA" "$RUNNER_WORKFLOW_PATH" | sha256sum', '"" "$RUNNER_WORKFLOW_PATH" | sha256sum', "remove runner SHA from one KDF"),
     )
     for old, new, label in mutations:
         mutate_and_expect_reject(runner, continuation, bootstrap, old, new, label)
+    mutate_kdf_and_expect_reject(
+        runner, continuation, bootstrap,
+        "LAS_CHECKPOINT_SECRET", '"$RUNNER_WORKFLOW_SHA"',
+        "remove workflow SHA from one encryption-key derivation",
+    )
+    mutate_kdf_and_expect_reject(
+        runner, continuation, bootstrap,
+        "LAS_CHECKPOINT_MAC_KEY", '"$RUNNER_WORKFLOW_PATH"',
+        "remove workflow path from one MAC-key derivation",
+    )
 
 def main() -> int:
     for path in (RUNNER, CONTINUATION, BOOTSTRAP):
