@@ -180,7 +180,7 @@ def audit() -> int:
 
     if set(profiles) != set(range(EXPECTED_PROFILE_COUNT)):
         missing = sorted(set(range(EXPECTED_PROFILE_COUNT)) - set(profiles))
-        extra = sorted(set(profiles) - set(range(EXPECTED_PROFILE_COUNT))
+        extra = sorted(set(profiles) - set(range(EXPECTED_PROFILE_COUNT)))
         fail(f"baseline TLC index coverage mismatch: missing={missing} extra={extra}")
 
     success: set[int] = set()
@@ -222,7 +222,10 @@ def audit() -> int:
     print(f"LAS_CURRENT_203_BASELINE_SUCCESS_PROFILE_COUNT={len(success)}")
     print(f"LAS_CURRENT_203_BASELINE_DEFERRED_PROFILE_COUNT={len(cancelled)}")
     print("LAS_CURRENT_203_BASELINE_DEFERRED_PROFILES=" + ",".join(map(str, sorted(cancelled))))
-    print("LAS_CURRENT_203_BASELINE_REDUNDANT_REVERIFY_PROFILES=" + ",".join(map(str, sorted(REDUNDANT_REVERIFY))))
+    print(
+        "LAS_CURRENT_203_BASELINE_REDUNDANT_REVERIFY_PROFILES="
+        + ",".join(map(str, sorted(REDUNDANT_REVERIFY)))
+    )
     print("LAS_CURRENT_203_BASELINE_EXACT_PRIVATE_BINDING=PASS")
     print("LAS_CURRENT_203_BASELINE_PRE_TLC=PASS")
     print("LAS_CURRENT_203_BASELINE_SET_ALGEBRA=PASS")
