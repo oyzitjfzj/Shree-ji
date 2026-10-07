@@ -1,8 +1,8 @@
-name: Current exact canonical 203 acceptance
+name: Successor exact canonical 203 acceptance
 
 on:
   push:
-    branches: [main]
+    branches: [verify/current-exact-203-profile39-hardening-20261007]
     paths:
       - ".github/workflows/private-current-exact-canonical-202-minus39.yml"
   workflow_dispatch:
@@ -11,15 +11,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: current-exact-canonical-203-24244fc8
+  group: successor-exact-canonical-203-ea0297d8
   cancel-in-progress: true
 
 env:
-  TARGET_REF_HASH: ed3bb0cf5d74f44e15d4ad6983d8f69de6f84c85ad861805ae2834a02dab9143
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b5112adc429935d9024eb5805c9c49dd2c0f2cb161849cc987f7ba20af212f5c
-  EXPECTED_PRIVATE_TREE_PROOF: 07b34736f34510f45a7cf6200057da51df415958c1f04281a583e87e4743fe97
+  TARGET_REF_HASH: 4f7eea672fb47f8dac6fd5d0985032e471619306b071138721846354203fd7cd
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: dc1a52f77c267bafa2b4b9a238dfd2faee46b916888a47ee26f9e684a5d883cb
+  EXPECTED_PRIVATE_TREE_PROOF: afc7e03bcfca26e2ae314b88176d71c37a5f23ba92944cc7f6221a7185e22734
   EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
-  EXPECTED_PROFILE39_RUNNER_BLOB: 39475a3fd64dcac34998f9eb947cd3acf7d9d653
+  EXPECTED_PROFILE39_RUNNER_BLOB: 977e938d6c26abff762882e21e841b26cfb1739d
+  EXPECTED_TLA_TOOLS_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+  EXPECTED_TLA_TOOLS_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
   EXPECTED_TLC_PROFILE_COUNT: "203"
   TLC_SHARD_COUNT: "203"
   JAVA_TOOL_OPTIONS: -Xmx5g
@@ -149,7 +151,8 @@ jobs:
           TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" \
             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
-          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+          test "$(sha1sum "$TLA_JAR" | awk '{print $1}')" = "$EXPECTED_TLA_TOOLS_SHA1"
+          test "$(sha256sum "$TLA_JAR" | awk '{print $1}')" = "$EXPECTED_TLA_TOOLS_SHA256"
           map_py="$RUNNER_TEMP/tlc-map.py"; func_sh="$RUNNER_TEMP/tlc-functions.sh"
           python3 - tools/verify_codespaces_all.sh "$map_py" "$func_sh" <<'PY'
           from pathlib import Path
