@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Audit the frozen exact resumable TLC lineage from GitHub Actions evidence.
 
-This script is intentionally independent of the active acceptance workflow. It reads
-GitHub's run/job/log evidence, proves that every target run used the frozen public runner
-revision, reconstructs each canonical profile's completed segment chain, and reports the
-current terminal/checkpoint frontier without trusting hand-written status notes.
+The auditor is read-only with respect to the acceptance lane.  It reconstructs every
+completed segment from GitHub Actions logs, proves the frozen public runner identity,
+and reports each canonical profile's current terminal/checkpoint frontier.
 """
 
 from __future__ import annotations
@@ -28,10 +27,18 @@ INDEX_RE = re.compile(r"LAS_CURRENT_RESUME_INDEX=(\d+)")
 SEGMENT_RE = re.compile(r"LAS_CURRENT_RESUME_SEGMENT=(\d+)")
 RESULT_RE = re.compile(r"LAS_CURRENT_RESUME_RESULT=(PASS|SLICE_CHECKPOINT|FAIL_CLOSED|FAIL)")
 BOOTSTRAP_INDEX_RE = re.compile(r"bootstrap \((\d+)\) / slice")
+REDIRECT_CODES = {301, 302, 303, 307, 308}
 
 
 class AuditError(RuntimeError):
     pass
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Expose redirects so credentials are never forwarded to another origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
 
 
 @dataclass(frozen=True)
@@ -49,16 +56,17 @@ def fail(message: str) -> None:
     raise AuditError(message)
 
 
+def github_headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "living-assurance-lineage-auditor",
+    }
+
+
 def request_bytes(url: str, token: str) -> bytes:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "living-assurance-lineage-auditor",
-        },
-    )
+    req = urllib.request.Request(url, headers=github_headers(token))
     try:
         with urllib.request.urlopen(req, timeout=60) as response:
             return response.read()
@@ -74,6 +82,50 @@ def request_json(url: str, token: str) -> dict:
         return json.loads(request_bytes(url, token).decode("utf-8"))
     except json.JSONDecodeError as exc:
         fail(f"invalid GitHub JSON from {url}: {exc}")
+
+
+def request_github_redirect_target(url: str, token: str) -> str:
+    """Resolve one GitHub API redirect without leaking the bearer token downstream."""
+
+    opener = urllib.request.build_opener(NoRedirect)
+    req = urllib.request.Request(url, headers=github_headers(token))
+    try:
+        with opener.open(req, timeout=60) as response:
+            if response.status in REDIRECT_CODES:
+                location = response.headers.get("Location")
+            else:
+                fail(f"expected redirect from GitHub log endpoint, got HTTP {response.status}")
+    except urllib.error.HTTPError as exc:
+        if exc.code not in REDIRECT_CODES:
+            body = exc.read().decode("utf-8", errors="replace")
+            fail(f"GitHub log endpoint HTTP {exc.code} for {url}: {body[:500]}")
+        location = exc.headers.get("Location")
+    except urllib.error.URLError as exc:
+        fail(f"GitHub log endpoint request failed for {url}: {exc}")
+
+    if not location:
+        fail("GitHub log endpoint redirect is missing Location")
+    parsed = urllib.parse.urlparse(location)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+        fail(f"unsafe GitHub log redirect target: {location!r}")
+    return location
+
+
+def request_unsigned_https(url: str) -> bytes:
+    """Fetch a GitHub-issued signed URL with no GitHub credentials attached."""
+
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "living-assurance-lineage-auditor"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        fail(f"signed log download HTTP {exc.code}: {body[:500]}")
+    except urllib.error.URLError as exc:
+        fail(f"signed log download failed: {exc}")
 
 
 def paginate_runs(api: str, repo: str, token: str) -> list[dict]:
@@ -107,7 +159,9 @@ def fetch_jobs(api: str, repo: str, token: str, run_id: int) -> list[dict]:
 
 
 def fetch_job_log(api: str, repo: str, token: str, job_id: int) -> str:
-    raw = request_bytes(f"{api}/repos/{repo}/actions/jobs/{job_id}/logs", token)
+    endpoint = f"{api}/repos/{repo}/actions/jobs/{job_id}/logs"
+    signed_url = request_github_redirect_target(endpoint, token)
+    raw = request_unsigned_https(signed_url)
     return raw.decode("utf-8-sig", errors="replace")
 
 
