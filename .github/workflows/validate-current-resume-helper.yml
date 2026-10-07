@@ -1,0 +1,21 @@
+name: Validate current resumable TLC helper
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/validate-current-resume-helper.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  fail_closed_probe:
+    uses: ./.github/workflows/_private-assurance-tlc-continuation-slice.yml
+    with:
+      index: 39
+      segment: 1
+      resume_run_id: ""
+      resume_artifact: ""
+    secrets: inherit
