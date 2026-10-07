@@ -14,9 +14,15 @@ from __future__ import annotations
 import concurrent.futures
 import os
 import sys
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 
 import audit_current_resumable_lineage_v2 as base
+
+TRANSIENT_HTTP = {429, 500, 502, 503, 504}
+LOG_DOWNLOAD_ATTEMPTS = 6
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,46 @@ def fetch_attempt_jobs(
     return jobs
 
 
+def fetch_log_resilient(api: str, repo: str, token: str, job_id: int) -> str:
+    """Fetch a completed job log without leaking auth across the signed redirect.
+
+    Azure/GitHub log storage can transiently return 429/5xx under egress pressure.
+    Each retry reacquires a fresh signed URL rather than retrying an old redirect.
+    Non-transient errors remain fail-closed.
+    """
+
+    last_error = ""
+    endpoint = f"{api}/repos/{repo}/actions/jobs/{job_id}/logs"
+    for attempt in range(1, LOG_DOWNLOAD_ATTEMPTS + 1):
+        signed = base.resolve_log_redirect(endpoint, token)
+        request = urllib.request.Request(
+            signed,
+            headers={"User-Agent": "living-assurance-lineage-v3-auditor"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return response.read().decode("utf-8-sig", errors="replace")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            last_error = f"HTTP {exc.code}: {body[:500]}"
+            if exc.code not in TRANSIENT_HTTP:
+                base.fail(f"job {job_id} signed log download failed: {last_error}")
+            retry_after = exc.headers.get("Retry-After")
+            if retry_after and retry_after.isdigit():
+                delay = min(int(retry_after), 15)
+            else:
+                delay = min(2 ** (attempt - 1), 8)
+        except urllib.error.URLError as exc:
+            last_error = f"URL error: {exc}"
+            delay = min(2 ** (attempt - 1), 8)
+        if attempt < LOG_DOWNLOAD_ATTEMPTS:
+            time.sleep(delay)
+    base.fail(
+        f"job {job_id} signed log download exhausted {LOG_DOWNLOAD_ATTEMPTS} attempts: "
+        f"{last_error}"
+    )
+
+
 def process_bundle(
     api: str,
     repo: str,
@@ -68,7 +114,7 @@ def process_bundle(
                 base.fail(f"bootstrap job {job.get('id')} did not succeed")
             out.append(
                 base.parse_success(
-                    run, job, base.fetch_log(api, repo, token, int(job["id"]))
+                    run, job, fetch_log_resilient(api, repo, token, int(job["id"]))
                 )
             )
         return out
@@ -79,7 +125,7 @@ def process_bundle(
             f"has {len(candidates)} slice jobs"
         )
     job = candidates[0]
-    log = base.fetch_log(api, repo, token, int(job["id"]))
+    log = fetch_log_resilient(api, repo, token, int(job["id"]))
     if run.get("conclusion") == "success" and job.get("conclusion") == "success":
         return [base.parse_success(run, job, log)]
     if run.get("conclusion") == "failure" and job.get("conclusion") == "failure":
@@ -154,9 +200,7 @@ def audit() -> int:
             )
 
         if current.get("status") == "completed":
-            current_work.append(
-                (current, base.fetch_jobs(api, repo, token, run_id))
-            )
+            current_work.append((current, base.fetch_jobs(api, repo, token, run_id)))
         else:
             open_runs.append(current)
 
@@ -171,9 +215,7 @@ def audit() -> int:
 
     successes = [r for r in recorded if r.evidence.outcome == "SUCCESS"]
     failures = [
-        r
-        for r in recorded
-        if r.evidence.outcome == "PRE_TLC_RESTORE_FAILURE"
+        r for r in recorded if r.evidence.outcome == "PRE_TLC_RESTORE_FAILURE"
     ]
     unknown = [
         r
