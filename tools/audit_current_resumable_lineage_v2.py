@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,6 +30,7 @@ CONTINUATION_PATH = ".github/workflows/private-assurance-slow-tlc-continuation.y
 BOOTSTRAP_PATH = ".github/workflows/current-exact-resumable-frozen-bootstrap.yml"
 REUSABLE_PATH = ".github/workflows/_private-assurance-tlc-continuation-slice.yml"
 REDIRECT_CODES = {301, 302, 303, 307, 308}
+RETRYABLE_HTTP = {429, 500, 502, 503, 504}
 
 ACTUAL_INDEX_RE = re.compile(r"LAS_CURRENT_RESUME_INDEX=(\d+)")
 ACTUAL_SEGMENT_RE = re.compile(r"LAS_CURRENT_RESUME_SEGMENT=(\d+)")
@@ -65,12 +67,6 @@ class Attempt:
     outcome: str
 
 
-@dataclass(frozen=True)
-class RunBundle:
-    run: dict
-    jobs: list[dict]
-
-
 def fail(message: str) -> None:
     raise AuditError(message)
 
@@ -84,16 +80,34 @@ def headers(token: str) -> dict[str, str]:
     }
 
 
+def retry_delay(attempt: int, retry_after: str | None = None) -> float:
+    if retry_after:
+        try:
+            return min(max(float(retry_after), 0.5), 30.0)
+        except ValueError:
+            pass
+    return min(0.75 * (2**attempt), 20.0)
+
+
 def get_bytes(url: str, token: str) -> bytes:
-    req = urllib.request.Request(url, headers=headers(token))
-    try:
-        with urllib.request.urlopen(req, timeout=60) as response:
-            return response.read()
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        fail(f"GitHub API HTTP {exc.code} for {url}: {body[:500]}")
-    except urllib.error.URLError as exc:
-        fail(f"GitHub API request failed for {url}: {exc}")
+    last_error = ""
+    for attempt in range(6):
+        req = urllib.request.Request(url, headers=headers(token))
+        try:
+            with urllib.request.urlopen(req, timeout=60) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            last_error = f"GitHub API HTTP {exc.code} for {url}: {body[:500]}"
+            if exc.code not in RETRYABLE_HTTP or attempt == 5:
+                fail(last_error)
+            time.sleep(retry_delay(attempt, exc.headers.get("Retry-After")))
+        except urllib.error.URLError as exc:
+            last_error = f"GitHub API request failed for {url}: {exc}"
+            if attempt == 5:
+                fail(last_error)
+            time.sleep(retry_delay(attempt))
+    fail(last_error or f"GitHub API request failed for {url}")
 
 
 def get_json(url: str, token: str) -> dict:
@@ -104,40 +118,61 @@ def get_json(url: str, token: str) -> dict:
 
 
 def resolve_log_redirect(url: str, token: str) -> str:
-    opener = urllib.request.build_opener(NoRedirect)
-    req = urllib.request.Request(url, headers=headers(token))
-    try:
-        with opener.open(req, timeout=60) as response:
-            if response.status not in REDIRECT_CODES:
-                fail(f"expected log redirect, got HTTP {response.status}")
-            location = response.headers.get("Location")
-    except urllib.error.HTTPError as exc:
-        if exc.code not in REDIRECT_CODES:
-            body = exc.read().decode("utf-8", errors="replace")
-            fail(f"log endpoint HTTP {exc.code}: {body[:500]}")
-        location = exc.headers.get("Location")
-    except urllib.error.URLError as exc:
-        fail(f"log redirect request failed: {exc}")
-    if not location:
-        fail("log redirect missing Location")
-    parsed = urllib.parse.urlparse(location)
-    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
-        fail(f"unsafe log redirect: {location!r}")
-    return location
+    last_error = ""
+    for attempt in range(6):
+        opener = urllib.request.build_opener(NoRedirect)
+        req = urllib.request.Request(url, headers=headers(token))
+        try:
+            with opener.open(req, timeout=60) as response:
+                if response.status not in REDIRECT_CODES:
+                    fail(f"expected log redirect, got HTTP {response.status}")
+                location = response.headers.get("Location")
+        except urllib.error.HTTPError as exc:
+            if exc.code in REDIRECT_CODES:
+                location = exc.headers.get("Location")
+            else:
+                body = exc.read().decode("utf-8", errors="replace")
+                last_error = f"log endpoint HTTP {exc.code}: {body[:500]}"
+                if exc.code not in RETRYABLE_HTTP or attempt == 5:
+                    fail(last_error)
+                time.sleep(retry_delay(attempt, exc.headers.get("Retry-After")))
+                continue
+        except urllib.error.URLError as exc:
+            last_error = f"log redirect request failed: {exc}"
+            if attempt == 5:
+                fail(last_error)
+            time.sleep(retry_delay(attempt))
+            continue
+        if not location:
+            fail("log redirect missing Location")
+        parsed = urllib.parse.urlparse(location)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+            fail(f"unsafe log redirect: {location!r}")
+        return location
+    fail(last_error or "unable to resolve job-log redirect")
 
 
 def fetch_unsigned(url: str) -> bytes:
-    req = urllib.request.Request(
-        url, headers={"User-Agent": "living-assurance-lineage-v2-auditor"}
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as response:
-            return response.read()
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        fail(f"signed log HTTP {exc.code}: {body[:500]}")
-    except urllib.error.URLError as exc:
-        fail(f"signed log download failed: {exc}")
+    last_error = ""
+    for attempt in range(7):
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "living-assurance-lineage-v2-auditor"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=90) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            last_error = f"signed log HTTP {exc.code}: {body[:500]}"
+            if exc.code not in RETRYABLE_HTTP or attempt == 6:
+                fail(last_error)
+            time.sleep(retry_delay(attempt, exc.headers.get("Retry-After")))
+        except urllib.error.URLError as exc:
+            last_error = f"signed log download failed: {exc}"
+            if attempt == 6:
+                fail(last_error)
+            time.sleep(retry_delay(attempt))
+    fail(last_error or "signed log download failed")
 
 
 def fetch_log(api: str, repo: str, token: str, job_id: int) -> str:
@@ -356,7 +391,7 @@ def audit() -> int:
     completed = [run for run in runs if run.get("status") == "completed"]
     open_runs = [run for run in runs if run.get("status") != "completed"]
     attempts: list[Attempt] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         futures = [
             pool.submit(process_completed_run, api, repo, token, run)
             for run in completed
@@ -392,7 +427,6 @@ def audit() -> int:
                     )
             canonical[profile][segment] = first
 
-    # Prove exact successful parent chain and contiguous segments.
     for profile in EXPECTED_PROFILES:
         segments = canonical[profile]
         if not segments:
@@ -430,7 +464,6 @@ def audit() -> int:
         if pass_segments and pass_segments != [numbers[-1]]:
             fail(f"profile {profile} PASS is not terminal: {pass_segments}")
 
-    # Failed restore attempts must be exact retries of the same parent checkpoint.
     for failed in failures:
         candidates = [
             a
