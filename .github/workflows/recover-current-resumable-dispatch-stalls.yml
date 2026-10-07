@@ -1,0 +1,120 @@
+name: Recover current resumable dispatch stalls
+
+on:
+  push:
+    branches:
+      - hardening/resumable-runner-identity-20261007
+    paths:
+      - ".github/workflows/recover-current-resumable-dispatch-stalls.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: recover-current-resumable-dispatch-stalls-once
+  cancel-in-progress: false
+
+env:
+  FROZEN_REF: verify/current-exact-resumable-24244fc8
+  FROZEN_SHA: f0c9f9fbb77292cb2aae2c0d02545f1e45f028cb
+  TARGET_WORKFLOW: private-assurance-slow-tlc-continuation.yml
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify frozen runner and exact stalled artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          frozen_ref = os.environ["FROZEN_REF"]
+          frozen_sha = os.environ["FROZEN_SHA"]
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "living-assurance-dispatch-recovery",
+          }
+
+          def get(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+
+          branch = get(f"https://api.github.com/repos/{repo}/branches/{frozen_ref}")
+          actual_sha = ((branch.get("commit") or {}).get("sha"))
+          if actual_sha != frozen_sha:
+              raise SystemExit(f"frozen runner drifted: {actual_sha!r}")
+
+          expected = {
+              37638559472: ("tlc-state-29-18", "sha256:1370af622979165b2f15b621ecc0e8a89a64876bbf369b29ca08c81b4f45126d"),
+              37638009751: ("tlc-state-36-19", "sha256:5a3589bc2dcfeaec00e8143bf23c661865b02279dc81cbfa4855552571242157"),
+              37636284306: ("tlc-state-172-11", "sha256:433fc74f819af4643ab01920bd303630cd68ca8a004c0e5662ebc0b3b2719d18"),
+          }
+          for run_id, (name, digest) in expected.items():
+              data = get(f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100")
+              matches = [a for a in data.get("artifacts", []) if a.get("name") == name]
+              if len(matches) != 1:
+                  raise SystemExit(f"run {run_id} artifact {name!r} count={len(matches)}")
+              artifact = matches[0]
+              if artifact.get("expired") is not False:
+                  raise SystemExit(f"run {run_id} artifact {name!r} expired/ambiguous")
+              if artifact.get("digest") != digest:
+                  raise SystemExit(f"run {run_id} artifact {name!r} digest mismatch")
+              binding = artifact.get("workflow_run") or {}
+              if int(binding.get("id") or 0) != run_id or binding.get("head_sha") != frozen_sha:
+                  raise SystemExit(f"run {run_id} artifact {name!r} binding mismatch")
+              print(f"LAS_DISPATCH_RECOVERY_ARTIFACT=PASS;RUN_ID={run_id};NAME={name};DIGEST={digest}")
+          print("LAS_DISPATCH_RECOVERY_FROZEN_RUNNER=PASS")
+          PY
+
+      - name: Dispatch exact missing continuation children
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          dispatch() {
+            local index="$1" segment="$2" parent="$3" artifact="$4"
+            local payload code body
+            payload="$(python3 - "$FROZEN_REF" "$index" "$segment" "$parent" "$artifact" <<'PY'
+          import json, sys
+          ref, index, segment, parent, artifact = sys.argv[1:]
+          print(json.dumps({"ref": ref, "inputs": {
+              "index": index,
+              "segment": segment,
+              "resume_run_id": parent,
+              "resume_artifact": artifact,
+          }}))
+          PY
+            )"
+            body="$RUNNER_TEMP/dispatch-${index}-${segment}.body"
+            code="$(curl --proto '=https' --tlsv1.2 -sS -o "$body" -w '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/$TARGET_WORKFLOW/dispatches" \
+              -d "$payload")"
+            if [[ "$code" != "204" ]]; then
+              echo "LAS_DISPATCH_RECOVERY_REQUEST=FAIL;INDEX=$index;SEGMENT=$segment;HTTP=$code"
+              cat "$body" || true
+              exit 1
+            fi
+            echo "LAS_DISPATCH_RECOVERY_REQUEST=PASS;INDEX=$index;SEGMENT=$segment;PARENT=$parent;ARTIFACT=$artifact"
+          }
+
+          dispatch 29 19 37638559472 tlc-state-29-18
+          dispatch 36 20 37638009751 tlc-state-36-19
+          dispatch 172 12 37636284306 tlc-state-172-11
+          echo "LAS_DISPATCH_RECOVERY=PASS"
