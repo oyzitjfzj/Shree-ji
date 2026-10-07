@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Audit the frozen exact resumable TLC lineage from GitHub Actions evidence.
 
-The auditor is read-only with respect to the acceptance lane. It proves the frozen
-public runner identity, reconstructs successful canonical segment chains from job
-logs, classifies failed attempts, and reports the current terminal/checkpoint
-frontier without trusting hand-written status notes.
+The auditor is read-only with respect to the acceptance lane. It proves frozen
+runner identity, reconstructs successful canonical segment chains, preserves
+workflow re-run attempt history, and only accepts a pre-TLC restore failure when
+a later successful attempt executes the exact same profile/segment from the exact
+same predecessor run and artifact.
 """
 
 from __future__ import annotations
@@ -33,6 +34,8 @@ ACTUAL_RESULT_RE = re.compile(
 )
 INPUT_INDEX_RE = re.compile(r"Z\s+index:\s+(\d+)\s*$", re.MULTILINE)
 INPUT_SEGMENT_RE = re.compile(r"Z\s+segment:\s+(\d+)\s*$", re.MULTILINE)
+INPUT_RESUME_RUN_ID_RE = re.compile(r"Z\s+resume_run_id:\s*([^\r\n]*)$", re.MULTILINE)
+INPUT_RESUME_ARTIFACT_RE = re.compile(r"Z\s+resume_artifact:\s*([^\r\n]*)$", re.MULTILINE)
 BOOTSTRAP_INDEX_RE = re.compile(r"bootstrap \((\d+)\) / slice")
 REDIRECT_CODES = {301, 302, 303, 307, 308}
 
@@ -56,15 +59,21 @@ class SegmentEvidence:
     run_id: int
     job_id: int
     run_number: int
+    run_attempt: int
     created_at: str
+    resume_run_id: str
+    resume_artifact: str
 
 
 @dataclass(frozen=True)
-class IsolatedFailure:
+class RestoreFailure:
     profile: int
     segment: int
     run_id: int
     job_id: int
+    run_attempt: int
+    resume_run_id: str
+    resume_artifact: str
     failure_class: str
 
 
@@ -165,25 +174,71 @@ def fetch_jobs(api: str, repo: str, token: str, run_id: int) -> list[dict]:
     return jobs
 
 
+def fetch_attempt(api: str, repo: str, token: str, run_id: int, attempt: int) -> dict:
+    return request_json(
+        f"{api}/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}", token
+    )
+
+
+def fetch_attempt_jobs(
+    api: str, repo: str, token: str, run_id: int, attempt: int
+) -> list[dict]:
+    data = request_json(
+        f"{api}/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100",
+        token,
+    )
+    jobs = data.get("jobs") or []
+    if not isinstance(jobs, list):
+        fail(f"attempt jobs is not a list for run {run_id} attempt {attempt}")
+    return jobs
+
+
 def fetch_job_log(api: str, repo: str, token: str, job_id: int) -> str:
     endpoint = f"{api}/repos/{repo}/actions/jobs/{job_id}/logs"
     signed_url = request_github_redirect_target(endpoint, token)
     return request_unsigned_https(signed_url).decode("utf-8-sig", errors="replace")
 
 
-def validate_runner_binding(repo: str, run: dict) -> None:
+def validate_runner_binding(repo: str, run: dict, label: str = "run") -> None:
     run_id = run.get("id")
     if run.get("head_sha") != TARGET_HEAD_SHA:
-        fail(f"run {run_id} head SHA drifted")
+        fail(f"{label} {run_id} head SHA drifted")
     if run.get("path") not in {CONTINUATION_PATH, BOOTSTRAP_PATH}:
-        fail(f"run {run_id} has unexpected workflow path: {run.get('path')!r}")
+        fail(f"{label} {run_id} has unexpected workflow path: {run.get('path')!r}")
     expected = f"{repo}/{REUSABLE_PATH}@{TARGET_HEAD_SHA}"
     refs = run.get("referenced_workflows") or []
     if len(refs) != 1:
-        fail(f"run {run_id} does not reference exactly one reusable workflow: {refs!r}")
+        fail(f"{label} {run_id} does not reference exactly one reusable workflow: {refs!r}")
     item = refs[0]
     if item.get("sha") != TARGET_HEAD_SHA or item.get("path") != expected:
-        fail(f"run {run_id} reusable workflow identity drifted: {refs!r}")
+        fail(f"{label} {run_id} reusable workflow identity drifted: {refs!r}")
+
+
+def last_match(pattern: re.Pattern[str], log: str, name: str, required: bool = True) -> str:
+    matches = pattern.findall(log)
+    if not matches:
+        if required:
+            fail(f"job log is missing {name}")
+        return ""
+    return str(matches[-1]).strip()
+
+
+def parse_predecessor(log: str, segment: int) -> tuple[str, str]:
+    resume_run_id = last_match(
+        INPUT_RESUME_RUN_ID_RE, log, "resume_run_id input", required=segment > 1
+    )
+    resume_artifact = last_match(
+        INPUT_RESUME_ARTIFACT_RE, log, "resume_artifact input", required=segment > 1
+    )
+    if segment == 1:
+        if resume_run_id or resume_artifact:
+            fail("segment 1 unexpectedly has resume predecessor inputs")
+    else:
+        if not resume_run_id.isdigit():
+            fail(f"segment {segment} has invalid resume_run_id {resume_run_id!r}")
+        if not resume_artifact:
+            fail(f"segment {segment} has empty resume_artifact")
+    return resume_run_id, resume_artifact
 
 
 def parse_successful_job(run: dict, job: dict, log: str) -> SegmentEvidence | None:
@@ -202,6 +257,7 @@ def parse_successful_job(run: dict, job: dict, log: str) -> SegmentEvidence | No
             fail(f"completed TLC job {job.get('id')} has result but no index/segment markers")
         profile = int(bootstrap.group(1))
         segment = 1
+    resume_run_id, resume_artifact = parse_predecessor(log, segment)
     return SegmentEvidence(
         profile=profile,
         segment=segment,
@@ -209,7 +265,10 @@ def parse_successful_job(run: dict, job: dict, log: str) -> SegmentEvidence | No
         run_id=int(run["id"]),
         job_id=int(job["id"]),
         run_number=int(run.get("run_number") or 0),
+        run_attempt=int(run.get("run_attempt") or 1),
         created_at=str(run.get("created_at") or ""),
+        resume_run_id=resume_run_id,
+        resume_artifact=resume_artifact,
     )
 
 
@@ -231,16 +290,20 @@ def process_successful_run(
     return found
 
 
-def classify_failed_run(
-    api: str, repo: str, token: str, run: dict
-) -> IsolatedFailure:
-    jobs = fetch_jobs(api, repo, token, int(run["id"]))
+def classify_restore_failure(
+    api: str,
+    repo: str,
+    token: str,
+    run: dict,
+    jobs: list[dict],
+    attempt: int,
+) -> RestoreFailure:
     slice_jobs = [job for job in jobs if job.get("name") == "continuation / slice"]
     if len(slice_jobs) != 1:
-        fail(f"failed run {run['id']} has unexpected slice-job shape")
+        fail(f"failed run {run['id']} attempt {attempt} has unexpected slice-job shape")
     job = slice_jobs[0]
     if job.get("status") != "completed" or job.get("conclusion") != "failure":
-        fail(f"failed run {run['id']} does not contain one completed failed slice job")
+        fail(f"run {run['id']} attempt {attempt} is not one completed failed slice job")
     steps = {str(step.get("name")): step.get("conclusion") for step in job.get("steps") or []}
     required = {
         "Validate continuation request": "success",
@@ -256,25 +319,25 @@ def classify_failed_run(
     for name, expected in required.items():
         if steps.get(name) != expected:
             fail(
-                f"failed run {run['id']} is not isolated pre-TLC restore failure: "
+                f"run {run['id']} attempt {attempt} is not isolated pre-TLC restore failure: "
                 f"step={name!r} actual={steps.get(name)!r} expected={expected!r}"
             )
     log = fetch_job_log(api, repo, token, int(job["id"]))
     if ACTUAL_RESULT_RE.search(log):
-        fail(f"failed run {run['id']} emitted a TLC semantic result marker")
-    index_matches = INPUT_INDEX_RE.findall(log)
-    segment_matches = INPUT_SEGMENT_RE.findall(log)
-    if not index_matches or not segment_matches:
-        fail(f"failed run {run['id']} has no exact input index/segment evidence")
-    profile = int(index_matches[-1])
-    segment = int(segment_matches[-1])
+        fail(f"failed run {run['id']} attempt {attempt} emitted TLC semantic result")
+    profile = int(last_match(INPUT_INDEX_RE, log, "index input"))
+    segment = int(last_match(INPUT_SEGMENT_RE, log, "segment input"))
     if profile not in EXPECTED_PROFILES or segment <= 1:
-        fail(f"failed run {run['id']} has unexpected profile/segment {profile}/{segment}")
-    return IsolatedFailure(
+        fail(f"failed run {run['id']} attempt {attempt} has unexpected {profile}/{segment}")
+    resume_run_id, resume_artifact = parse_predecessor(log, segment)
+    return RestoreFailure(
         profile=profile,
         segment=segment,
         run_id=int(run["id"]),
         job_id=int(job["id"]),
+        run_attempt=attempt,
+        resume_run_id=resume_run_id,
+        resume_artifact=resume_artifact,
         failure_class="PRE_TLC_RESTORE_FAILURE",
     )
 
@@ -307,7 +370,7 @@ def audit() -> int:
         for run in target_runs
         if run.get("status") == "completed" and run.get("conclusion") == "success"
     ]
-    completed_failure = [
+    current_failures = [
         run
         for run in target_runs
         if run.get("status") == "completed" and run.get("conclusion") != "success"
@@ -334,20 +397,86 @@ def audit() -> int:
                     )
                 evidence[item.profile][item.segment] = item
 
-    isolated_failures = [
-        classify_failed_run(api, repo, token, run) for run in completed_failure
-    ]
+    restore_failures: list[RestoreFailure] = []
+    for run in target_runs:
+        run_id = int(run["id"])
+        current_attempt = int(run.get("run_attempt") or 1)
+        for attempt in range(1, current_attempt):
+            prior = fetch_attempt(api, repo, token, run_id, attempt)
+            validate_runner_binding(repo, prior, label=f"run-attempt-{attempt}")
+            if prior.get("status") != "completed":
+                fail(f"historical run {run_id} attempt {attempt} is not completed")
+            if prior.get("conclusion") == "success":
+                fail(
+                    f"run {run_id} has historical successful attempt {attempt}; "
+                    "duplicate semantic execution requires explicit review"
+                )
+            restore_failures.append(
+                classify_restore_failure(
+                    api,
+                    repo,
+                    token,
+                    prior,
+                    fetch_attempt_jobs(api, repo, token, run_id, attempt),
+                    attempt,
+                )
+            )
+
+    for run in current_failures:
+        restore_failures.append(
+            classify_restore_failure(
+                api,
+                repo,
+                token,
+                run,
+                fetch_jobs(api, repo, token, int(run["id"])),
+                int(run.get("run_attempt") or 1),
+            )
+        )
+
+    unrecovered: list[RestoreFailure] = []
+    recovered: list[tuple[RestoreFailure, SegmentEvidence]] = []
+    for failure in restore_failures:
+        success = evidence.get(failure.profile, {}).get(failure.segment)
+        if success is None:
+            unrecovered.append(failure)
+            continue
+        exact_recovery = (
+            success.run_id == failure.run_id
+            and success.run_attempt > failure.run_attempt
+            and success.resume_run_id == failure.resume_run_id
+            and success.resume_artifact == failure.resume_artifact
+        )
+        if not exact_recovery:
+            fail(
+                f"restore failure {failure.profile}/{failure.segment} has non-exact recovery: "
+                f"failure_run={failure.run_id}/attempt{failure.run_attempt} "
+                f"success_run={success.run_id}/attempt{success.run_attempt} "
+                f"failure_predecessor={failure.resume_run_id}:{failure.resume_artifact} "
+                f"success_predecessor={success.resume_run_id}:{success.resume_artifact}"
+            )
+        recovered.append((failure, success))
 
     terminal = 0
     checkpointed = 0
     print(f"LAS_RESUMABLE_LINEAGE_EXACT_RUN_COUNT={len(target_runs)}")
     print(f"LAS_RESUMABLE_LINEAGE_OPEN_RUN_COUNT={len(open_runs)}")
-    print(f"LAS_RESUMABLE_LINEAGE_ISOLATED_FAILURE_COUNT={len(isolated_failures)}")
-    for item in sorted(isolated_failures, key=lambda x: (x.profile, x.segment, x.run_id)):
+    print(f"LAS_RESUMABLE_LINEAGE_RESTORE_FAILURE_COUNT={len(restore_failures)}")
+    print(f"LAS_RESUMABLE_LINEAGE_RECOVERED_FAILURE_COUNT={len(recovered)}")
+    print(f"LAS_RESUMABLE_LINEAGE_UNRECOVERED_FAILURE_COUNT={len(unrecovered)}")
+    for failure, success in sorted(recovered, key=lambda x: (x[0].profile, x[0].segment)):
         print(
-            "LAS_RESUMABLE_ISOLATED_FAILURE="
-            f"{item.profile}/{item.segment};CLASS={item.failure_class};"
-            f"RUN_ID={item.run_id};JOB_ID={item.job_id}"
+            "LAS_RESUMABLE_RECOVERED_FAILURE="
+            f"{failure.profile}/{failure.segment};RUN_ID={failure.run_id};"
+            f"FAILED_ATTEMPT={failure.run_attempt};RECOVERED_ATTEMPT={success.run_attempt};"
+            f"PREDECESSOR_RUN={failure.resume_run_id};ARTIFACT={failure.resume_artifact}"
+        )
+    for failure in sorted(unrecovered, key=lambda x: (x.profile, x.segment)):
+        print(
+            "LAS_RESUMABLE_UNRECOVERED_FAILURE="
+            f"{failure.profile}/{failure.segment};RUN_ID={failure.run_id};"
+            f"FAILED_ATTEMPT={failure.run_attempt};"
+            f"PREDECESSOR_RUN={failure.resume_run_id};ARTIFACT={failure.resume_artifact}"
         )
 
     for profile in EXPECTED_PROFILES:
@@ -375,22 +504,30 @@ def audit() -> int:
         print(
             "LAS_RESUMABLE_PROFILE="
             f"{profile};LAST_COMPLETED_SEGMENT={latest.segment};STATE={state};"
-            f"RUN_ID={latest.run_id};JOB_ID={latest.job_id}"
+            f"RUN_ID={latest.run_id};JOB_ID={latest.job_id};ATTEMPT={latest.run_attempt}"
         )
 
     if terminal + checkpointed != len(EXPECTED_PROFILES):
         fail("profile accounting mismatch")
-    if len(open_runs) > checkpointed:
+    if len(open_runs) > checkpointed + len(unrecovered):
         fail(
-            f"more open exact runs ({len(open_runs)}) than checkpointed profiles "
-            f"({checkpointed})"
+            f"unexpected open-run count {len(open_runs)} for checkpointed={checkpointed} "
+            f"unrecovered={len(unrecovered)}"
+        )
+    if unrecovered:
+        fail(
+            "unrecovered pre-TLC restore failures remain: "
+            + ", ".join(
+                f"{x.profile}/{x.segment}@run{x.run_id}/attempt{x.run_attempt}"
+                for x in unrecovered
+            )
         )
 
     print(f"LAS_RESUMABLE_LINEAGE_TERMINAL_PROFILE_COUNT={terminal}")
     print(f"LAS_RESUMABLE_LINEAGE_CHECKPOINT_PROFILE_COUNT={checkpointed}")
     print("LAS_RESUMABLE_LINEAGE_RUNNER_IDENTITY=PASS")
     print("LAS_RESUMABLE_LINEAGE_SEGMENT_CONTIGUITY=PASS")
-    print("LAS_RESUMABLE_LINEAGE_FAILED_ATTEMPTS_CLASSIFIED=PASS")
+    print("LAS_RESUMABLE_LINEAGE_RETRY_RECOVERY_BINDING=PASS")
     print("LAS_RESUMABLE_LINEAGE_AUDIT=PASS")
     return 0
 
