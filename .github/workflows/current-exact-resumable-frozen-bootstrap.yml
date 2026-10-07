@@ -1,0 +1,27 @@
+name: Frozen current exact resumable bootstrap
+
+on:
+  push:
+    branches:
+      - verify/current-exact-resumable-24244fc8
+    paths:
+      - RUN_CURRENT_EXACT_RESUMABLE_FROZEN
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  bootstrap:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        index: [0]
+    uses: ./.github/workflows/_private-assurance-tlc-continuation-slice.yml
+    with:
+      index: ${{ matrix.index }}
+      segment: 1
+      resume_run_id: ""
+      resume_artifact: ""
+    secrets: inherit
