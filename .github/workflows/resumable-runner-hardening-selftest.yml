@@ -1,0 +1,32 @@
+name: Resumable runner hardening self-test
+
+on:
+  push:
+    branches:
+      - hardening/resumable-runner-identity-20261007
+    paths:
+      - ".github/workflows/_private-assurance-tlc-continuation-slice-v2.yml"
+      - ".github/workflows/private-assurance-slow-tlc-continuation-v2.yml"
+      - ".github/workflows/resumable-runner-hardening-selftest.yml"
+      - "tools/verify_resumable_runner_hardening.py"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact hardening revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verify hardening contract and adversarial fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/verify_resumable_runner_hardening.py
+          git diff --check
+          test -z "$(git status --porcelain --untracked-files=no)"
