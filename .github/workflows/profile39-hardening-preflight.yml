@@ -1,0 +1,136 @@
+name: Profile-39 hardening preflight
+
+on:
+  push:
+    branches:
+      - verify/profile39-hardening-preflight-20261007
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TARGET_REF_HASH: 4f7eea672fb47f8dac6fd5d0985032e471619306b071138721846354203fd7cd
+      EXPECTED_PRIVATE_SNAPSHOT_PROOF: abf6e5a3a7ad752ffe3aef6dc6eb7ce2aaf3ba5ee0416f825faec116336a0c10
+      EXPECTED_PRIVATE_TREE_PROOF: aa3e5d6bf4efc436d0e84edb5f24338224ab0a91ceb26bda61eec959c063e30e
+      EXPECTED_PROFILE39_RUNNER_BLOB: 56042e6fb67577d49e1e46d09eeae4c748056949
+      EXPECTED_TLA_TOOLS_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+    steps:
+      - name: Recover exact private hardening candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          ROOT="$RUNNER_TEMP/private-target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"
+          echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" == "$EXPECTED_PROFILE39_RUNNER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_PROFILE39_HARDENING_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Validate positive and negative preflight controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-target"
+          cd "$ROOT"
+
+          runner="tools/verification/run_candidate_assurance_profile39_compositional.sh"
+          bash -n "$runner"
+          echo "LAS_PROFILE39_HARDENING_BASH_SYNTAX=PASS"
+
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          test "$(sha1sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_TOOLS_SHA1"
+
+          blocker="$RUNNER_TEMP/preflight-bin"
+          mkdir "$blocker"
+          cat >"$blocker/python3" <<'EOF'
+          #!/usr/bin/env bash
+          exit 99
+          EOF
+          chmod 0755 "$blocker/python3"
+
+          positive="$RUNNER_TEMP/positive-preflight.log"
+          set +e
+          PATH="$blocker:$PATH" bash "$runner" "$TLA_JAR" "$RUNNER_TEMP/profile39-scratch" >"$positive" 2>&1
+          rc=$?
+          set -e
+          cat "$positive"
+          test "$rc" -eq 99
+          grep -qx 'LAS_PROFILE39_TLA_TOOLS_PIN=PASS' "$positive"
+          grep -qx 'LAS_PROFILE39_AUDITED_INPUT_BLOBS=PASS' "$positive"
+          if grep -q '^ERROR:' "$positive"; then
+            echo "ERROR: positive preflight emitted an error" >&2
+            exit 1
+          fi
+          echo "LAS_PROFILE39_HARDENING_POSITIVE_PREFLIGHT=PASS"
+
+          bad_jar="$RUNNER_TEMP/tla2tools-tampered.jar"
+          cp "$TLA_JAR" "$bad_jar"
+          printf 'tamper' >>"$bad_jar"
+          bad_jar_log="$RUNNER_TEMP/bad-jar.log"
+          set +e
+          PATH="$blocker:$PATH" bash "$runner" "$bad_jar" "$RUNNER_TEMP/profile39-scratch-bad-jar" >"$bad_jar_log" 2>&1
+          rc=$?
+          set -e
+          cat "$bad_jar_log"
+          test "$rc" -eq 2
+          grep -q '^ERROR: unexpected TLA+ tools jar digest:' "$bad_jar_log"
+          echo "LAS_PROFILE39_HARDENING_TAMPERED_TOOLCHAIN_REJECTED=PASS"
+
+          printf '\n\\* local committed proof-input drift negative control\n' \
+            >> spec/defence_evolution/CandidateAssuranceEvidenceCase.tla
+          git add spec/defence_evolution/CandidateAssuranceEvidenceCase.tla
+          git -c user.name='LAS preflight' -c user.email='las-preflight@example.invalid' \
+            commit -q -m 'local negative proof-input drift'
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          drift_log="$RUNNER_TEMP/committed-drift.log"
+          set +e
+          PATH="$blocker:$PATH" bash "$runner" "$TLA_JAR" "$RUNNER_TEMP/profile39-scratch-drift" >"$drift_log" 2>&1
+          rc=$?
+          set -e
+          cat "$drift_log"
+          test "$rc" -eq 2
+          grep -q '^ERROR: audited profile-39 input drift: spec/defence_evolution/CandidateAssuranceEvidenceCase.tla ' "$drift_log"
+          echo "LAS_PROFILE39_HARDENING_COMMITTED_INPUT_DRIFT_REJECTED=PASS"
+
+          echo "LAS_PROFILE39_HARDENING_PREFLIGHT_RESULT=PASS"
