@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import io
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -42,6 +41,42 @@ def require_order(text: str, first: str, second: str, label: str) -> None:
     b = text.find(second)
     if a < 0 or b < 0 or a >= b:
         fail(f"{label}: required ordering not preserved")
+
+
+def verify_key_derivations(workflow: str) -> None:
+    required_tokens = (
+        '"$PRIVATE_TOKEN"',
+        '"$EXPECTED_PRIVATE_SNAPSHOT_PROOF"',
+        '"$EXPECTED_PRIVATE_TREE_PROOF"',
+        '"$EXPECTED_VERIFIER_BLOB"',
+        '"$TARGET_INDEX"',
+        '"$GITHUB_REPOSITORY"',
+        '"$RUNNER_WORKFLOW_SHA"',
+        '"$RUNNER_WORKFLOW_PATH"',
+    )
+    for variable, domain in (
+        ("LAS_CHECKPOINT_SECRET", "enc"),
+        ("LAS_CHECKPOINT_MAC_KEY", "mac"),
+    ):
+        lines = [
+            line.strip()
+            for line in workflow.splitlines()
+            if line.strip().startswith(f'{variable}="$(printf ')
+        ]
+        # One derivation is used on restore and one on seal; both must be identical in binding.
+        if len(lines) != 2:
+            fail(f"{variable}: expected two derivations, found {len(lines)}")
+        for index, line in enumerate(lines, start=1):
+            if f"\\0{domain}'" not in line:
+                fail(f"{variable} derivation {index}: domain separator {domain!r} missing")
+            positions = [line.find(token) for token in required_tokens]
+            if any(pos < 0 for pos in positions):
+                missing = [token for token, pos in zip(required_tokens, positions) if pos < 0]
+                fail(f"{variable} derivation {index}: missing bindings {missing}")
+            if positions != sorted(positions) or len(set(positions)) != len(positions):
+                fail(f"{variable} derivation {index}: binding order changed")
+            if "| sha256sum | awk '{print $1}')\"" not in line:
+                fail(f"{variable} derivation {index}: SHA-256 derivation pipeline changed")
 
 
 def verify_contract(workflow: str, caller: str) -> None:
@@ -98,10 +133,7 @@ def verify_contract(workflow: str, caller: str) -> None:
         "provenance before artifact download",
     )
 
-    # Domain separation and runner identity must affect both confidentiality and authenticity keys.
-    for suffix in ("enc", "mac"):
-        marker = f"$GITHUB_REPOSITORY\" \"$RUNNER_WORKFLOW_SHA\" \"$RUNNER_WORKFLOW_PATH\" | sha256sum"
-        require_present(workflow, marker, f"{suffix} key runner binding")
+    verify_key_derivations(workflow)
 
     # Pinned third-party artifact actions only; floating tags are forbidden in this gate.
     require_present(workflow, "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093", "download action pin")
@@ -210,6 +242,23 @@ def expect_contract_rejected(workflow: str, caller: str, old: str, new: str, lab
     fail(f"hardening verifier self-test accepted invalid drift: {label}")
 
 
+def expect_key_binding_rejected(workflow: str, caller: str, assignment: str, token: str, label: str) -> None:
+    lines = workflow.splitlines()
+    candidates = [i for i, line in enumerate(lines) if line.strip().startswith(f'{assignment}="$(printf ')]
+    if len(candidates) != 2:
+        fail(f"self-test fixture {label!r}: expected two {assignment} derivations")
+    target = candidates[0]
+    if token not in lines[target]:
+        fail(f"self-test fixture {label!r}: token not found in selected derivation")
+    lines[target] = lines[target].replace(token, '""', 1)
+    bad = "\n".join(lines) + ("\n" if workflow.endswith("\n") else "")
+    try:
+        verify_contract(bad, caller)
+    except VerificationError:
+        return
+    fail(f"hardening verifier self-test accepted invalid key drift: {label}")
+
+
 def self_test(workflow: str, caller: str) -> None:
     expect_contract_rejected(
         workflow,
@@ -231,6 +280,20 @@ def self_test(workflow: str, caller: str) -> None:
         '"expected_workflow_sha": workflow_sha',
         '"expected_workflow_sha": ""',
         "remove next-segment runner identity handoff",
+    )
+    expect_key_binding_rejected(
+        workflow,
+        caller,
+        "LAS_CHECKPOINT_SECRET",
+        '"$RUNNER_WORKFLOW_SHA"',
+        "remove workflow SHA from encryption-key derivation",
+    )
+    expect_key_binding_rejected(
+        workflow,
+        caller,
+        "LAS_CHECKPOINT_MAC_KEY",
+        '"$RUNNER_WORKFLOW_PATH"',
+        "remove workflow path from MAC-key derivation",
     )
 
 
