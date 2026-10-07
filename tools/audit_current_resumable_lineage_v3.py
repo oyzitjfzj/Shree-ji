@@ -205,7 +205,7 @@ def audit() -> int:
             open_runs.append(current)
 
     all_work = historical_work + current_work
-    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         futures = [
             pool.submit(record_completed_bundle, api, repo, token, run, jobs)
             for run, jobs in all_work
