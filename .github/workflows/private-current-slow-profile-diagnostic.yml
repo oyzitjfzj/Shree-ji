@@ -1,0 +1,139 @@
+name: Current exact slow-profile diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-current-slow-profile-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: ed3bb0cf5d74f44e15d4ad6983d8f69de6f84c85ad861805ae2834a02dab9143
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b5112adc429935d9024eb5805c9c49dd2c0f2cb161849cc987f7ba20af212f5c
+  EXPECTED_PRIVATE_TREE_PROOF: 07b34736f34510f45a7cf6200057da51df415958c1f04281a583e87e4743fe97
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_TLC_PROFILE_COUNT: "203"
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        profile_index: [2, 28, 29, 36]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Recover exact private materialized revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_SLOW_DIAGNOSTIC_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Measure bounded canonical TLC trajectory
+        shell: bash
+        env:
+          PROFILE_INDEX: ${{ matrix.profile_index }}
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/target"; cd "$ROOT"
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
+
+          map_py="$RUNNER_TEMP/tlc-map.py"; func_sh="$RUNNER_TEMP/tlc-functions.sh"
+          python3 - tools/verify_codespaces_all.sh "$map_py" "$func_sh" <<'PY'
+          from pathlib import Path
+          import sys
+          src=Path(sys.argv[1]).read_text(encoding="utf-8")
+          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'; me='\nPY\n\nPROFILE39_CFG='
+          if src.count(mh)!=1 or src.count(me)!=1: raise SystemExit("canonical map anchors not unique")
+          ms=src.index(mh)+len(mh); mx=src.index(me,ms)
+          Path(sys.argv[2]).write_text(src[ms:mx]+"\n",encoding="utf-8")
+          fh='run_tlc_profile() {\n'; lh="while IFS=$'\\t' read -r cfg tla deadlock expectation; do\n"
+          if src.count(fh)!=1 or src.count(lh)!=1: raise SystemExit("canonical runner anchors not unique")
+          fs=src.index(fh); fx=src.index(lh,fs)
+          Path(sys.argv[3]).write_text(src[fs:fx],encoding="utf-8")
+          PY
+
+          TLC_MAP="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$map_py" "$ROOT" >"$TLC_MAP"
+          test "$(wc -l <"$TLC_MAP" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
+          line="$(sed -n "$((PROFILE_INDEX + 1))p" "$TLC_MAP")"
+          test -n "$line"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
+          test -n "$cfg"; test -n "$tla"
+
+          TMP="$RUNNER_TEMP/slow-profile-$PROFILE_INDEX"; mkdir -p "$TMP"
+          private_log="$RUNNER_TEMP/slow-profile-$PROFILE_INDEX.private.log"
+          runner="$RUNNER_TEMP/slow-profile-$PROFILE_INDEX.sh"
+          cat >"$runner" <<'SH'
+          #!/usr/bin/env bash
+          set -uo pipefail
+          PASS=0; FAIL=0; FAILED=()
+          source "$FUNC_SH"
+          run_tlc_profile "$CFG" "$TLA" "$DEADLOCK" "$EXPECTATION"
+          SH
+          chmod 0700 "$runner"
+
+          set +e
+          ROOT="$ROOT" TLA_JAR="$TLA_JAR" TMP="$TMP" FUNC_SH="$func_sh" \
+            CFG="$cfg" TLA="$tla" DEADLOCK="$deadlock" EXPECTATION="$expectation" \
+            timeout --signal=INT --kill-after=30s 600s bash "$runner" >"$private_log" 2>&1
+          rc=$?
+          set -e
+
+          echo "LAS_SLOW_DIAGNOSTIC_PROFILE_INDEX=$PROFILE_INDEX"
+          echo "LAS_SLOW_DIAGNOSTIC_RC=$rc"
+          echo "LAS_SLOW_DIAGNOSTIC_METADIR_KB=$(du -sk "$TMP" 2>/dev/null | awk '{print $1}' || echo 0)"
+          python3 - "$private_log" <<'PY'
+          import re, sys
+          text=open(sys.argv[1], encoding='utf-8', errors='replace').read().splitlines()
+          last=None
+          pat=re.compile(r'([0-9][0-9,]*) states generated.*?([0-9][0-9,]*) distinct states found.*?([0-9][0-9,]*) states left on queue')
+          for line in text:
+              m=pat.search(line)
+              if m:
+                  last=tuple(int(x.replace(',','')) for x in m.groups())
+          if last:
+              print(f"LAS_SLOW_DIAGNOSTIC_GENERATED={last[0]}")
+              print(f"LAS_SLOW_DIAGNOSTIC_DISTINCT={last[1]}")
+              print(f"LAS_SLOW_DIAGNOSTIC_QUEUE={last[2]}")
+          else:
+              print("LAS_SLOW_DIAGNOSTIC_PROGRESS_UNAVAILABLE=1")
+          PY
+          echo "LAS_SLOW_DIAGNOSTIC_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          rm -f "$private_log"
+          echo "LAS_SLOW_DIAGNOSTIC_COMPLETE=PASS"
