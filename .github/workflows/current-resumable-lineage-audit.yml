@@ -1,0 +1,32 @@
+name: Current exact resumable lineage audit
+
+on:
+  push:
+    branches:
+      - hardening/resumable-runner-identity-20261007
+    paths:
+      - "tools/audit_current_resumable_lineage.py"
+      - ".github/workflows/current-resumable-lineage-audit.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact audit revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Reconstruct exact frozen resumable lineage
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 tools/audit_current_resumable_lineage.py
+          git diff --check
+          test -z "$(git status --porcelain --untracked-files=no)"
