@@ -59,11 +59,9 @@ jobs:
           test "$TARGET_INDEX" -ne "$EXCLUDED_COMPOSITIONAL_PROFILE_INDEX"
           test "$SEGMENT" -ge 1
           if [[ "$SEGMENT" -eq 1 ]]; then
-            test -z "$RESUME_RUN_ID"
-            test -z "$RESUME_ARTIFACT"
+            test -z "$RESUME_RUN_ID"; test -z "$RESUME_ARTIFACT"
           else
-            test -n "$RESUME_RUN_ID"
-            test -n "$RESUME_ARTIFACT"
+            test -n "$RESUME_RUN_ID"; test -n "$RESUME_ARTIFACT"
           fi
           echo "LAS_CURRENT_RESUME_REQUEST=PASS"
 
@@ -73,18 +71,8 @@ jobs:
           set -euo pipefail
           before_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
           echo "LAS_CURRENT_RESUME_FREE_KB_BEFORE=$before_kb"
-          for path in \
-            /usr/local/lib/android \
-            /usr/share/dotnet \
-            /opt/ghc \
-            /usr/local/.ghcup \
-            /usr/share/swift \
-            /opt/az \
-            /opt/hostedtoolcache/CodeQL
-          do
-            if [[ -e "$path" ]]; then
-              sudo rm -rf "$path"
-            fi
+          for path in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift /opt/az /opt/hostedtoolcache/CodeQL; do
+            [[ ! -e "$path" ]] || sudo rm -rf "$path"
           done
           sudo apt-get clean
           docker system prune --all --force >/dev/null 2>&1 || true
@@ -101,8 +89,7 @@ jobs:
           set -euo pipefail
           test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
           echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
-          ROOT="$GITHUB_WORKSPACE/target"
-          mkdir "$ROOT"; cd "$ROOT"; git init -q
+          ROOT="$GITHUB_WORKSPACE/target"; mkdir "$ROOT"; cd "$ROOT"; git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
           refs="$RUNNER_TEMP/private-heads"
@@ -154,7 +141,6 @@ jobs:
           echo "LAS_CURRENT_RESUME_CHECKPOINT_AUTH=PASS"
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -pass env:LAS_CHECKPOINT_SECRET -in "$enc" -out "$RUNNER_TEMP/checkpoint.tar.gz"
           tar -xzf "$RUNNER_TEMP/checkpoint.tar.gz" -C "$RUNNER_TEMP"
-          test -d "$RUNNER_TEMP/tlc-meta"
           manifest="$RUNNER_TEMP/tlc-meta/las-resume-manifest.txt"
           test -s "$manifest"
           grep -qx "snapshot=$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$manifest"
@@ -172,66 +158,48 @@ jobs:
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/target"; cd "$ROOT"
           TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" \
-            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$TLA_JAR" "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
           echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $TLA_JAR" | sha1sum --check --strict >/dev/null
-
           map_py="$RUNNER_TEMP/tlc-map.py"
           python3 - tools/verify_codespaces_all.sh "$map_py" <<'PY'
           from pathlib import Path
           import sys
           src=Path(sys.argv[1]).read_text(encoding="utf-8")
-          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'
-          me='\nPY\n\nPROFILE39_CFG='
-          if src.count(mh) != 1 or src.count(me) != 1:
-              raise SystemExit("canonical map anchors not unique")
-          start=src.index(mh)+len(mh)
-          end=src.index(me,start)
+          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'; me='\nPY\n\nPROFILE39_CFG='
+          if src.count(mh)!=1 or src.count(me)!=1: raise SystemExit("canonical map anchors not unique")
+          start=src.index(mh)+len(mh); end=src.index(me,start)
           Path(sys.argv[2]).write_text(src[start:end]+"\n",encoding="utf-8")
           PY
           map="$RUNNER_TEMP/tlc-map.tsv"
           python3 "$map_py" "$ROOT" >"$map"
           test "$(wc -l <"$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
-          line="$(sed -n "$((TARGET_INDEX + 1))p" "$map")"
-          test -n "$line"
+          line="$(sed -n "$((TARGET_INDEX + 1))p" "$map")"; test -n "$line"
           IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
           test -n "$cfg"; test -n "$tla"; test -z "$expectation"
           test "$cfg" != "spec/defence_evolution/CandidateAssuranceEvidenceCase.cfg"
-
-          cfg_dir="$(dirname "$cfg")"
-          cfg_base="$(basename "$cfg")"
-          tla_base="$(basename "$tla")"
-          log="$RUNNER_TEMP/private-tlc.log"
-          meta="$RUNNER_TEMP/tlc-meta"
-          mkdir -p "$meta"
+          cfg_dir="$(dirname "$cfg")"; cfg_base="$(basename "$cfg")"; tla_base="$(basename "$tla")"
+          log="$RUNNER_TEMP/private-tlc.log"; meta="$RUNNER_TEMP/tlc-meta"; mkdir -p "$meta"
           args=(-workers auto -lncheck final -fp 0 -checkpoint 5 -metadir "$meta")
           if [[ -n "$RESUME_RUN_ID" ]]; then
             mapfile -t recover_dirs < <(find "$meta" -type f -name 'vars.chkpt' -printf '%h\n' | sort -u)
             test "${#recover_dirs[@]}" -eq 1
-            recover_dir="${recover_dirs[0]}"
-            test -f "$recover_dir/queue.chkpt"
+            recover_dir="${recover_dirs[0]}"; test -f "$recover_dir/queue.chkpt"
             echo "LAS_CURRENT_RESUME_RECOVER_DIR=PASS"
             args+=(-recover "$recover_dir")
           fi
-          if [[ "$deadlock" == "1" ]]; then
-            args+=(-deadlock)
-          fi
+          [[ "$deadlock" != "1" ]] || args+=(-deadlock)
           args+=(-config "$cfg_base" "$tla_base")
-
           set +e
           (cd "$cfg_dir"; timeout --signal=KILL "$SLICE_SECONDS" java -XX:+UseParallelGC -jar "$TLA_JAR" "${args[@]}") >"$log" 2>&1
           rc=$?
           set -e
-
           metrics="$(python3 - "$log" <<'PY'
           import re, sys
           text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
           matches=re.findall(r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue',text)
           if matches:
-              g,d,q=matches[-1]
-              print(g.replace(',',''),d.replace(',',''),q.replace(',',''))
-          else:
-              print('0 0 0')
+              g,d,q=matches[-1]; print(g.replace(',',''),d.replace(',',''),q.replace(',',''))
+          else: print('0 0 0')
           PY
           )"
           read -r generated distinct queued <<<"$metrics"
@@ -242,49 +210,21 @@ jobs:
           echo "LAS_CURRENT_RESUME_QUEUE=$queued"
           echo "LAS_CURRENT_RESUME_RC=$rc"
           echo "LAS_CURRENT_RESUME_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-
-          invariant_marker=0; grep -Eiq 'Invariant .* is violated|Property .* is violated' "$log" && invariant_marker=1
-          temporal_marker=0; grep -Eiq 'Temporal propert(y|ies).*violat|liveness.*violat' "$log" && temporal_marker=1
-          deadlock_marker=0; grep -Eiq 'Deadlock reached' "$log" && deadlock_marker=1
-          parser_marker=0; grep -Eiq 'Parsing or semantic analysis failed|parse error|semantic error' "$log" && parser_marker=1
-          checkpoint_marker=0; grep -Eiq '(checkpoint|recover).*(error|fail|exception)|(error|fail|exception).*(checkpoint|recover)' "$log" && checkpoint_marker=1
-          fingerprint_marker=0; grep -Eiq 'fingerprint.*collision|collision.*fingerprint' "$log" && fingerprint_marker=1
-          oom_marker=0; grep -Eiq 'OutOfMemoryError|Cannot allocate memory' "$log" && oom_marker=1
-          disk_marker=0; grep -Eiq 'No space left on device|Disk quota exceeded|FileSystemException.*(space|disk)|IOException.*(space|disk)' "$log" && disk_marker=1
-          jvm_exception_marker=0; grep -Eiq 'Exception in thread|java\.lang\.(?!ThreadDeath)|java\.io\.|java\.nio\.' "$log" && jvm_exception_marker=1 || true
-          tlc_internal_marker=0; grep -Eiq 'TLC threw an unexpected exception|TLC Bug|AssertionError|An error occurred while running TLC' "$log" && tlc_internal_marker=1
-          meta_bytes="$(du -sb "$meta" 2>/dev/null | awk '{print $1}' || echo 0)"
-          free_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')"
-          if [[ "$free_kb" -lt 1048576 ]]; then disk_marker=1; fi
-          echo "LAS_CURRENT_RESUME_INVARIANT_MARKER=$invariant_marker"
-          echo "LAS_CURRENT_RESUME_TEMPORAL_MARKER=$temporal_marker"
-          echo "LAS_CURRENT_RESUME_DEADLOCK_MARKER=$deadlock_marker"
-          echo "LAS_CURRENT_RESUME_PARSER_MARKER=$parser_marker"
-          echo "LAS_CURRENT_RESUME_CHECKPOINT_MARKER=$checkpoint_marker"
-          echo "LAS_CURRENT_RESUME_FINGERPRINT_MARKER=$fingerprint_marker"
-          echo "LAS_CURRENT_RESUME_OOM_MARKER=$oom_marker"
-          echo "LAS_CURRENT_RESUME_DISK_MARKER=$disk_marker"
-          echo "LAS_CURRENT_RESUME_JVM_EXCEPTION_MARKER=$jvm_exception_marker"
-          echo "LAS_CURRENT_RESUME_TLC_INTERNAL_MARKER=$tlc_internal_marker"
-          echo "LAS_CURRENT_RESUME_META_BYTES=$meta_bytes"
-          echo "LAS_CURRENT_RESUME_FREE_KB=$free_kb"
-
+          echo "LAS_CURRENT_RESUME_META_BYTES=$(du -sb "$meta" 2>/dev/null | awk '{print $1}' || echo 0)"
           test -z "$(git status --porcelain --untracked-files=no)"
-          severe=$((invariant_marker + temporal_marker + deadlock_marker + parser_marker + checkpoint_marker + fingerprint_marker + oom_marker + disk_marker + jvm_exception_marker + tlc_internal_marker))
-          if (( severe != 0 )); then
+          severe='Invariant .* is violated|Property .* is violated|Temporal propert(y|ies).*violat|liveness.*violat|Deadlock reached|Parsing or semantic analysis failed|parse error|semantic error|(checkpoint|recover).*(error|fail|exception)|(error|fail|exception).*(checkpoint|recover)|fingerprint.*collision|collision.*fingerprint|OutOfMemoryError|Cannot allocate memory|No space left on device|Disk quota exceeded|Exception in thread|java\.lang\.|java\.io\.|java\.nio\.|TLC threw an unexpected exception|TLC Bug|AssertionError|An error occurred while running TLC'
+          if grep -Eiq "$severe" "$log"; then
             rm -f "$log"
             echo "status=fail" >>"$GITHUB_OUTPUT"
             echo "LAS_CURRENT_RESUME_RESULT=FAIL_CLOSED"
             exit 1
           fi
-
           if [[ "$rc" -eq 0 ]]; then
             rm -f "$log"
             echo "status=pass" >>"$GITHUB_OUTPUT"
             echo "LAS_CURRENT_RESUME_RESULT=PASS"
             exit 0
           fi
-
           if [[ "$rc" -eq 124 || "$rc" -eq 137 || "$rc" -eq 143 ]]; then
             mapfile -t checkpoint_dirs < <(find "$meta" -type f -name 'vars.chkpt' -printf '%h\n' | sort -u)
             test "${#checkpoint_dirs[@]}" -eq 1
@@ -294,7 +234,6 @@ jobs:
             echo "LAS_CURRENT_RESUME_RESULT=SLICE_CHECKPOINT"
             exit 0
           fi
-
           rm -f "$log"
           echo "status=fail" >>"$GITHUB_OUTPUT"
           echo "LAS_CURRENT_RESUME_RESULT=FAIL"
@@ -309,11 +248,8 @@ jobs:
           set -euo pipefail
           echo "::add-mask::$PRIVATE_TOKEN"
           meta="$RUNNER_TEMP/tlc-meta"
-          printf 'snapshot=%s\ntree=%s\nverifier=%s\nindex=%s\nsegment=%s\n' \
-            "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB" "$TARGET_INDEX" "$SEGMENT" \
-            >"$meta/las-resume-manifest.txt"
-          raw_bytes="$(du -sb "$meta" | awk '{print $1}')"
-          echo "LAS_CURRENT_RESUME_METADATA_BYTES=$raw_bytes"
+          printf 'snapshot=%s\ntree=%s\nverifier=%s\nindex=%s\nsegment=%s\n' "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB" "$TARGET_INDEX" "$SEGMENT" >"$meta/las-resume-manifest.txt"
+          echo "LAS_CURRENT_RESUME_METADATA_BYTES=$(du -sb "$meta" | awk '{print $1}')"
           tar -C "$RUNNER_TEMP" -cf - tlc-meta | gzip -1 >"$RUNNER_TEMP/checkpoint.tar.gz"
           export LAS_CHECKPOINT_SECRET LAS_CHECKPOINT_MAC_KEY
           LAS_CHECKPOINT_SECRET="$(printf '%s\0%s\0%s\0%s\0%s\0enc' "$PRIVATE_TOKEN" "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" "$EXPECTED_PRIVATE_TREE_PROOF" "$EXPECTED_VERIFIER_BLOB" "$TARGET_INDEX" | sha256sum | awk '{print $1}')"
@@ -344,18 +280,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          next="$((SEGMENT + 1))"
-          artifact="tlc-state-${TARGET_INDEX}-${SEGMENT}"
+          next="$((SEGMENT + 1))"; artifact="tlc-state-${TARGET_INDEX}-${SEGMENT}"
           payload="$(python3 - "$TARGET_INDEX" "$next" "$GITHUB_RUN_ID" "$artifact" <<'PY'
           import json, sys
           index, segment, run_id, artifact = sys.argv[1:]
           print(json.dumps({"ref":"main","inputs":{"index":index,"segment":segment,"resume_run_id":run_id,"resume_artifact":artifact}}))
           PY
           )"
-          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/private-assurance-slow-tlc-continuation.yml/dispatches" \
-            -d "$payload"
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/private-assurance-slow-tlc-continuation.yml/dispatches" -d "$payload"
           echo "LAS_CURRENT_RESUME_NEXT_SEGMENT=$next"
