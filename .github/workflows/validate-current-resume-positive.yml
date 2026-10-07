@@ -1,0 +1,21 @@
+name: Validate current resumable TLC positive path
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/validate-current-resume-positive.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  positive_probe:
+    uses: ./.github/workflows/_private-assurance-tlc-continuation-slice.yml
+    with:
+      index: 0
+      segment: 1
+      resume_run_id: ""
+      resume_artifact: ""
+    secrets: inherit
