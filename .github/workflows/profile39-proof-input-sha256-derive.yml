@@ -1,0 +1,81 @@
+name: Derive profile-39 proof-input SHA-256
+
+on:
+  push:
+    branches: [verify/profile39-dual-fingerprint-20261007]
+    paths:
+      - ".github/workflows/profile39-proof-input-sha256-derive.yml"
+      - ".verification/profile39-proof-input-sha256-derive.trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  derive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TARGET_REF_HASH: a3ef2d3e1a0be24d43d86ce17422bf9f1cd1ec3ca248890056ba182d0794ce8d
+      EXPECTED_PRIVATE_SNAPSHOT_PROOF: f58874643ecda2782978f4d9da14598c1f256d3594d4bf6f64b6b11b81bdd25d
+      EXPECTED_PRIVATE_TREE_PROOF: 71f1453d297f1801cb648ed8689e074e550013c961a72f0a097169a7c8248fe5
+    steps:
+      - name: Recover exact private dual-fingerprint successor
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-proof-input-sha256"
+          mkdir "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-proof-input-sha256-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_PROFILE39_PROOF_INPUT_SHA256_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Derive raw SHA-256 for all audited profile-39 proof inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-proof-input-sha256"
+          inputs=(
+            spec/defence_evolution/CandidateAssuranceEvidenceCase.tla
+            spec/defence_evolution/CandidateAssuranceEvidenceCaseFrontierQuotient.tla
+            spec/defence_evolution/CandidateAssuranceEvidenceCaseModel.tla
+            spec/defence_evolution/CandidateAssuranceEvidenceCase.cfg
+            spec/defence_evolution/CandidateAssuranceEvidenceCaseFrontierAbstractionProbe.tla
+            spec/defence_evolution/CandidateAssuranceEvidenceCaseFrontierAbstractionProbe.cfg
+            spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefix.tla
+            spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefixModel.tla
+            spec/defence_evolution/CandidateAssuranceEvidenceCaseSafetyPrefix.cfg
+            tools/verification/verify_candidate_assurance_frontier_quotient.py
+            tools/verification/verify_candidate_assurance_frontier_contract.py
+            tools/verification/verify_candidate_assurance_frontier_dependencies.py
+            tools/verification/verify_candidate_assurance_profile39_contract.py
+            tools/verification/verify_candidate_assurance_safety_prefix_closure.py
+            tools/verification/verify_candidate_assurance_terminal_suffix_closure.py
+          )
+          test "${#inputs[@]}" -eq 15
+          for path in "${inputs[@]}"; do
+            test -f "$path"
+            printf 'LAS_PROFILE39_INPUT_SHA256 %s %s\n' "$(sha256sum "$path" | awk '{print $1}')" "$path"
+          done
+          echo "LAS_PROFILE39_PROOF_INPUT_SHA256_DERIVATION=PASS"
