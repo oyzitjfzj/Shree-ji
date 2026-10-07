@@ -35,7 +35,7 @@ env:
   EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
   EXPECTED_TLC_PROFILE_COUNT: "203"
   EXCLUDED_COMPOSITIONAL_PROFILE_INDEX: "39"
-  SLICE_SECONDS: "18000"
+  SLICE_SECONDS: "1800"
 
 jobs:
   slice:
@@ -284,7 +284,7 @@ jobs:
           payload="$(python3 - "$TARGET_INDEX" "$next" "$GITHUB_RUN_ID" "$artifact" <<'PY'
           import json, sys
           index, segment, run_id, artifact = sys.argv[1:]
-          print(json.dumps({"ref":"main","inputs":{"index":index,"segment":segment,"resume_run_id":run_id,"resume_artifact":artifact}}))
+          print(json.dumps({"ref":"verify/current-exact-resumable-24244fc8","inputs":{"index":index,"segment":segment,"resume_run_id":run_id,"resume_artifact":artifact}}))
           PY
           )"
           curl --proto '=https' --tlsv1.2 --fail-with-body -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/private-assurance-slow-tlc-continuation.yml/dispatches" -d "$payload"
