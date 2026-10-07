@@ -14,10 +14,11 @@ jobs:
     timeout-minutes: 20
     env:
       TARGET_REF_HASH: 4f7eea672fb47f8dac6fd5d0985032e471619306b071138721846354203fd7cd
-      EXPECTED_PRIVATE_SNAPSHOT_PROOF: d55a90bfd1d95f15073a226f8138ce4e89db6fdd492435a24dd101d409abcd3f
-      EXPECTED_PRIVATE_TREE_PROOF: d34febcbb60c876fc851664d1a28efa1d4bdb17c774d0deb0bc9152d7527c81c
-      EXPECTED_PROFILE39_RUNNER_BLOB: 018cc34ac8561eaba00420b538563ac009f6482a
+      EXPECTED_PRIVATE_SNAPSHOT_PROOF: dc1a52f77c267bafa2b4b9a238dfd2faee46b916888a47ee26f9e684a5d883cb
+      EXPECTED_PRIVATE_TREE_PROOF: afc7e03bcfca26e2ae314b88176d71c37a5f23ba92944cc7f6221a7185e22734
+      EXPECTED_PROFILE39_RUNNER_BLOB: 977e938d6c26abff762882e21e841b26cfb1739d
       EXPECTED_TLA_TOOLS_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+      EXPECTED_TLA_TOOLS_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
     steps:
       - name: Recover exact private hardening candidate
         shell: bash
@@ -79,7 +80,7 @@ jobs:
             --output "$TLA_JAR" \
             "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
           test "$(sha1sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_TOOLS_SHA1"
-          echo "LAS_TLA_TOOLS_SHA256=$(sha256sum "$TLA_JAR" | awk '{print $1}')"
+          test "$(sha256sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_TOOLS_SHA256"
 
           blocker="$RUNNER_TEMP/preflight-bin"
           mkdir "$blocker"
@@ -116,6 +117,23 @@ jobs:
           test "$rc" -eq 2
           grep -q '^ERROR: unexpected TLA+ tools jar digest:' "$bad_jar_log"
           echo "LAS_PROFILE39_HARDENING_TAMPERED_TOOLCHAIN_REJECTED=PASS"
+
+          hidden_path="spec/defence_evolution/CandidateAssuranceEvidenceCase.tla"
+          git update-index --assume-unchanged "$hidden_path"
+          printf '\n\\* hidden working proof-input drift negative control\n' >>"$hidden_path"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          hidden_log="$RUNNER_TEMP/hidden-working-drift.log"
+          set +e
+          PATH="$blocker:$PATH" bash "$runner" "$TLA_JAR" "$RUNNER_TEMP/profile39-scratch-hidden-drift" >"$hidden_log" 2>&1
+          rc=$?
+          set -e
+          cat "$hidden_log"
+          test "$rc" -eq 2
+          grep -q '^ERROR: audited profile-39 working input drift: spec/defence_evolution/CandidateAssuranceEvidenceCase.tla ' "$hidden_log"
+          git update-index --no-assume-unchanged "$hidden_path"
+          git checkout -- "$hidden_path"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_PROFILE39_HARDENING_HIDDEN_WORKING_DRIFT_REJECTED=PASS"
 
           printf '\n\\* local committed proof-input drift negative control\n' \
             >> spec/defence_evolution/CandidateAssuranceEvidenceCase.tla
