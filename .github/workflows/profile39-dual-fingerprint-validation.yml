@@ -1,0 +1,103 @@
+name: Profile-39 dual-fingerprint validation
+
+on:
+  push:
+    branches: [verify/profile39-dual-fingerprint-20261007]
+    paths:
+      - ".github/workflows/profile39-dual-fingerprint-validation.yml"
+      - ".verification/profile39-dual-fingerprint.trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_REF_HASH: a3ef2d3e1a0be24d43d86ce17422bf9f1cd1ec3ca248890056ba182d0794ce8d
+      EXPECTED_PRIVATE_SNAPSHOT_PROOF: f58874643ecda2782978f4d9da14598c1f256d3594d4bf6f64b6b11b81bdd25d
+      EXPECTED_PRIVATE_TREE_PROOF: 71f1453d297f1801cb648ed8689e074e550013c961a72f0a097169a7c8248fe5
+      EXPECTED_PROFILE39_RUNNER_BLOB: 3cc60fc8898473b6fc0574d3e05c94e096062bcd
+      EXPECTED_TLA_TOOLS_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+      EXPECTED_TLA_TOOLS_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+    steps:
+      - name: Recover exact dual-fingerprint successor
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-dual-fp"
+          mkdir "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-dual-fp-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" == "$EXPECTED_PROFILE39_RUNNER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_PROFILE39_DUAL_FP_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Run and cross-check both fingerprint traversals
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-dual-fp"; cd "$ROOT"
+          runner="tools/verification/run_candidate_assurance_profile39_compositional.sh"
+          bash -n "$runner"
+          TLA_JAR="$RUNNER_TEMP/tla2tools-dual-fp.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" >/dev/null 2>&1
+          test "$(sha1sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_TOOLS_SHA1"
+          test "$(sha256sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_TOOLS_SHA256"
+          log="$RUNNER_TEMP/profile39-dual-fp.log"
+          bash "$runner" "$TLA_JAR" "$RUNNER_TEMP/profile39-dual-fp-scratch" 2>&1 | tee "$log"
+          grep -qx 'LAS_PROFILE39_SAFETY_PREFIX_TLC_FP0=PASS' "$log"
+          grep -qx 'LAS_PROFILE39_SAFETY_PREFIX_TLC_FP1=PASS' "$log"
+          grep -qx 'LAS_PROFILE39_SAFETY_PREFIX_TLC=PASS' "$log"
+          grep -qx 'LAS_PROFILE39_COMPOSITIONAL_CLOSURE=PASS' "$log"
+          python3 - "$log" <<'PY'
+          import re, sys
+          text=open(sys.argv[1], encoding='utf-8').read()
+          counts={}
+          for fp in (0,1):
+              start=f"========== TLC profile-39 exhaustive safety prefix (fp={fp}) =========="
+              if text.count(start) != 1:
+                  raise SystemExit(f"missing or duplicate safety-prefix section fp={fp}")
+              section=text.split(start,1)[1]
+              if fp == 0:
+                  section=section.split("LAS_PROFILE39_SAFETY_PREFIX_TLC_FP0=PASS",1)[0]
+              else:
+                  section=section.split("LAS_PROFILE39_SAFETY_PREFIX_TLC_FP1=PASS",1)[0]
+              matches=re.findall(r"([0-9,]+) states generated, ([0-9,]+) distinct states found, 0 states left on queue\.", section)
+              if len(matches) != 1:
+                  raise SystemExit(f"ambiguous final state-count summary fp={fp}: {matches!r}")
+              generated, distinct=(int(x.replace(',','')) for x in matches[0])
+              counts[fp]=(generated,distinct)
+              print(f"LAS_PROFILE39_FP{fp}_GENERATED_STATES={generated}")
+              print(f"LAS_PROFILE39_FP{fp}_DISTINCT_STATES={distinct}")
+          if counts[0][1] != counts[1][1]:
+              raise SystemExit(f"distinct-state mismatch across fingerprints: {counts!r}")
+          print(f"LAS_PROFILE39_DUAL_FP_DISTINCT_STATE_COUNT={counts[0][1]}")
+          print("LAS_PROFILE39_DUAL_FP_STATESET_CONSISTENCY=PASS")
+          PY
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_PROFILE39_DUAL_FP_FULL_VALIDATION=PASS"
