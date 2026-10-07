@@ -1,0 +1,95 @@
+name: Derive private tracked-tree content SHA-256
+
+on:
+  push:
+    branches: [verify/profile39-hardening-preflight-20261007]
+    paths:
+      - ".github/workflows/private-tree-content-sha256-derive.yml"
+      - ".verification/profile39-hardening-preflight.trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  derive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TARGET_REF_HASH: 4f7eea672fb47f8dac6fd5d0985032e471619306b071138721846354203fd7cd
+      EXPECTED_PRIVATE_SNAPSHOT_PROOF: dc1a52f77c267bafa2b4b9a238dfd2faee46b916888a47ee26f9e684a5d883cb
+      EXPECTED_PRIVATE_TREE_PROOF: afc7e03bcfca26e2ae314b88176d71c37a5f23ba92944cc7f6221a7185e22734
+    steps:
+      - name: Recover exact private successor
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-tree-digest"
+          mkdir "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-tree-digest-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_TREE_CONTENT_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Derive collision-resistant tracked-tree content digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-tree-digest"
+          python3 - <<'PY'
+          import hashlib
+          import subprocess
+
+          def run(*args: str) -> bytes:
+              return subprocess.run(args, check=True, stdout=subprocess.PIPE).stdout
+
+          listing = run("git", "ls-tree", "-r", "-z", "--full-tree", "HEAD")
+          entries = [entry for entry in listing.split(b"\0") if entry]
+          h = hashlib.sha256()
+          h.update(b"LAS_TRACKED_TREE_CONTENT_SHA256_V1\0")
+
+          def field(value: bytes) -> None:
+              h.update(len(value).to_bytes(8, "big"))
+              h.update(value)
+
+          count = 0
+          for entry in entries:
+              meta, path = entry.split(b"\t", 1)
+              mode, kind, oid = meta.split(b" ", 2)
+              if kind not in {b"blob", b"commit"}:
+                  raise SystemExit(f"unsupported tracked tree entry type: {kind!r}")
+              field(mode)
+              field(kind)
+              field(path)
+              if kind == b"blob":
+                  data = run("git", "cat-file", "blob", oid.decode("ascii"))
+                  field(data)
+              else:
+                  # Submodule commit identity is the tracked payload for mode 160000.
+                  field(oid)
+              count += 1
+
+          print(f"LAS_TRACKED_TREE_ENTRY_COUNT={count}")
+          print(f"LAS_TRACKED_TREE_CONTENT_SHA256={h.hexdigest()}")
+          print("LAS_TRACKED_TREE_CONTENT_SHA256_DERIVATION=PASS")
+          PY
