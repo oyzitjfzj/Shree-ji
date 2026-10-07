@@ -1,14 +1,10 @@
 name: Private assurance slow TLC continuation
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "RUN_ASSURANCE_SLOW_TLC_CONTINUATION"
   workflow_dispatch:
     inputs:
       index:
-        description: Opaque canonical TLC profile index
+        description: Opaque canonical TLC profile index (profile 39 is intentionally rejected)
         required: true
         type: string
       segment:
@@ -31,23 +27,7 @@ permissions:
   actions: write
 
 jobs:
-  bootstrap:
-    if: github.event_name == 'push'
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        index: [39]
-    uses: ./.github/workflows/_private-assurance-tlc-continuation-slice.yml
-    with:
-      index: ${{ matrix.index }}
-      segment: 1
-      resume_run_id: ""
-      resume_artifact: ""
-    secrets: inherit
-
   continuation:
-    if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/_private-assurance-tlc-continuation-slice.yml
     with:
       index: ${{ fromJSON(inputs.index) }}
