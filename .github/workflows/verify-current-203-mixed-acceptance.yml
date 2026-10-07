@@ -1,0 +1,95 @@
+name: Verify current mixed 203 acceptance
+
+on:
+  push:
+    branches:
+      - verify/current-exact-resumable-v2-24244fc8
+    paths:
+      - "RUN_VERIFY_CURRENT_203_MIXED"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Recover exact public verifier revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q target
+          cd target
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git hash-object tools/verification/verify_resumable_acceptance_chain.py)" = "7b71adc7eeda60210d7b5a7bb3a751e25227b9e3"
+          test "$(git hash-object tools/verification/verify_resumable_acceptance_chain_v2.py)" = "cb8ecab7d33ba3c6cd54c8b1f7fccd37892cab72"
+          test "$(git hash-object tools/verification/verify_current_203_mixed_acceptance.py)" = "01be1ae914b7871e848b31752c1ef19f3c3c4490"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_CURRENT_203_MIXED_VERIFIER_RECOVERY=PASS"
+
+      - name: Adversarially self-test pinned verifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          python3 -m py_compile \
+            tools/verification/verify_resumable_acceptance_chain.py \
+            tools/verification/verify_resumable_acceptance_chain_v2.py \
+            tools/verification/verify_current_203_mixed_acceptance.py
+          test "$(python3 tools/verification/verify_resumable_acceptance_chain.py --self-test)" = "LAS_RESUMABLE_CHAIN_SELF_TEST=PASS"
+          test "$(python3 tools/verification/verify_resumable_acceptance_chain_v2.py --self-test)" = "LAS_RESUMABLE_CHAIN_V2_SELF_TEST=PASS"
+          test "$(python3 tools/verification/verify_current_203_mixed_acceptance.py --self-test)" = "LAS_CURRENT_203_MIXED_SELF_TEST=PASS"
+          echo "LAS_CURRENT_203_MIXED_VERIFIER_SELF_TEST=PASS"
+
+      - name: Verify exact mixed 203 acceptance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd target
+          mapfile -t ids < <(python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          expected = ["fallback_2", "fallback_28", "fallback_29", "fallback_36"]
+          rows = [line.strip() for line in Path("RUN_VERIFY_CURRENT_203_MIXED").read_text(encoding="utf-8").splitlines() if line.strip()]
+          if len(rows) != len(expected):
+              raise SystemExit("trigger must contain exactly four fallback run ids")
+          parsed = {}
+          for row in rows:
+              if "=" not in row:
+                  raise SystemExit("malformed trigger row")
+              key, value = row.split("=", 1)
+              if key in parsed or key not in expected or re.fullmatch(r"[1-9][0-9]*", value) is None:
+                  raise SystemExit("invalid trigger entry")
+              parsed[key] = value
+          if set(parsed) != set(expected):
+              raise SystemExit("trigger key coverage mismatch")
+          for key in expected:
+              print(parsed[key])
+          PY
+          )
+          test "${#ids[@]}" -eq 4
+          output="$(python3 tools/verification/verify_current_203_mixed_acceptance.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --token "$GH_TOKEN" \
+            --canonical-run-id 37559465092 \
+            --fallback "2=${ids[0]}" \
+            --fallback "28=${ids[1]}" \
+            --fallback "29=${ids[2]}" \
+            --fallback "36=${ids[3]}")"
+          printf '%s\n' "$output"
+          grep -Fx "LAS_CURRENT_203_MIXED_DIRECT_COUNT=199" <<<"$output"
+          grep -Fx "LAS_CURRENT_203_MIXED_FALLBACK_COUNT=4" <<<"$output"
+          grep -Fx "LAS_CURRENT_203_MIXED_FALLBACK_INDICES=2,28,29,36" <<<"$output"
+          grep -Fx "LAS_CURRENT_203_MIXED_CANONICAL_RUN_ID=37559465092" <<<"$output"
+          grep -Fx "LAS_CURRENT_203_MIXED_CANONICAL_PUBLIC_SHA=a18f409ccca3178d50ce8d5485480ec8a4b2a50c" <<<"$output"
+          grep -Fx "LAS_CURRENT_203_MIXED_RUNNER_SHA=f0c9f9fbb77292cb2aae2c0d02545f1e45f028cb" <<<"$output"
+          grep -Fx "LAS_CURRENT_203_MIXED_ACCEPTANCE=PASS" <<<"$output"
+          test -z "$(git status --porcelain --untracked-files=no)"
