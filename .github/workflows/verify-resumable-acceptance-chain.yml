@@ -6,6 +6,7 @@ on:
       - verify/current-exact-resumable-v2-24244fc8
     paths:
       - "tools/verification/verify_resumable_acceptance_chain.py"
+      - "tools/verification/verify_resumable_acceptance_chain_v2.py"
       - ".github/workflows/verify-resumable-acceptance-chain.yml"
 
 permissions:
@@ -34,8 +35,12 @@ jobs:
         run: |
           set -euo pipefail
           cd target
-          python3 -m py_compile tools/verification/verify_resumable_acceptance_chain.py
-          output="$(python3 tools/verification/verify_resumable_acceptance_chain.py --self-test)"
-          test "$output" = "LAS_RESUMABLE_CHAIN_SELF_TEST=PASS"
+          python3 -m py_compile \
+            tools/verification/verify_resumable_acceptance_chain.py \
+            tools/verification/verify_resumable_acceptance_chain_v2.py
+          base="$(python3 tools/verification/verify_resumable_acceptance_chain.py --self-test)"
+          test "$base" = "LAS_RESUMABLE_CHAIN_SELF_TEST=PASS"
+          hardened="$(python3 tools/verification/verify_resumable_acceptance_chain_v2.py --self-test)"
+          test "$hardened" = "LAS_RESUMABLE_CHAIN_V2_SELF_TEST=PASS"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_RESUMABLE_CHAIN_VERIFIER_SELF_TEST=PASS"
