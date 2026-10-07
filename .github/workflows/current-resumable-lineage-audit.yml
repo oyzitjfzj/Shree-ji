@@ -5,7 +5,7 @@ on:
     branches:
       - hardening/resumable-runner-identity-20261007
     paths:
-      - "tools/audit_current_resumable_lineage.py"
+      - "tools/audit_current_resumable_lineage_v2.py"
       - ".github/workflows/current-resumable-lineage-audit.yml"
 
 permissions:
@@ -21,12 +21,12 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - name: Reconstruct exact frozen resumable lineage
+      - name: Reconstruct exact frozen resumable lineage with ancestry proof
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 tools/audit_current_resumable_lineage.py
+          python3 tools/audit_current_resumable_lineage_v2.py
           git diff --check
           test -z "$(git status --porcelain --untracked-files=no)"
