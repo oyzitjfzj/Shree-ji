@@ -1,0 +1,24 @@
+name: Resumable v2 hardening positive-path smoke
+
+on:
+  push:
+    branches:
+      - hardening/resumable-runner-identity-20261007
+    paths:
+      - ".github/workflows/resumable-v2-hardening-smoke.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  smoke:
+    uses: ./.github/workflows/_private-assurance-tlc-continuation-slice-v2.yml
+    with:
+      index: 0
+      segment: 1
+      resume_run_id: ""
+      resume_run_attempt: ""
+      resume_artifact: ""
+      expected_workflow_sha: ""
+    secrets: inherit
