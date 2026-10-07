@@ -1,0 +1,41 @@
+name: Verify resumable acceptance-chain verifier
+
+on:
+  push:
+    branches:
+      - verify/current-exact-resumable-v2-24244fc8
+    paths:
+      - "tools/verification/verify_resumable_acceptance_chain.py"
+      - ".github/workflows/verify-resumable-acceptance-chain.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  self_test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Recover exact public verifier revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q target
+          cd target
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth=1 origin "$GITHUB_SHA"
+          git checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_RESUMABLE_CHAIN_VERIFIER_RECOVERY=PASS"
+
+      - name: Compile and adversarially self-test verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          python3 -m py_compile tools/verification/verify_resumable_acceptance_chain.py
+          output="$(python3 tools/verification/verify_resumable_acceptance_chain.py --self-test)"
+          test "$output" = "LAS_RESUMABLE_CHAIN_SELF_TEST=PASS"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "LAS_RESUMABLE_CHAIN_VERIFIER_SELF_TEST=PASS"
