@@ -1,0 +1,73 @@
+name: Canonical slow-12 index-157 recovery
+
+on:
+  push:
+    branches: [verify/canonical-slow12-recovery-20261008]
+    paths:
+      - ".verification/canonical-slow12-recovery157.trigger"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  recover157:
+    runs-on: ubuntu-24.04
+    env:
+      INDEX: "157"
+      SEGMENT: "20"
+      PARENT_RUN: "37691890766"
+      PARENT_ARTIFACT: "tlc-state-157-19"
+      PARENT_ARTIFACT_DIGEST: "sha256:14fed224e9e906748655c3416b13f86d59c055e8fe41d436777c749eff17e3a2"
+    steps:
+      - name: Revalidate exact successful parent artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          run_json="$RUNNER_TEMP/parent-run.json"
+          artifacts_json="$RUNNER_TEMP/parent-artifacts.json"
+          curl --proto '=https' --tlsv1.2 --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' "$api/actions/runs/$PARENT_RUN" >"$run_json"
+          curl --proto '=https' --tlsv1.2 --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' "$api/actions/runs/$PARENT_RUN/artifacts" >"$artifacts_json"
+          python3 - "$run_json" "$artifacts_json" "$PARENT_RUN" "$PARENT_ARTIFACT" "$PARENT_ARTIFACT_DIGEST" <<'PY'
+          import json, sys
+          rpath, apath, expected_run, expected_name, expected_digest = sys.argv[1:]
+          run=json.load(open(rpath,encoding='utf-8'))
+          if str(run.get('id')) != expected_run or run.get('status') != 'completed' or run.get('conclusion') != 'success':
+              raise SystemExit('parent run is not exact successful evidence')
+          arts=json.load(open(apath,encoding='utf-8')).get('artifacts',[])
+          hits=[a for a in arts if a.get('name') == expected_name]
+          if len(hits) != 1: raise SystemExit(f'expected one parent artifact, got {len(hits)}')
+          art=hits[0]
+          if art.get('expired') is not False: raise SystemExit('parent artifact expired')
+          if art.get('digest') != expected_digest: raise SystemExit('parent artifact digest mismatch')
+          print('LAS_SLOW12_RECOVERY157_PARENT_ARTIFACT=PASS')
+          PY
+
+      - name: Dispatch exactly one index-157 replay child
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          payload="$(python3 - "$INDEX" "$SEGMENT" "$PARENT_RUN" "$PARENT_ARTIFACT" <<'PY'
+          import json, sys
+          index, segment, run_id, artifact=sys.argv[1:]
+          print(json.dumps({'ref':'verify/current-exact-resumable-24244fc8','inputs':{
+            'index':index,'segment':segment,'resume_run_id':run_id,'resume_artifact':artifact}},separators=(',',':')))
+          PY
+          )"
+          code="$(curl --proto '=https' --tlsv1.2 --silent --show-error \
+            -o "$RUNNER_TEMP/dispatch-response" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/private-assurance-slow-tlc-continuation.yml/dispatches" \
+            -d "$payload")"
+          test "$code" = "204" || { echo "ERROR: index-157 dispatch HTTP $code" >&2; cat "$RUNNER_TEMP/dispatch-response" >&2 || true; exit 1; }
+          echo "LAS_SLOW12_RECOVERY_DISPATCH_INDEX_157=PASS"
