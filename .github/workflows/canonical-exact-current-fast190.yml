@@ -1,0 +1,173 @@
+name: Canonical exact current fast 190
+
+on:
+  push:
+    branches: [verify/canonical-exact-current-20261008]
+    paths:
+      - ".github/workflows/canonical-exact-current-fast190.yml"
+      - ".verification/canonical-exact-current-fast190.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canonical-exact-current-fast190
+  cancel-in-progress: true
+
+env:
+  TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: abb7edc70bc685527a44c36f8997b45c863891b54fe9307e3c8c1c7cfe81c48d
+  EXPECTED_PRIVATE_TREE_PROOF: 9de00bccc13c07d4e99f471a26ae749c00091afd2599f12082f2ba4a0f7daa22
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_PROFILE39_RUNNER_BLOB: 5dace5ea82581f820a69f7df46d65ac1a7d34021
+  EXPECTED_TLC_PROFILE_COUNT: "203"
+  EXPECTED_FAST_PROFILE_COUNT: "190"
+  EXPECTED_TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+  EXPECTED_TLA_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  tlc_fast:
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        ordinal: [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 33, 34, 35, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 111, 112, 113, 114, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 169, 170, 171, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Recover exact private candidate
+        shell: bash
+        env:
+          ORDINAL: ${{ matrix.ordinal }}
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          case "$ORDINAL" in
+            2|28|29|36|39|110|115|133|145|156|157|168|172)
+              echo "ERROR: fast lane received an excluded ordinal" >&2
+              exit 2
+              ;;
+          esac
+          ROOT="$RUNNER_TEMP/private-target"
+          test ! -e "$ROOT"
+          mkdir -p "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" == "$EXPECTED_VERIFIER_BLOB"
+          test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" == "$EXPECTED_PROFILE39_RUNNER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_CURRENT_FAST190_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Run canonical ordinary profile
+        shell: bash
+        env:
+          ORDINAL: ${{ matrix.ordinal }}
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-target"
+          cd "$ROOT"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --silent --show-error \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          test "$(sha1sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_SHA1"
+          test "$(sha256sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_SHA256"
+          echo "LAS_CURRENT_FAST190_TLA_DUAL_PIN=PASS"
+
+          MAP_PY="$RUNNER_TEMP/canonical-map.py"
+          FUNC_SH="$RUNNER_TEMP/canonical-runner.sh"
+          python3 - tools/verify_codespaces_all.sh "$MAP_PY" "$FUNC_SH" <<'PY'
+          from pathlib import Path
+          import sys
+
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          map_head = 'python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'
+          map_end = '\nPY\n\nPROFILE39_CFG='
+          if src.count(map_head) != 1 or src.count(map_end) != 1:
+              raise SystemExit("canonical map anchors are not unique")
+          start = src.index(map_head) + len(map_head)
+          end = src.index(map_end, start)
+          Path(sys.argv[2]).write_text(src[start:end] + "\n", encoding="utf-8")
+
+          fn_head = 'run_tlc_profile() {\n'
+          fn_end = '\nrun_profile39_compositional() {\n'
+          if src.count(fn_head) != 1 or src.count(fn_end) != 1:
+              raise SystemExit("canonical ordinary runner anchors are not unique")
+          start = src.index(fn_head)
+          end = src.index(fn_end, start)
+          Path(sys.argv[3]).write_text(src[start:end] + "\n", encoding="utf-8")
+          PY
+
+          TLC_MAP="$RUNNER_TEMP/canonical-map.tsv"
+          python3 "$MAP_PY" "$ROOT" >"$TLC_MAP"
+          total="$(wc -l <"$TLC_MAP" | tr -d ' ')"
+          test "$total" == "$EXPECTED_TLC_PROFILE_COUNT"
+          test "$ORDINAL" -ge 0
+          test "$ORDINAL" -lt "$total"
+
+          selected_line="$(sed -n "$((ORDINAL + 1))p" "$TLC_MAP")"
+          test -n "$selected_line"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<<"$selected_line"
+          test -n "$cfg"; test -n "$tla"
+
+          TMP="$RUNNER_TEMP/tlc-$ORDINAL"
+          TMPDIR="$RUNNER_TEMP/runtime-$ORDINAL"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/cargo-target-$ORDINAL"
+          mkdir -p "$TMP" "$TMPDIR" "$CARGO_TARGET_DIR"
+          export TMPDIR CARGO_TARGET_DIR
+          PASS=0; FAIL=0; FAILED=()
+          source "$FUNC_SH"
+
+          private_log="$RUNNER_TEMP/tlc-$ORDINAL.private.log"
+          : >"$private_log"
+          run_tlc_profile "$cfg" "$tla" "$deadlock" "$expectation" >>"$private_log" 2>&1
+
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_CURRENT_FAST190_ORDINAL=$ORDINAL"
+          echo "LAS_CURRENT_FAST190_PASS_COUNT=$PASS"
+          echo "LAS_CURRENT_FAST190_FAIL_COUNT=$FAIL"
+          if (( FAIL != 0 || PASS != 1 )); then
+            echo "LAS_CURRENT_FAST190_PRIVATE_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+            echo "LAS_CURRENT_FAST190_PROFILE_RESULT=FAIL"
+            exit 1
+          fi
+          rm -f "$private_log"
+          echo "LAS_CURRENT_FAST190_PROFILE_RESULT=PASS"
+
+  aggregate:
+    if: always()
+    needs: [tlc_fast]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require fresh fast-190 coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "LAS_CURRENT_FAST190_EXPECTED_PROFILE_COUNT=$EXPECTED_FAST_PROFILE_COUNT"
+          test "${{ needs.tlc_fast.result }}" == "success"
+          echo "LAS_CURRENT_FAST190_ACCEPTANCE=PASS"
