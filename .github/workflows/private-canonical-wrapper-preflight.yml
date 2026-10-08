@@ -94,3 +94,77 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           rm -f "$log"
           echo "LAS_CANONICAL_WRAPPER_PREFLIGHT_RESULT=PASS"
+
+      - name: Run fail-closed adversarial controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          wrapper="tools/verification/run_canonical_verifier_hardened.sh"
+          base="tools/verify_codespaces_all.sh"
+
+          expect_reject() {
+            local label="$1"
+            shift
+            local log="$RUNNER_TEMP/${label}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            local rc=$?
+            set -e
+            echo "LAS_CANONICAL_CONTROL_${label}_RC=$rc"
+            echo "LAS_CANONICAL_CONTROL_${label}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            if [[ "$rc" -eq 0 ]] || grep -q '^LAS_CANONICAL_VERIFIER_HARDENED=PASS$' "$log" || grep -q '^LAS_CANONICAL_VERIFIER_HARDENING_PREFLIGHT=PASS$' "$log"; then
+              rm -f "$log"
+              echo "LAS_CANONICAL_CONTROL_${label}=FAIL_OPEN"
+              exit 1
+            fi
+            rm -f "$log"
+            echo "LAS_CANONICAL_CONTROL_${label}=PASS"
+          }
+
+          cp "$base" "$RUNNER_TEMP/base-verifier.backup"
+          printf '\n# adversarial verifier drift probe\n' >> "$base"
+          expect_reject BASE_DRIFT /usr/bin/bash "$wrapper" --preflight-only
+          cp "$RUNNER_TEMP/base-verifier.backup" "$base"
+          test "$(git hash-object "$base")" == "$EXPECTED_BASE_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          touch .canonical-wrapper-untracked-probe
+          expect_reject DIRTY_TREE /usr/bin/bash "$wrapper" --preflight-only
+          rm -f .canonical-wrapper-untracked-probe
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          inside_tmp="$PWD/.canonical-wrapper-inside-tmp"
+          expect_reject REPO_LOCAL_SCRATCH env RUNNER_TEMP="$inside_tmp" /usr/bin/bash "$wrapper" --preflight-only
+          rm -rf "$inside_tmp"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          fake_bin="$RUNNER_TEMP/canonical-wrapper-fake-bin"
+          mkdir -p "$fake_bin"
+          cat > "$fake_bin/curl" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          out=""
+          args=("$@")
+          for ((i=0; i<${#args[@]}; i++)); do
+            case "${args[$i]}" in
+              -o|--output)
+                (( i + 1 < ${#args[@]} )) || exit 2
+                out="${args[$((i + 1))]}"
+                ((i += 1))
+                ;;
+              --output=*) out="${args[$i]#--output=}" ;;
+            esac
+          done
+          test -n "$out"
+          printf 'corrupted-tla-artifact\n' > "$out"
+          SH
+          chmod 0700 "$fake_bin/curl"
+          expect_reject CORRUPTED_TLA env PATH="$fake_bin:$PATH" /usr/bin/bash "$wrapper" --preflight-only
+          rm -rf "$fake_bin"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          expect_reject WRONG_BRANCH env LAS_VERIFY_EXPECTED_BRANCH=definitely-not-verify-target /usr/bin/bash "$wrapper"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          echo "LAS_CANONICAL_WRAPPER_FAIL_CLOSED_CONTROLS=PASS"
