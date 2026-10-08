@@ -1,0 +1,146 @@
+name: Opaque exact Rust gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/opaque-exact-rust-gate-20261008.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e57d34b4c1c961d0a348d8acc64be50c63176a504998f521d80822e3ed0a5359
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Recover one exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target
+          cd target
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=4096 origin '+refs/heads/*:refs/remotes/origin/*'
+          resolved=""
+          matches=0
+          while IFS= read -r oid; do
+            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
+            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
+              resolved="$oid"
+              matches=$((matches + 1))
+            fi
+          done < <(git rev-list --all --max-count=65536 | sort -u)
+          test "$matches" -eq 1
+          test -n "$resolved"
+          echo "::add-mask::$resolved"
+          git checkout -q --detach "$resolved"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          unset PRIVATE_TOKEN auth resolved oid proof
+          echo "OPAQUE_EXACT_RECOVERY=PASS"
+
+      - name: Install pinned Rust verification components
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          echo "OPAQUE_EXACT_TOOLCHAIN=PASS"
+
+      - name: Require deterministic formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/opaque-format.private.log"
+          set +e
+          cargo +1.98.1 fmt --all -- --check >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_EXACT_FORMAT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_FORMAT_RC=$rc"
+          test "$rc" -eq 0
+          echo "OPAQUE_EXACT_FORMAT=PASS"
+
+      - name: Require Linux-feature compilation with warnings denied
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/opaque-check.private.log"
+          set +e
+          cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_EXACT_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_CHECK_RC=$rc"
+          test "$rc" -eq 0
+          echo "OPAQUE_EXACT_CHECK=PASS"
+
+      - name: Require strict Linux-feature Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/opaque-clippy.private.log"
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials -- -D warnings >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_EXACT_CLIPPY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_CLIPPY_RC=$rc"
+          test "$rc" -eq 0
+          echo "OPAQUE_EXACT_CLIPPY=PASS"
+
+      - name: Require serialized Linux-feature library regression
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/opaque-library.private.log"
+          set +e
+          cargo +1.98.1 test --locked --lib --features linux-peer-credentials -- --test-threads=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          passed_marker=0
+          grep -q 'test result: ok' "$log" && passed_marker=1
+          failure_marker=0
+          grep -Eq 'FAILED|panicked at|could not compile' "$log" && failure_marker=1
+          resource_marker=0
+          grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137|stack overflow' "$log" && resource_marker=1
+          network_marker=0
+          grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
+          echo "OPAQUE_EXACT_LIBRARY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_LIBRARY_RC=$rc"
+          echo "OPAQUE_EXACT_LIBRARY_PASS_MARKER=$passed_marker"
+          echo "OPAQUE_EXACT_LIBRARY_FAILURE_MARKER=$failure_marker"
+          echo "OPAQUE_EXACT_LIBRARY_RESOURCE_MARKER=$resource_marker"
+          echo "OPAQUE_EXACT_LIBRARY_NETWORK_MARKER=$network_marker"
+          test "$rc" -eq 0
+          test "$passed_marker" -eq 1
+          test "$failure_marker" -eq 0
+          test "$resource_marker" -eq 0
+          test "$network_marker" -eq 0
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "OPAQUE_EXACT_LIBRARY=PASS"
+          echo "OPAQUE_EXACT_BRIDGE=PASS"
