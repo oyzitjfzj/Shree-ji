@@ -1,0 +1,150 @@
+name: Exact promotion graph equivalence
+
+on:
+  push:
+    branches: [verify/promotion-graph-equivalence-20261008]
+    paths:
+      - ".github/workflows/promotion-graph-equivalence.yml"
+      - ".verification/promotion-graph-equivalence.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CURRENT_REF_HASH: "225f7f8cf916fc40eb48f0ff2ab83ac99423ac2e146f733279e1a77d7bdd774b"
+      CURRENT_SNAPSHOT_PROOF: "d893f63ec5c6e07f1541691204a7e701ea7e435df45c3877ba4ffe1fbebb994f"
+      RECON_REF_HASH: "1416c7dee8ae53f075ee7aa0b53e6548265f7feffb8ce6eb644784b387809ded"
+      RECON_SNAPSHOT_PROOF: "f62e6c099ae6006056eecd4bfd7b7f61225f032d54de8e5675e98ef56b212139"
+      MAIN_REF_HASH: "f921bd05e68b03740c450e565e0e6173e546193170b2dd404ddb6f153e9b5bf3"
+      MAIN_SNAPSHOT_PROOF: "e747a3e0f7894475fcc8ac841c273d59b21dff3679cc18d4601616a8a8dab2ea"
+      WORK_REF_HASH: "28a52175bfc55f4f8b2b0f4312cd2616a65a7082555149f4382746e2254e1b26"
+      WORK_SNAPSHOT_PROOF: "cca195471f2c5a87b29e31aac07e5470d914b644ca6e1b470824507650b5830e"
+      EXPECTED_TREE_PROOF: "217826cd728dfe665a6aa3b3f53d961c7a56963ad44e9b1f5a966e1bc9975b1b"
+      EXPECTED_VERIFIER_BLOB: "8ea6dbe77db10592baf8f56c9719626c36687f9a"
+      EXPECTED_HARDENED_WRAPPER_BLOB: "91b59a0bd6471b4c62ab5b0a63541e03a7ce9792"
+      EXPECTED_FIRST_PARENT_GRAPH_ONLY_COMMITS: "3"
+
+    steps:
+      - name: Prove exact private graph-only reconciliation
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          root="$RUNNER_TEMP/private-graph-equivalence"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+
+          heads="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$heads"
+
+          resolve_ref() {
+            local wanted_hash="$1" out_ref="$2" out_sha="$3"
+            local found_ref="" found_sha="" count=0 sha ref h
+            while read -r sha ref; do
+              h="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+              if [[ "$h" == "$wanted_hash" ]]; then
+                found_ref="$ref"
+                found_sha="$sha"
+                count=$((count + 1))
+              fi
+            done <"$heads"
+            test "$count" -eq 1
+            echo "::add-mask::$found_ref"
+            echo "::add-mask::$found_sha"
+            printf -v "$out_ref" '%s' "$found_ref"
+            printf -v "$out_sha" '%s' "$found_sha"
+          }
+
+          resolve_ref "$CURRENT_REF_HASH" current_ref current_sha
+          resolve_ref "$RECON_REF_HASH" recon_ref recon_sha
+          resolve_ref "$MAIN_REF_HASH" main_ref main_sha
+          resolve_ref "$WORK_REF_HASH" work_ref work_sha
+          rm -f "$heads"
+
+          sha_proof() { printf '%s' "$1" | sha256sum | awk '{print $1}'; }
+          test "$(sha_proof "$current_sha")" = "$CURRENT_SNAPSHOT_PROOF"
+          test "$(sha_proof "$recon_sha")" = "$RECON_SNAPSHOT_PROOF"
+          test "$(sha_proof "$main_sha")" = "$MAIN_SNAPSHOT_PROOF"
+          test "$(sha_proof "$work_sha")" = "$WORK_SNAPSHOT_PROOF"
+          echo "LAS_PROMOTION_GRAPH_EXACT_HEADS=PASS"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --no-tags origin \
+            "$current_ref:refs/verify/current" \
+            "$recon_ref:refs/verify/reconciliation" \
+            "$main_ref:refs/verify/main" \
+            "$work_ref:refs/verify/work"
+
+          current="$(git rev-parse refs/verify/current)"
+          recon="$(git rev-parse refs/verify/reconciliation)"
+          main="$(git rev-parse refs/verify/main)"
+          work="$(git rev-parse refs/verify/work)"
+          for v in "$current" "$recon" "$main" "$work"; do echo "::add-mask::$v"; done
+          test "$(sha_proof "$current")" = "$CURRENT_SNAPSHOT_PROOF"
+          test "$(sha_proof "$recon")" = "$RECON_SNAPSHOT_PROOF"
+          test "$(sha_proof "$main")" = "$MAIN_SNAPSHOT_PROOF"
+          test "$(sha_proof "$work")" = "$WORK_SNAPSHOT_PROOF"
+
+          current_tree="$(git rev-parse "$current^{tree}")"
+          recon_tree="$(git rev-parse "$recon^{tree}")"
+          echo "::add-mask::$current_tree"
+          echo "::add-mask::$recon_tree"
+          test "$current_tree" = "$recon_tree"
+          test "$(sha_proof "$current_tree")" = "$EXPECTED_TREE_PROOF"
+          test "$(sha_proof "$recon_tree")" = "$EXPECTED_TREE_PROOF"
+          git diff --quiet "$current" "$recon" --
+          test -z "$(git diff --name-only "$current" "$recon" --)"
+          echo "LAS_PROMOTION_GRAPH_TREE_IDENTITY=PASS"
+          echo "LAS_PROMOTION_GRAPH_ZERO_SOURCE_DELTA=PASS"
+
+          git merge-base --is-ancestor "$current" "$recon"
+          git merge-base --is-ancestor "$main" "$recon"
+          git merge-base --is-ancestor "$work" "$recon"
+          fp_count="$(git rev-list --first-parent --count "$current..$recon")"
+          test "$fp_count" = "$EXPECTED_FIRST_PARENT_GRAPH_ONLY_COMMITS"
+          while read -r commit; do
+            test "$(git rev-parse "$commit^{tree}")" = "$current_tree"
+          done < <(git rev-list --first-parent "$current..$recon")
+          echo "LAS_PROMOTION_GRAPH_CURRENT_ANCESTOR=PASS"
+          echo "LAS_PROMOTION_GRAPH_MAIN_ANCESTOR=PASS"
+          echo "LAS_PROMOTION_GRAPH_WORK_ANCESTOR=PASS"
+          echo "LAS_PROMOTION_GRAPH_FIRST_PARENT_TREE_STABILITY=PASS"
+
+          git checkout -q --detach "$recon"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          test "$(git hash-object tools/verification/run_canonical_verifier_hardened.sh)" = "$EXPECTED_HARDENED_WRAPPER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_PROMOTION_GRAPH_VERIFIER_IDENTITY=PASS"
+
+          heads2="$RUNNER_TEMP/private-heads-final"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$heads2"
+          check_unchanged() {
+            local ref="$1" expected_proof="$2"
+            local remote_sha
+            remote_sha="$(awk -v r="$ref" '$2==r{print $1}' "$heads2")"
+            test -n "$remote_sha"
+            echo "::add-mask::$remote_sha"
+            test "$(sha_proof "$remote_sha")" = "$expected_proof"
+          }
+          check_unchanged "$current_ref" "$CURRENT_SNAPSHOT_PROOF"
+          check_unchanged "$recon_ref" "$RECON_SNAPSHOT_PROOF"
+          check_unchanged "$main_ref" "$MAIN_SNAPSHOT_PROOF"
+          check_unchanged "$work_ref" "$WORK_SNAPSHOT_PROOF"
+          rm -f "$heads2"
+          echo "LAS_PROMOTION_GRAPH_HEAD_LEASES=PASS"
+          echo "LAS_PROMOTION_GRAPH_EQUIVALENCE=PASS"
