@@ -37,6 +37,13 @@ jobs:
               -H 'X-GitHub-Api-Version: 2022-11-28' "$1"
           }
 
+          log_get() {
+            curl --location --max-redirs 5 --proto '=https' --proto-redir '=https' --tlsv1.2 \
+              --fail-with-body --retry 3 --silent --show-error --oauth2-bearer "$GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' "$1"
+          }
+
           : >"$ROOT/runs.tsv"
           page=1
           while :; do
@@ -71,7 +78,7 @@ jobs:
           print(hits[0]['id'])
           PY
             )"
-            api_get "$api/actions/jobs/$job_id/logs" >"$ROOT/logs/cont-$run_id.log"
+            log_get "$api/actions/jobs/$job_id/logs" >"$ROOT/logs/cont-$run_id.log"
           done <"$ROOT/runs.tsv"
 
           bootstrap_jobs="$ROOT/bootstrap-jobs.json"
@@ -93,7 +100,7 @@ jobs:
               for idx,jid in sorted(rows): f.write(f"{idx}\t{jid}\n")
           PY
           while IFS=$'\t' read -r idx job_id; do
-            api_get "$api/actions/jobs/$job_id/logs" >"$ROOT/logs/bootstrap-$idx.log"
+            log_get "$api/actions/jobs/$job_id/logs" >"$ROOT/logs/bootstrap-$idx.log"
           done <"$ROOT/bootstrap-job-ids.tsv"
 
           echo "LAS_SLOW12_CHAIN_EVIDENCE_COLLECTION=PASS"
