@@ -1,0 +1,114 @@
+name: Canonical exact current profile39
+
+on:
+  push:
+    branches: [verify/canonical-exact-current-20261008]
+    paths:
+      - ".github/workflows/canonical-exact-current-profile39.yml"
+      - ".verification/canonical-exact-current-profile39.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canonical-exact-current-profile39
+  cancel-in-progress: true
+
+env:
+  TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: abb7edc70bc685527a44c36f8997b45c863891b54fe9307e3c8c1c7cfe81c48d
+  EXPECTED_PRIVATE_TREE_PROOF: 9de00bccc13c07d4e99f471a26ae749c00091afd2599f12082f2ba4a0f7daa22
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_PROFILE39_RUNNER_BLOB: 5dace5ea82581f820a69f7df46d65ac1a7d34021
+  EXPECTED_TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+  EXPECTED_TLA_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+  JAVA_TOOL_OPTIONS: -Xmx5g
+
+jobs:
+  profile39:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Recover exact private candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-target"
+          test ! -e "$ROOT"
+          mkdir -p "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q --detach "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" == "$EXPECTED_VERIFIER_BLOB"
+          test "$(git hash-object tools/verification/run_candidate_assurance_profile39_compositional.sh)" == "$EXPECTED_PROFILE39_RUNNER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_CURRENT_PROFILE39_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Run exact compositional closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-target"
+          cd "$ROOT"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          TLA_JAR="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --silent --show-error \
+            --output "$TLA_JAR" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          test "$(sha1sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_SHA1"
+          test "$(sha256sum "$TLA_JAR" | awk '{print $1}')" == "$EXPECTED_TLA_SHA256"
+          echo "LAS_CURRENT_PROFILE39_TLA_DUAL_PIN=PASS"
+
+          TMP="$RUNNER_TEMP/profile39-runtime"
+          TMPDIR="$RUNNER_TEMP/profile39-tmpdir"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/profile39-cargo-target"
+          mkdir -p "$TMP" "$TMPDIR" "$CARGO_TARGET_DIR"
+          export TMPDIR CARGO_TARGET_DIR
+          root_real="$(realpath "$ROOT")"
+          for p in "$TMP" "$TMPDIR" "$CARGO_TARGET_DIR"; do
+            p_real="$(realpath "$p")"
+            case "$p_real/" in
+              "$root_real/"*) echo "ERROR: profile39 scratch path entered repository" >&2; exit 2 ;;
+            esac
+          done
+          echo "LAS_CURRENT_PROFILE39_ISOLATION=PASS"
+
+          private_log="$RUNNER_TEMP/profile39.private.log"
+          set +e
+          bash tools/verification/run_candidate_assurance_profile39_compositional.sh \
+            "$TLA_JAR" "$TMP" >"$private_log" 2>&1
+          rc=$?
+          set -e
+          test -z "$(git status --porcelain --untracked-files=all)"
+          if [[ "$rc" -ne 0 ]] || ! grep -qx 'LAS_PROFILE39_COMPOSITIONAL_CLOSURE=PASS' "$private_log"; then
+            echo "LAS_CURRENT_PROFILE39_RC=$rc"
+            echo "LAS_CURRENT_PROFILE39_PRIVATE_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+            echo "LAS_CURRENT_PROFILE39_RESULT=FAIL"
+            exit 1
+          fi
+          rm -f "$private_log"
+          echo "LAS_CURRENT_PROFILE39_RESULT=PASS"
