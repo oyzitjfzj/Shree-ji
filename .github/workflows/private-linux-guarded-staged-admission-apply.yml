@@ -138,6 +138,21 @@ jobs:
           diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
           echo 'LAS_GUARDED_STAGED_ADMISSION_SCOPE=PASS'
 
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+
+          publish_private_diagnostic() {
+            local stage="$1"
+            local log="$2"
+            local diag_path="tools/tmp_guarded_staged_admission_${stage}_${GITHUB_RUN_ID}.log"
+            cp "$log" "$diag_path"
+            git add -- "$diag_path"
+            git commit -q -m "Capture private guarded staged admission ${stage} diagnostic"
+            local diag_ref="refs/heads/tmp/guarded-staged-diagnostic-${GITHUB_RUN_ID}"
+            git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
+            echo 'LAS_GUARDED_STAGED_ADMISSION_PRIVATE_DIAGNOSTIC=CAPTURED'
+          }
+
           run_stage() {
             local stage="$1"
             shift
@@ -150,6 +165,7 @@ jobs:
               echo "LAS_GUARDED_STAGED_ADMISSION_STAGE=${stage}"
               echo "LAS_GUARDED_STAGED_ADMISSION_RC=${rc}"
               echo "LAS_GUARDED_STAGED_ADMISSION_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              publish_private_diagnostic "$stage" "$log"
               exit "$rc"
             fi
             rm -f "$log"
@@ -164,8 +180,6 @@ jobs:
           run_stage linux_release_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --release --locked --all-targets --features linux-peer-credentials
           run_stage linux_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features linux-peer-credentials -- --test-threads=1
 
-          git config user.name "LAS Verification Committer"
-          git config user.email "las-verification@users.noreply.github.com"
           git add -A -- \
             src/effect_fabric/root_control_channel_authority.rs \
             src/effect_fabric/root_supervisor_linux_channel.rs \
