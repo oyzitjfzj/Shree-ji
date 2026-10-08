@@ -1,0 +1,132 @@
+name: Private Linux control poll Clippy location v5 20261009
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-linux-control-poll-clippy-location-v5-20261009.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 864566cf743ac9a5561b7994d5b07ddf99beaab990f3ba52730800cd400b2e5e
+  EXPECTED_HEAD_PROOF: 32b3f3d361a6abac4058333e00bf1a933f06ef2dcc71f9b2a37c558dfc10aece
+  EXPECTED_TREE_PROOF: 968328c36b9c1f7b0aba4ce8d44d3bc9b72521855dc78cef2d4e3f43ee1c5d57
+  EXPECTED_RED_HELPER_BLOB: a148aef06929b095ebe011b7615c7f4fe077e1c6
+  EXPECTED_GREEN_HELPER_BLOB: d6a62fdc2ca05e3437d0026f5e58bc90e75e9382
+  EXPECTED_CLIPPY_HELPER_BLOB: 71511b6dae2595f9bfcc460921cc3cca1e68b793
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+
+      - name: Emit only structured lint code and primary source coordinates
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+
+          root="$GITHUB_WORKSPACE/private"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          target_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              target_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$target_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$target_sha"
+          test "$(printf '%s' "$target_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$target_sha"
+          git checkout -q --detach "$target_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD:tools/tmp_add_linux_control_poll_red.py)" = "$EXPECTED_RED_HELPER_BLOB"
+          test "$(git rev-parse HEAD:tools/tmp_apply_linux_control_poll_channel.py)" = "$EXPECTED_GREEN_HELPER_BLOB"
+          test "$(git rev-parse HEAD:tools/tmp_apply_linux_control_poll_clippy_fix.py)" = "$EXPECTED_CLIPPY_HELPER_BLOB"
+
+          python3 tools/tmp_add_linux_control_poll_red.py >/dev/null 2>&1
+          python3 tools/tmp_apply_linux_control_poll_channel.py >/dev/null 2>&1
+          python3 tools/tmp_apply_linux_control_poll_clippy_fix.py >/dev/null 2>&1
+          cargo +1.98.1 fmt --all >/dev/null 2>&1
+          git diff --check >/dev/null
+
+          json="$RUNNER_TEMP/clippy.messages.jsonl"
+          stderr="$RUNNER_TEMP/clippy.stderr.log"
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials --message-format=json -- -D warnings >"$json" 2>"$stderr"
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+
+          python3 - "$json" <<'PY'
+          import json
+          import sys
+
+          seen = set()
+          found = False
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              for raw in fh:
+                  try:
+                      event = json.loads(raw)
+                  except json.JSONDecodeError:
+                      continue
+                  if event.get("reason") != "compiler-message":
+                      continue
+                  message = event.get("message") or {}
+                  code = (message.get("code") or {}).get("code")
+                  if not code or not code.startswith("clippy::"):
+                      continue
+                  primaries = [span for span in message.get("spans", []) if span.get("is_primary")]
+                  if not primaries:
+                      primaries = message.get("spans", [])[:1]
+                  for span in primaries:
+                      key = (code, span.get("file_name"), span.get("line_start"), span.get("column_start"), message.get("message"))
+                      if key in seen:
+                          continue
+                      seen.add(key)
+                      found = True
+                      print(f"LAS_CONTROL_CHANNEL_V5_CLIPPY_CODE={code}")
+                      print(f"LAS_CONTROL_CHANNEL_V5_CLIPPY_MESSAGE={message.get('message','')}")
+                      print(f"LAS_CONTROL_CHANNEL_V5_CLIPPY_LOCATION={span.get('file_name')}:{span.get('line_start')}:{span.get('column_start')}")
+          if not found:
+              raise SystemExit("no structured clippy diagnostic found")
+          PY
+          echo "LAS_CONTROL_CHANNEL_V5_CLIPPY_RC=$rc"
+          echo "LAS_CONTROL_CHANNEL_V5_JSON_SHA256=$(sha256sum "$json" | awk '{print $1}')"
+          echo "LAS_CONTROL_CHANNEL_V5_STDERR_SHA256=$(sha256sum "$stderr" | awk '{print $1}')"
+          rm -f "$json" "$stderr"
