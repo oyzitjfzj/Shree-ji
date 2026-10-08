@@ -1,0 +1,126 @@
+name: Opaque Rust diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/opaque-rust-diagnostic-20261008.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: aa719861f7785caff32c5544e61840d86bb48e6ea07b3120be87e429a1f5ed45
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8cab105f7ffc27917b7b05a418520094638b34daaecd0f618e41460be9315c58
+  EXPECTED_PRIVATE_TREE_PROOF: 4c1b5be38685053a2b26e1ba1b811d6a28fb0b69dc0231a4359db715b538e536
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          test "$(printf '%s' "$matched_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$matched_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$matched_sha"
+          git checkout -q --detach "$matched_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref matched_sha sha ref ref_hash tree
+          echo "OPAQUE_DIAGNOSTIC_RECOVERY=PASS"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null 2>&1
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          echo "OPAQUE_DIAGNOSTIC_TOOLCHAIN=PASS"
+
+      - name: Emit privacy-safe compiler diagnostic fingerprints
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          json="$RUNNER_TEMP/diagnostic.private.jsonl"
+          set +e
+          cargo +1.98.1 test --locked --lib --features linux-peer-credentials --no-run --message-format=json >"$json" 2>/dev/null
+          rc=$?
+          set -e
+          echo "OPAQUE_DIAGNOSTIC_RC=$rc"
+          python3 - "$json" <<'PY'
+          import hashlib, json, sys
+          from collections import Counter
+          path = sys.argv[1]
+          codes = Counter()
+          levels = Counter()
+          fingerprints = Counter()
+          primary_span_counts = Counter()
+          with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get('reason') != 'compiler-message':
+                      continue
+                  msg = obj.get('message') or {}
+                  level = str(msg.get('level') or 'unknown')
+                  if level not in {'error', 'warning'}:
+                      continue
+                  levels[level] += 1
+                  code_obj = msg.get('code') or {}
+                  code = code_obj.get('code') or 'NO_CODE'
+                  codes[code] += 1
+                  text = str(msg.get('message') or '')
+                  fingerprints[hashlib.sha256(text.encode()).hexdigest()[:16]] += 1
+                  primaries = sum(1 for s in (msg.get('spans') or []) if s.get('is_primary'))
+                  primary_span_counts[primaries] += 1
+          print('OPAQUE_DIAGNOSTIC_LEVELS=' + ','.join(f'{k}:{v}' for k,v in sorted(levels.items())))
+          print('OPAQUE_DIAGNOSTIC_CODES=' + ','.join(f'{k}:{v}' for k,v in sorted(codes.items())))
+          print('OPAQUE_DIAGNOSTIC_FINGERPRINTS=' + ','.join(f'{k}:{v}' for k,v in sorted(fingerprints.items())))
+          print('OPAQUE_DIAGNOSTIC_PRIMARY_SPANS=' + ','.join(f'{k}:{v}' for k,v in sorted(primary_span_counts.items())))
+          PY
+          rm -f "$json"
+          test "$rc" -ne 0
+          echo "OPAQUE_DIAGNOSTIC_CAPTURE=PASS"
