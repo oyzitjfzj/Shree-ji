@@ -1,0 +1,201 @@
+name: Canonical slow-12 applicability
+
+on:
+  push:
+    branches: [verify/canonical-slow12-applicability-20261008]
+    paths:
+      - ".verification/canonical-slow12-applicability.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASE_TARGET_REF_HASH: ed3bb0cf5d74f44e15d4ad6983d8f69de6f84c85ad861805ae2834a02dab9143
+  BASE_SNAPSHOT_PROOF: b5112adc429935d9024eb5805c9c49dd2c0f2cb161849cc987f7ba20af212f5c
+  BASE_TREE_PROOF: 07b34736f34510f45a7cf6200057da51df415958c1f04281a583e87e4743fe97
+  HEAD_TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
+  HEAD_SNAPSHOT_PROOF: d893f63ec5c6e07f1541691204a7e701ea7e435df45c3877ba4ffe1fbebb994f
+  HEAD_TREE_PROOF: 217826cd728dfe665a6aa3b3f53d961c7a56963ad44e9b1f5a966e1bc9975b1b
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_PROFILE_COUNT: "203"
+  EXPECTED_SLOW_COUNT: "12"
+  EXPECTED_TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+  EXPECTED_TLA_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Recover exact frozen and current private revisions opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-slow12"
+          mkdir -p "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+
+          find_ref() {
+            local expected="$1" found=""
+            while read -r oid ref; do
+              [[ -n "$ref" ]] || continue
+              if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$expected" ]]; then
+                test -z "$found"
+                found="$ref"
+              fi
+            done <"$refs"
+            test -n "$found"
+            printf '%s' "$found"
+          }
+
+          base_ref="$(find_ref "$BASE_TARGET_REF_HASH")"
+          head_ref="$(find_ref "$HEAD_TARGET_REF_HASH")"
+          echo "::add-mask::$base_ref"; echo "::add-mask::$head_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1024 origin \
+            "$base_ref:refs/las/base" "$head_ref:refs/las/head"
+          base="$(git rev-parse refs/las/base)"; head="$(git rev-parse refs/las/head)"
+          echo "::add-mask::$base"; echo "::add-mask::$head"
+          test "$(printf '%s' "$base" | sha256sum | awk '{print $1}')" = "$BASE_SNAPSHOT_PROOF"
+          test "$(printf '%s' "$head" | sha256sum | awk '{print $1}')" = "$HEAD_SNAPSHOT_PROOF"
+          base_tree="$(git rev-parse "$base^{tree}")"; head_tree="$(git rev-parse "$head^{tree}")"
+          echo "::add-mask::$base_tree"; echo "::add-mask::$head_tree"
+          test "$(printf '%s' "$base_tree" | sha256sum | awk '{print $1}')" = "$BASE_TREE_PROOF"
+          test "$(printf '%s' "$head_tree" | sha256sum | awk '{print $1}')" = "$HEAD_TREE_PROOF"
+          git merge-base --is-ancestor "$base" "$head"
+          printf '%s' "$base" >"$RUNNER_TEMP/base"
+          printf '%s' "$head" >"$RUNNER_TEMP/head"
+          rm -f "$refs"
+          unset PRIVATE_TOKEN auth base_ref head_ref base head base_tree head_tree
+          echo "LAS_SLOW12_EXACT_RECOVERY=PASS"
+
+      - name: Prove delta cannot affect ordinary canonical TLC semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-slow12"
+          base="$(cat "$RUNNER_TEMP/base")"; head="$(cat "$RUNNER_TEMP/head")"
+          actual="$RUNNER_TEMP/delta"
+          expected="$RUNNER_TEMP/expected-delta"
+          git diff --name-only "$base" "$head" | sort >"$actual"
+          printf '%s\n' \
+            tools/verification/run_candidate_assurance_profile39_compositional.sh \
+            tools/verification/run_canonical_verifier_hardened.sh | sort >"$expected"
+          cmp -s "$expected" "$actual"
+          test "$(git rev-parse "$base:tools/verify_codespaces_all.sh")" = "$EXPECTED_VERIFIER_BLOB"
+          test "$(git rev-parse "$head:tools/verify_codespaces_all.sh")" = "$EXPECTED_VERIFIER_BLOB"
+          test "$(git rev-parse "$base:spec")" = "$(git rev-parse "$head:spec")"
+          echo "LAS_SLOW12_ALLOWED_DELTA=PASS"
+          echo "LAS_SLOW12_CANONICAL_ENGINE_EQUIVALENCE=PASS"
+          echo "LAS_SLOW12_SPEC_TREE_EQUIVALENCE=PASS"
+
+      - name: Prove all 12 canonical rows and proof inputs are byte-identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-slow12"
+          base="$(cat "$RUNNER_TEMP/base")"; head="$(cat "$RUNNER_TEMP/head")"
+
+          make_map() {
+            local rev="$1" out="$2" py="$3"
+            git checkout -q --detach "$rev"
+            test -z "$(git status --porcelain --untracked-files=all)"
+            python3 - tools/verify_codespaces_all.sh "$py" <<'PY'
+          from pathlib import Path
+          import sys
+          src=Path(sys.argv[1]).read_text(encoding="utf-8")
+          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'
+          me='\nPY\n\nPROFILE39_CFG='
+          if src.count(mh) != 1 or src.count(me) != 1:
+              raise SystemExit("canonical map anchors not unique")
+          start=src.index(mh)+len(mh); end=src.index(me,start)
+          Path(sys.argv[2]).write_text(src[start:end]+"\n",encoding="utf-8")
+          PY
+            python3 "$py" "$PWD" >"$out"
+            test "$(wc -l <"$out" | tr -d ' ')" = "$EXPECTED_PROFILE_COUNT"
+          }
+
+          base_map="$RUNNER_TEMP/base-map.tsv"; head_map="$RUNNER_TEMP/head-map.tsv"
+          make_map "$base" "$base_map" "$RUNNER_TEMP/base-map.py"
+          make_map "$head" "$head_map" "$RUNNER_TEMP/head-map.py"
+          cmp -s "$base_map" "$head_map"
+
+          manifest="$RUNNER_TEMP/slow12-manifest"
+          : >"$manifest"
+          count=0
+          for idx in 2 28 29 36 110 115 133 145 156 157 168 172; do
+            test "$idx" -ne 39
+            base_row="$(sed -n "$((idx + 1))p" "$base_map")"
+            head_row="$(sed -n "$((idx + 1))p" "$head_map")"
+            test -n "$base_row"; test "$base_row" = "$head_row"
+            IFS=$'\t' read -r cfg tla deadlock expectation <<<"$base_row"
+            test -n "$cfg"; test -n "$tla"
+            cfg_base_blob="$(git rev-parse "$base:$cfg")"; cfg_head_blob="$(git rev-parse "$head:$cfg")"
+            tla_base_blob="$(git rev-parse "$base:$tla")"; tla_head_blob="$(git rev-parse "$head:$tla")"
+            test "$cfg_base_blob" = "$cfg_head_blob"
+            test "$tla_base_blob" = "$tla_head_blob"
+            cfg_base_sha="$(git show "$base:$cfg" | sha256sum | awk '{print $1}')"
+            cfg_head_sha="$(git show "$head:$cfg" | sha256sum | awk '{print $1}')"
+            tla_base_sha="$(git show "$base:$tla" | sha256sum | awk '{print $1}')"
+            tla_head_sha="$(git show "$head:$tla" | sha256sum | awk '{print $1}')"
+            test "$cfg_base_sha" = "$cfg_head_sha"; test "$tla_base_sha" = "$tla_head_sha"
+            row_sha="$(printf '%s' "$base_row" | sha256sum | awk '{print $1}')"
+            printf '%s %s %s %s %s %s\n' "$idx" "$row_sha" "$cfg_base_blob" "$cfg_base_sha" "$tla_base_blob" "$tla_base_sha" >>"$manifest"
+            count=$((count + 1))
+          done
+          test "$count" = "$EXPECTED_SLOW_COUNT"
+          echo "LAS_SLOW12_CANONICAL_MAP_EQUIVALENCE=PASS"
+          echo "LAS_SLOW12_PROFILE_COUNT=$count"
+          echo "LAS_SLOW12_INPUT_MANIFEST_SHA256=$(sha256sum "$manifest" | awk '{print $1}')"
+          echo "LAS_SLOW12_INPUT_BYTES_EQUIVALENCE=PASS"
+
+      - name: Authenticate exact TLA toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/tla2tools-slow12.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --silent --show-error \
+            --output "$jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          test "$(sha1sum "$jar" | awk '{print $1}')" = "$EXPECTED_TLA_SHA1"
+          test "$(sha256sum "$jar" | awk '{print $1}')" = "$EXPECTED_TLA_SHA256"
+          echo "LAS_SLOW12_TLA_TOOLCHAIN=PASS"
+
+      - name: Prove applicability gate fails closed on slow-profile drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-slow12"
+          base="$(cat "$RUNNER_TEMP/base")"; head="$(cat "$RUNNER_TEMP/head")"
+          git checkout -q -B slow12-negative "$head"
+          map="$RUNNER_TEMP/head-map.tsv"
+          row="$(sed -n '3p' "$map")"
+          test -n "$row"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<<"$row"
+          test -n "$cfg"; test -n "$tla"
+          before_cfg="$(git rev-parse "$base:$cfg")"
+          printf '\n\\* slow12-applicability-negative-control\n' >>"$cfg"
+          after_cfg="$(git hash-object "$cfg")"
+          test "$before_cfg" != "$after_cfg"
+          test -n "$(git status --porcelain --untracked-files=all)"
+          git reset --hard -q "$head"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_SLOW12_NEGATIVE_INPUT_DRIFT=PASS"
+
+      - name: Seal slow-12 applicability
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-slow12"
+          head="$(cat "$RUNNER_TEMP/head")"
+          git checkout -q --detach "$head"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_SLOW12_APPLICABILITY=PASS"
