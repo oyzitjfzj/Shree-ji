@@ -12,10 +12,11 @@ permissions:
 
 env:
   TARGET_REF_HASH: 864566cf743ac9a5561b7994d5b07ddf99beaab990f3ba52730800cd400b2e5e
-  EXPECTED_HEAD_PROOF: b7267aeb9eb4425306a9529948f5897e79bd11ed9ca5a1c7f88730e3aae13ff6
-  EXPECTED_TREE_PROOF: ff75945d4f0d7f25a98c522cbd910e899b4380694fe24a5f8073842830e5d28c
+  EXPECTED_HEAD_PROOF: 1e6be59d7a530327404898493d169cb085818107b420d167456ccd53576097ba
+  EXPECTED_TREE_PROOF: f25973f726820fa4dddc0707a6fb034ae44c62159aa9a1466b831d50e24f9b16
   EXPECTED_RED_HELPER_BLOB: a148aef06929b095ebe011b7615c7f4fe077e1c6
   EXPECTED_GREEN_HELPER_BLOB: d6a62fdc2ca05e3437d0026f5e58bc90e75e9382
+  EXPECTED_CLIPPY_HELPER_BLOB: 23715eb3e8f66bb72c4f678c6698730b41e338b7
 
 jobs:
   classify:
@@ -71,8 +72,10 @@ jobs:
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test "$(git rev-parse HEAD:tools/tmp_add_linux_control_poll_red.py)" = "$EXPECTED_RED_HELPER_BLOB"
           test "$(git rev-parse HEAD:tools/tmp_apply_linux_control_poll_channel.py)" = "$EXPECTED_GREEN_HELPER_BLOB"
+          test "$(git rev-parse HEAD:tools/tmp_apply_linux_control_poll_clippy_fix.py)" = "$EXPECTED_CLIPPY_HELPER_BLOB"
           python3 tools/tmp_add_linux_control_poll_red.py >/dev/null 2>&1
           python3 tools/tmp_apply_linux_control_poll_channel.py >/dev/null 2>&1
+          python3 tools/tmp_apply_linux_control_poll_clippy_fix.py >/dev/null 2>&1
           cargo +1.98.1 fmt --all >/dev/null 2>&1
           log="$RUNNER_TEMP/clippy.private.log"
           set +e
