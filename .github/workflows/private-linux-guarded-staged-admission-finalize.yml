@@ -1,0 +1,219 @@
+name: Private Linux guarded staged admission finalize
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-linux-guarded-staged-admission-finalize.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 9170c8fd0669ab388b2863758b03aa79e4dd6e4e18057bd7a7def8615201dbc4
+  EXPECTED_HEAD_PROOF: 0358d259b37f12982667a3b5f7e963036f221ddbcde7ef2f75753ab0fc2422cb
+  EXPECTED_TREE_PROOF: 2cfa7a39ed13c0cc7219ed3f15c0fb8825585072a4d348148a4c575618121be2
+
+jobs:
+  verify-and-finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Build verify and fast-forward private candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/private"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          echo "::add-mask::$write_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+
+          run_private_patch() {
+            local label="$1"
+            local script="$2"
+            local log="$RUNNER_TEMP/${label}.log"
+            set +e
+            python3 "$script" >"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "LAS_GUARDED_FINAL_STAGE=${label}"
+              echo "LAS_GUARDED_FINAL_RC=${rc}"
+              echo "LAS_GUARDED_FINAL_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              exit "$rc"
+            fi
+            rm -f "$log"
+            echo "LAS_GUARDED_FINAL_${label}=PASS"
+          }
+
+          run_private_patch primary_patch tools/tmp_apply_linux_guarded_staged_admission.py
+          run_private_patch clippy_patch tools/tmp_apply_linux_guarded_clippy_fix.py
+          rm -f tools/tmp_finalize_linux_guarded_staged_admission.py
+
+          fmt_apply_log="$RUNNER_TEMP/fmt-apply.log"
+          set +e
+          cargo +1.98.1 fmt --all >"$fmt_apply_log" 2>&1
+          fmt_rc=$?
+          set -e
+          if [[ $fmt_rc -ne 0 ]]; then
+            echo 'LAS_GUARDED_FINAL_STAGE=fmt_apply'
+            echo "LAS_GUARDED_FINAL_RC=$fmt_rc"
+            echo "LAS_GUARDED_FINAL_LOG_SHA256=$(sha256sum "$fmt_apply_log" | awk '{print $1}')"
+            exit "$fmt_rc"
+          fi
+          rm -f "$fmt_apply_log"
+
+          check_log="$RUNNER_TEMP/diff-check.log"
+          set +e
+          git diff --check >"$check_log" 2>&1
+          check_rc=$?
+          set -e
+          if [[ $check_rc -ne 0 ]]; then
+            echo 'LAS_GUARDED_FINAL_STAGE=diff_check'
+            echo "LAS_GUARDED_FINAL_RC=$check_rc"
+            echo "LAS_GUARDED_FINAL_LOG_SHA256=$(sha256sum "$check_log" | awk '{print $1}')"
+            exit "$check_rc"
+          fi
+          rm -f "$check_log"
+
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
+          cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
+          src/effect_fabric/root_control_channel_authority.rs
+          src/effect_fabric/root_supervisor_linux_channel.rs
+          src/effect_fabric/root_supervisor_linux_deployment.rs
+          src/effect_fabric/root_supervisor_linux_guarded_session.rs
+          src/effect_fabric/root_supervisor_linux_process_ingress.rs
+          src/effect_fabric/root_supervisor_linux_service.rs
+          tools/tmp_apply_linux_guarded_clippy_fix.py
+          tools/tmp_apply_linux_guarded_staged_admission.py
+          tools/tmp_finalize_linux_guarded_staged_admission.py
+          EOF
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
+          diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
+          echo 'LAS_GUARDED_FINAL_SCOPE=PASS'
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+
+          capture_private_failure() {
+            local stage="$1"
+            local log="$2"
+            local path="tools/tmp_guarded_finalize_${stage}_${GITHUB_RUN_ID}.log"
+            cp "$log" "$path"
+            git add -- "$path"
+            git commit -q -m "Capture private guarded finalize ${stage} diagnostic"
+            local ref="refs/heads/tmp/guarded-finalize-diagnostic-${GITHUB_RUN_ID}"
+            git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$ref"
+            echo 'LAS_GUARDED_FINAL_PRIVATE_DIAGNOSTIC=CAPTURED'
+          }
+
+          run_gate() {
+            local stage="$1"
+            shift
+            local log="$RUNNER_TEMP/${stage}.log"
+            set +e
+            "$@" >"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "LAS_GUARDED_FINAL_STAGE=${stage}"
+              echo "LAS_GUARDED_FINAL_RC=${rc}"
+              echo "LAS_GUARDED_FINAL_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              capture_private_failure "$stage" "$log"
+              exit "$rc"
+            fi
+            rm -f "$log"
+            echo "LAS_GUARDED_FINAL_${stage}=PASS"
+          }
+
+          run_gate fmt_check cargo +1.98.1 fmt --all -- --check
+          run_gate base_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          run_gate linux_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials
+          run_gate linux_clippy cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials -- -D warnings
+          run_gate linux_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --features linux-peer-credentials -- --test-threads=1
+          run_gate linux_release_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --release --locked --all-targets --features linux-peer-credentials
+          run_gate linux_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features linux-peer-credentials -- --test-threads=1
+
+          git add -A -- \
+            src/effect_fabric/root_control_channel_authority.rs \
+            src/effect_fabric/root_supervisor_linux_channel.rs \
+            src/effect_fabric/root_supervisor_linux_deployment.rs \
+            src/effect_fabric/root_supervisor_linux_guarded_session.rs \
+            src/effect_fabric/root_supervisor_linux_process_ingress.rs \
+            src/effect_fabric/root_supervisor_linux_service.rs \
+            tools/tmp_apply_linux_guarded_clippy_fix.py \
+            tools/tmp_apply_linux_guarded_staged_admission.py \
+            tools/tmp_finalize_linux_guarded_staged_admission.py
+          git diff --cached --check
+          git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
+          diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
+          git commit -q -m "Stage guarded admission without blocking control ingress"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo 'LAS_GUARDED_FINAL_PRIVATE_COMMIT=PASS'
+          echo "LAS_GUARDED_FINAL_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_GUARDED_FINAL_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
