@@ -1,0 +1,88 @@
+name: Private Linux control poll Clippy diagnostic 20261009
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-linux-control-poll-clippy-diagnostic-20261009.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 864566cf743ac9a5561b7994d5b07ddf99beaab990f3ba52730800cd400b2e5e
+  EXPECTED_HEAD_PROOF: b7267aeb9eb4425306a9529948f5897e79bd11ed9ca5a1c7f88730e3aae13ff6
+  EXPECTED_TREE_PROOF: ff75945d4f0d7f25a98c522cbd910e899b4380694fe24a5f8073842830e5d28c
+  EXPECTED_RED_HELPER_BLOB: a148aef06929b095ebe011b7615c7f4fe077e1c6
+  EXPECTED_GREEN_HELPER_BLOB: d6a62fdc2ca05e3437d0026f5e58bc90e75e9382
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+
+      - name: Reproduce exact candidate and emit only lint identifiers
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          root="$GITHUB_WORKSPACE/private"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          target_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              target_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$target_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$target_sha"
+          test "$(printf '%s' "$target_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach "$target_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test "$(git rev-parse HEAD:tools/tmp_add_linux_control_poll_red.py)" = "$EXPECTED_RED_HELPER_BLOB"
+          test "$(git rev-parse HEAD:tools/tmp_apply_linux_control_poll_channel.py)" = "$EXPECTED_GREEN_HELPER_BLOB"
+          python3 tools/tmp_add_linux_control_poll_red.py >/dev/null 2>&1
+          python3 tools/tmp_apply_linux_control_poll_channel.py >/dev/null 2>&1
+          cargo +1.98.1 fmt --all >/dev/null 2>&1
+          log="$RUNNER_TEMP/clippy.private.log"
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials -- -D warnings >"$log" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          lint_ids="$(grep -oE 'clippy::[a-zA-Z0-9_]+' "$log" | sort -u | paste -sd, -)"
+          test -n "$lint_ids"
+          echo "LAS_CONTROL_CHANNEL_CLIPPY_RC=$rc"
+          echo "LAS_CONTROL_CHANNEL_CLIPPY_LINTS=$lint_ids"
+          echo "LAS_CONTROL_CHANNEL_CLIPPY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          rm -f "$log"
