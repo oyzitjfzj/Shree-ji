@@ -2,7 +2,7 @@ name: Canonical exact current pre-TLC
 
 on:
   push:
-    branches: [verify/canonical-exact-current-20261008]
+    branches: [verify/canonical-pycache-pre-tlc-20261008]
     paths:
       - ".github/workflows/canonical-exact-current-pre-tlc.yml"
       - ".verification/canonical-exact-current-pre-tlc.trigger"
@@ -12,15 +12,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: canonical-exact-current-pre-tlc
+  group: canonical-pycache-pre-tlc-20261008
   cancel-in-progress: true
 
 env:
-  TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: abb7edc70bc685527a44c36f8997b45c863891b54fe9307e3c8c1c7cfe81c48d
-  EXPECTED_PRIVATE_TREE_PROOF: 9de00bccc13c07d4e99f471a26ae749c00091afd2599f12082f2ba4a0f7daa22
+  TARGET_REF_HASH: 225f7f8cf916fc40eb48f0ff2ab83ac99423ac2e146f733279e1a77d7bdd774b
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d893f63ec5c6e07f1541691204a7e701ea7e435df45c3877ba4ffe1fbebb994f
+  EXPECTED_PRIVATE_TREE_PROOF: 217826cd728dfe665a6aa3b3f53d961c7a56963ad44e9b1f5a966e1bc9975b1b
   EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
   EXPECTED_VERIFIER_SHA256: 25aaaf9084e2e41d7611a78d018ede77222f8b3a4e29d7f9b4cd819068e702ca
+  EXPECTED_HARDENED_WRAPPER_BLOB: 91b59a0bd6471b4c62ab5b0a63541e03a7ce9792
   EXPECTED_TLA_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 
 jobs:
@@ -61,6 +62,7 @@ jobs:
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" == "$EXPECTED_VERIFIER_BLOB"
           test "$(sha256sum tools/verify_codespaces_all.sh | awk '{print $1}')" == "$EXPECTED_VERIFIER_SHA256"
+          test "$(git hash-object tools/verification/run_canonical_verifier_hardened.sh)" == "$EXPECTED_HARDENED_WRAPPER_BLOB"
           test -z "$(git status --porcelain --untracked-files=all)"
           echo "LAS_CURRENT_PRE_TLC_EXACT_RECOVERY=PASS"
           unset PRIVATE_TOKEN auth matched_ref actual tree
@@ -130,9 +132,10 @@ jobs:
 
           CANONICAL_TMPDIR="$RUNNER_TEMP/canonical-runtime"
           CANONICAL_CARGO_TARGET="$RUNNER_TEMP/canonical-cargo-target"
-          mkdir -p "$CANONICAL_TMPDIR" "$CANONICAL_CARGO_TARGET"
+          CANONICAL_PYTHON_CACHE="$RUNNER_TEMP/canonical-python-cache"
+          mkdir -p "$CANONICAL_TMPDIR" "$CANONICAL_CARGO_TARGET" "$CANONICAL_PYTHON_CACHE"
           root_real="$(realpath "$ROOT")"
-          for p in "$CANONICAL_TMPDIR" "$CANONICAL_CARGO_TARGET"; do
+          for p in "$CANONICAL_TMPDIR" "$CANONICAL_CARGO_TARGET" "$CANONICAL_PYTHON_CACHE"; do
             p_real="$(realpath "$p")"
             case "$p_real/" in
               "$root_real/"*) echo "ERROR: canonical scratch path entered repository" >&2; exit 2 ;;
@@ -145,12 +148,20 @@ jobs:
           PATH="$SHIM_DIR:$PATH" \
           TMPDIR="$CANONICAL_TMPDIR" \
           CARGO_TARGET_DIR="$CANONICAL_CARGO_TARGET" \
+          PYTHONPYCACHEPREFIX="$CANONICAL_PYTHON_CACHE" \
           LAS_VERIFY_EXPECTED_BRANCH=verify-target \
             bash "$staged" >"$private_log" 2>&1
           rc=$?
           set -e
 
           test -z "$(git status --porcelain --untracked-files=all)"
+          pyc_count="$(find "$CANONICAL_PYTHON_CACHE" -type f -name '*.pyc' | wc -l | tr -d ' ')"
+          if [[ "$pyc_count" -lt 1 ]]; then
+            echo "LAS_CURRENT_PRE_TLC_PYTHON_CACHE_RELOCATION=FAIL"
+            echo "LAS_CURRENT_PRE_TLC_PRIVATE_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+            exit 1
+          fi
+          echo "LAS_CURRENT_PRE_TLC_PYTHON_CACHE_RELOCATION=PASS"
           if [[ ! -f "$PIN_MARKER" ]] || [[ "$(cat "$PIN_MARKER")" != "$EXPECTED_TLA_SHA256" ]]; then
             echo "LAS_CURRENT_PRE_TLC_TLA_SHA256_PIN=FAIL"
             echo "LAS_CURRENT_PRE_TLC_PRIVATE_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
