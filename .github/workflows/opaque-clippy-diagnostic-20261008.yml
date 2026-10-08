@@ -1,0 +1,119 @@
+name: Opaque Clippy diagnostic 20261008
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/opaque-clippy-diagnostic-20261008.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: b1df268a32bdad269242bdcf9d5c30f49b0299a0e746c2507b4a8d900d5a5c77
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 8c2cdb896e622a28d9db4ff040f2aaf656c1484575a3758c59ca4f9f44d174c3
+  EXPECTED_PRIVATE_TREE_PROOF: 6e4d07430bbfb7ffb6300f5e7a6d314c7383299c83b6c6d905acbedc5046e119
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$matched_sha"
+          test "$(printf '%s' "$matched_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$matched_sha"
+          git checkout -q --detach "$matched_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          echo "OPAQUE_CLIPPY_RECOVERY=PASS"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null 2>&1
+          rustup component add --toolchain 1.98.1 clippy >/dev/null 2>&1
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          echo "OPAQUE_CLIPPY_TOOLCHAIN=PASS"
+
+      - name: Emit privacy-safe Clippy fingerprints
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          json="$RUNNER_TEMP/clippy.private.jsonl"
+          set +e
+          cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials --message-format=json -- -D warnings >"$json" 2>/dev/null
+          rc=$?
+          set -e
+          echo "OPAQUE_CLIPPY_RC=$rc"
+          python3 - "$json" <<'PY'
+          import hashlib, json, sys
+          from collections import Counter
+          codes = Counter()
+          levels = Counter()
+          fingerprints = Counter()
+          primaries = Counter()
+          with open(sys.argv[1], 'r', encoding='utf-8', errors='replace') as fh:
+              for raw in fh:
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  if obj.get('reason') != 'compiler-message':
+                      continue
+                  msg = obj.get('message') or {}
+                  level = str(msg.get('level') or 'unknown')
+                  if level not in {'error', 'warning'}:
+                      continue
+                  levels[level] += 1
+                  code = ((msg.get('code') or {}).get('code')) or 'NO_CODE'
+                  codes[code] += 1
+                  text = str(msg.get('message') or '')
+                  fingerprints[hashlib.sha256(text.encode()).hexdigest()[:16]] += 1
+                  primaries[sum(1 for span in (msg.get('spans') or []) if span.get('is_primary'))] += 1
+          print('OPAQUE_CLIPPY_LEVELS=' + ','.join(f'{k}:{v}' for k,v in sorted(levels.items())))
+          print('OPAQUE_CLIPPY_CODES=' + ','.join(f'{k}:{v}' for k,v in sorted(codes.items())))
+          print('OPAQUE_CLIPPY_FINGERPRINTS=' + ','.join(f'{k}:{v}' for k,v in sorted(fingerprints.items())))
+          print('OPAQUE_CLIPPY_PRIMARY_SPANS=' + ','.join(f'{k}:{v}' for k,v in sorted(primaries.items())))
+          PY
+          rm -f "$json"
+          test "$rc" -ne 0
+          echo "OPAQUE_CLIPPY_CAPTURE=PASS"
