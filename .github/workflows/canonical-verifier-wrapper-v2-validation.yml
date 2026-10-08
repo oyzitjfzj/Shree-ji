@@ -16,10 +16,10 @@ jobs:
     timeout-minutes: 15
     env:
       TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
-      EXPECTED_PRIVATE_SNAPSHOT_PROOF: 316922a1db7c7d8d8ddaf2c39e7bfd7a2e1a191a6eb8b59617fd306e2e1cde19
-      EXPECTED_PRIVATE_TREE_PROOF: 1caa66138859a18a91a8ebe95132392af367221b9d5767eb5de7fa19b7ecd40d
+      EXPECTED_PRIVATE_SNAPSHOT_PROOF: 7249a58a874592c8ede2a04ef0a63c8e30a1f187bfb701390fa55e5308ef23a7
+      EXPECTED_PRIVATE_TREE_PROOF: 51974d286f59a7f833f95b4a23e1c21d85b9a515f83786f5a8f1713b7ff58323
       EXPECTED_BASE_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
-      EXPECTED_WRAPPER_BLOB: ee5ec8b384547cf594aea3338e51b4dfae99e347
+      EXPECTED_WRAPPER_BLOB: 71f8a538da784ecc6d2edf46e22978d0239d200a
     steps:
       - name: Recover exact private wrapper candidate
         shell: bash
@@ -69,11 +69,111 @@ jobs:
           grep -qx 'LAS_CANONICAL_VERIFIER_ENGINE_PIN=PASS' "$log"
           grep -qx 'LAS_CANONICAL_VERIFIER_ENGINE_SHA256_PIN=PASS' "$log"
           grep -qx 'LAS_CANONICAL_UNIQUE_WORKSPACE=PASS' "$log"
+          grep -qx 'LAS_CANONICAL_CARGO_TARGET_ISOLATION=PASS' "$log"
           grep -qx 'LAS_CANONICAL_TLA_SHA256_PIN=PASS' "$log"
           grep -qx 'LAS_CANONICAL_VERIFIER_HARDENING_PREFLIGHT=PASS' "$log"
           test -z "$(find "$RUNNER_TEMP" -maxdepth 1 -type d -name 'las-canonical-hardening.*' -print -quit)"
           test -z "$(git status --porcelain --untracked-files=all)"
           echo "LAS_CANONICAL_WRAPPER_V2_POSITIVE_PREFLIGHT=PASS"
+
+      - name: Cargo target propagation stays outside repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-wrapper-v2-validation"; cd "$ROOT"
+          base="$(git rev-parse HEAD)"
+          capture="$RUNNER_TEMP/wrapper-v2-cargo-target.capture"
+          fake_bin="$RUNNER_TEMP/wrapper-v2-fake-bin"
+          mkdir "$fake_bin"
+          cat > tools/verify_codespaces_all.sh <<'STUB'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          test -n "${CARGO_TARGET_DIR:-}"
+          root_real="$(realpath "$(git rev-parse --show-toplevel)")"
+          target_real="$(realpath "$CARGO_TARGET_DIR")"
+          case "$target_real/" in
+            "$root_real/"*)
+              echo "ERROR: validation stub observed Cargo target inside repository" >&2
+              exit 91
+              ;;
+          esac
+          printf '%s\n' "$target_real" > "${LAS_VALIDATION_CARGO_CAPTURE:?}"
+          tla_jar="${TMPDIR:?}/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$tla_jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          echo "LAS_VERIFY_ALL_RESULT=PASS"
+          STUB
+          chmod 0755 tools/verify_codespaces_all.sh
+          cat > "$fake_bin/curl" <<'FAKE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          output=""
+          while (($#)); do
+            case "$1" in
+              --output|-o)
+                test "$#" -ge 2
+                output="$2"
+                shift 2
+                ;;
+              --output=*)
+                output="${1#--output=}"
+                shift
+                ;;
+              *)
+                shift
+                ;;
+            esac
+          done
+          test -n "$output"
+          printf 'canonical-cargo-isolation-validation\n' > "$output"
+          FAKE
+          chmod 0755 "$fake_bin/curl"
+          stub_blob="$(git hash-object tools/verify_codespaces_all.sh)"
+          stub_sha256="$(sha256sum tools/verify_codespaces_all.sh | awk '{print $1}')"
+          validation_tla_sha256="$(printf 'canonical-cargo-isolation-validation\n' | sha256sum | awk '{print $1}')"
+          export STUB_BLOB="$stub_blob" STUB_SHA256="$stub_sha256" VALIDATION_TLA_SHA256="$validation_tla_sha256"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p=Path('tools/verification/run_canonical_verifier_hardened.sh')
+          text=p.read_text(encoding='utf-8')
+          replacements={
+              'EXPECTED_BASE_VERIFIER_BLOB="8ea6dbe77db10592baf8f56c9719626c36687f9a"':
+                  f'EXPECTED_BASE_VERIFIER_BLOB="{os.environ["STUB_BLOB"]}"',
+              'EXPECTED_BASE_VERIFIER_SHA256="25aaaf9084e2e41d7611a78d018ede77222f8b3a4e29d7f9b4cd819068e702ca"':
+                  f'EXPECTED_BASE_VERIFIER_SHA256="{os.environ["STUB_SHA256"]}"',
+              'EXPECTED_TLA_SHA256="936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"':
+                  f'EXPECTED_TLA_SHA256="{os.environ["VALIDATION_TLA_SHA256"]}"',
+          }
+          for old,new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected exactly one validation replacement for {old.split("=")[0]}')
+              text=text.replace(old,new,1)
+          p.write_text(text,encoding='utf-8')
+          PY
+          git add tools/verify_codespaces_all.sh tools/verification/run_canonical_verifier_hardened.sh
+          git -c user.name='Canonical Wrapper Validator' -c user.email='validator@invalid' commit -qm 'validation-only cargo target propagation'
+          test -z "$(git status --porcelain --untracked-files=all)"
+          log="$RUNNER_TEMP/wrapper-v2-cargo-target.log"
+          PATH="$fake_bin:$PATH" LAS_VALIDATION_CARGO_CAPTURE="$capture" \
+            bash tools/verification/run_canonical_verifier_hardened.sh >"$log" 2>&1
+          grep -qx 'LAS_CANONICAL_CARGO_TARGET_ISOLATION=PASS' "$log"
+          grep -qx 'LAS_CANONICAL_TLA_SHA256_CONFIRMED=PASS' "$log"
+          grep -qx 'LAS_CANONICAL_VERIFIER_HARDENED=PASS' "$log"
+          test -s "$capture"
+          target_real="$(cat "$capture")"
+          case "$target_real/" in
+            "$ROOT/"*)
+              echo "ERROR: captured Cargo target is inside repository" >&2
+              exit 92
+              ;;
+          esac
+          test ! -e "$ROOT/target"
+          git reset --hard -q "$base"
+          rm -rf "$fake_bin" "$capture" "$log"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_CANONICAL_WRAPPER_V2_CARGO_TARGET_PROPAGATION=PASS"
 
       - name: Untracked poison fails closed
         shell: bash
