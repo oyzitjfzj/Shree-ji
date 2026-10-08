@@ -5,7 +5,7 @@ on:
     branches: [verify/canonical-current-203-acceptance-20261008]
     paths:
       - ".github/workflows/canonical-current-203-acceptance.yml"
-      - "tools/verification/verify_canonical_current_203_acceptance.py"
+      - "tools/verification/verify_canonical_current_203_acceptance_v2.py"
       - ".verification/canonical-current-203-acceptance.arm"
   workflow_dispatch:
 
@@ -25,17 +25,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          verifier=tools/verification/verify_canonical_current_203_acceptance.py
-          test "$(git hash-object "$verifier")" = "83902f7f6f32234b72c7f94fe5dd611a6d0e905c"
+          verifier=tools/verification/verify_canonical_current_203_acceptance_v2.py
+          test "$(git hash-object "$verifier")" = "e17560ecd16844485512d546de314859788759e9"
           cache="$RUNNER_TEMP/python-cache"
           mkdir -p "$cache"
           PYTHONPYCACHEPREFIX="$cache" python3 -m py_compile "$verifier"
           output="$(python3 "$verifier" --self-test)"
           printf '%s\n' "$output"
-          grep -Fx 'LAS_CANONICAL_CURRENT_203_ACCEPTANCE_SELF_TEST=PASS' <<<"$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_ACCEPTANCE_V2_SELF_TEST=PASS' <<<"$output"
           test -z "$(git status --porcelain --untracked-files=all)"
-          echo "LAS_CANONICAL_CURRENT_203_VERIFIER_PIN=PASS"
-          echo "LAS_CANONICAL_CURRENT_203_VERIFIER_SELF_TEST=PASS"
+          echo "LAS_CANONICAL_CURRENT_203_VERIFIER_V2_PIN=PASS"
+          echo "LAS_CANONICAL_CURRENT_203_VERIFIER_V2_SELF_TEST=PASS"
 
       - name: Verify exact current 203 evidence when armed
         shell: bash
@@ -47,7 +47,7 @@ jobs:
             echo "LAS_CANONICAL_CURRENT_203_HARNESS_SELF_TEST_ONLY=PASS"
             exit 0
           fi
-          verifier=tools/verification/verify_canonical_current_203_acceptance.py
+          verifier=tools/verification/verify_canonical_current_203_acceptance_v2.py
           output="$RUNNER_TEMP/current-203-acceptance.log"
           python3 "$verifier" --token "$GH_TOKEN" | tee "$output"
           grep -Fx 'LAS_CANONICAL_CURRENT_203_COVERAGE_PARTITION=PASS' "$output"
