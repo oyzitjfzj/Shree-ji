@@ -2,7 +2,7 @@ name: Private canonical wrapper preflight
 
 on:
   push:
-    branches: [verify/canonical-wrapper-preflight-20261008-v2]
+    branches: [verify/canonical-wrapper-pycache-20261008]
     paths:
       - "RUN_CANONICAL_WRAPPER_PREFLIGHT"
 
@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: abb7edc70bc685527a44c36f8997b45c863891b54fe9307e3c8c1c7cfe81c48d
-  EXPECTED_PRIVATE_TREE_PROOF: 9de00bccc13c07d4e99f471a26ae749c00091afd2599f12082f2ba4a0f7daa22
+  TARGET_REF_HASH: 225f7f8cf916fc40eb48f0ff2ab83ac99423ac2e146f733279e1a77d7bdd774b
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d893f63ec5c6e07f1541691204a7e701ea7e435df45c3877ba4ffe1fbebb994f
+  EXPECTED_PRIVATE_TREE_PROOF: 217826cd728dfe665a6aa3b3f53d961c7a56963ad44e9b1f5a966e1bc9975b1b
   EXPECTED_BASE_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
-  EXPECTED_HARDENED_WRAPPER_BLOB: 1504227784334f518c34bf71717e9e3781908b97
+  EXPECTED_HARDENED_WRAPPER_BLOB: 91b59a0bd6471b4c62ab5b0a63541e03a7ce9792
 
 jobs:
   preflight:
@@ -90,6 +90,7 @@ jobs:
           grep -qx 'LAS_CANONICAL_VERIFIER_ENGINE_SHA256_PIN=PASS' "$log"
           grep -qx 'LAS_CANONICAL_UNIQUE_WORKSPACE=PASS' "$log"
           grep -qx 'LAS_CANONICAL_CARGO_TARGET_ISOLATION=PASS' "$log"
+          grep -qx 'LAS_CANONICAL_PYTHON_CACHE_ISOLATION=PASS' "$log"
           grep -qx 'LAS_CANONICAL_TLA_SHA256_PIN=PASS' "$log"
           grep -qx 'LAS_CANONICAL_VERIFIER_HARDENING_PREFLIGHT=PASS' "$log"
           test -z "$(git status --porcelain --untracked-files=all)"
