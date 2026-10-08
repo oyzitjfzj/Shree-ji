@@ -1,0 +1,62 @@
+name: Canonical exact current 203 acceptance
+
+on:
+  push:
+    branches: [verify/canonical-current-203-acceptance-20261008]
+    paths:
+      - ".github/workflows/canonical-current-203-acceptance.yml"
+      - "tools/verification/verify_canonical_current_203_acceptance.py"
+      - ".verification/canonical-current-203-acceptance.arm"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  accept:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact public acceptance revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Pin and adversarially self-test acceptance verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          verifier=tools/verification/verify_canonical_current_203_acceptance.py
+          test "$(git hash-object "$verifier")" = "83902f7f6f32234b72c7f94fe5dd611a6d0e905c"
+          cache="$RUNNER_TEMP/python-cache"
+          mkdir -p "$cache"
+          PYTHONPYCACHEPREFIX="$cache" python3 -m py_compile "$verifier"
+          output="$(python3 "$verifier" --self-test)"
+          printf '%s\n' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_ACCEPTANCE_SELF_TEST=PASS' <<<"$output"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_CANONICAL_CURRENT_203_VERIFIER_PIN=PASS"
+          echo "LAS_CANONICAL_CURRENT_203_VERIFIER_SELF_TEST=PASS"
+
+      - name: Verify exact current 203 evidence when armed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! -f .verification/canonical-current-203-acceptance.arm ]]; then
+            echo "LAS_CANONICAL_CURRENT_203_HARNESS_SELF_TEST_ONLY=PASS"
+            exit 0
+          fi
+          verifier=tools/verification/verify_canonical_current_203_acceptance.py
+          output="$RUNNER_TEMP/current-203-acceptance.log"
+          python3 "$verifier" --token "$GH_TOKEN" | tee "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_COVERAGE_PARTITION=PASS' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_FAST190=PASS' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_PRE_TLC=PASS' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_FORMAL_EQUIVALENCE=PASS' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_SLOW12_APPLICABILITY=PASS' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_SLOW12_AUDIT=PASS' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_PROFILE39=PASS' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_PROFILE_COUNT=203' "$output"
+          grep -Fx 'LAS_CANONICAL_CURRENT_203_ACCEPTANCE=PASS' "$output"
+          echo "LAS_CANONICAL_CURRENT_203_ARMED_ACCEPTANCE=PASS"
