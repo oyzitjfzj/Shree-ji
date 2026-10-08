@@ -1,9 +1,10 @@
-name: Canonical pre-TLC mutation diagnostic
+name: Canonical Python-cache mutation proof
 
 on:
   push:
-    branches: [verify/canonical-pre-tlc-mutation-diagnostic-20261008]
+    branches: [verify/canonical-pycache-mutation-proof-20261008]
     paths:
+      - ".github/workflows/canonical-pre-tlc-mutation-diagnostic.yml"
       - ".verification/canonical-pre-tlc-mutation-diagnostic.trigger"
   workflow_dispatch:
 
@@ -11,16 +12,16 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: abb7edc70bc685527a44c36f8997b45c863891b54fe9307e3c8c1c7cfe81c48d
-  EXPECTED_PRIVATE_TREE_PROOF: 9de00bccc13c07d4e99f471a26ae749c00091afd2599f12082f2ba4a0f7daa22
+  TARGET_REF_HASH: 225f7f8cf916fc40eb48f0ff2ab83ac99423ac2e146f733279e1a77d7bdd774b
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: d893f63ec5c6e07f1541691204a7e701ea7e435df45c3877ba4ffe1fbebb994f
+  EXPECTED_PRIVATE_TREE_PROOF: 217826cd728dfe665a6aa3b3f53d961c7a56963ad44e9b1f5a966e1bc9975b1b
   EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
-  EXPECTED_TLA_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+  EXPECTED_HARDENED_WRAPPER_BLOB: 91b59a0bd6471b4c62ab5b0a63541e03a7ce9792
 
 jobs:
-  diagnose:
+  prove:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - name: Recover exact private candidate
         shell: bash
@@ -53,46 +54,23 @@ jobs:
           tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" == "$EXPECTED_VERIFIER_BLOB"
+          test "$(git hash-object tools/verification/run_canonical_verifier_hardened.sh)" == "$EXPECTED_HARDENED_WRAPPER_BLOB"
           test -z "$(git status --porcelain --untracked-files=all)"
-          echo "LAS_MUTATION_DIAG_EXACT_RECOVERY=PASS"
+          echo "LAS_PYCACHE_PROOF_EXACT_RECOVERY=PASS"
 
-      - name: Probe late pre-TLC writers without leaking paths
+      - name: Prove Python bytecode cache relocation
         shell: bash
         run: |
           set -euo pipefail
           ROOT="$RUNNER_TEMP/private-target"
           cd "$ROOT"
-
-          report_status() {
-            local stage="$1"
-            local status_file="$RUNNER_TEMP/status.private"
-            git status --porcelain --untracked-files=all >"$status_file"
-            local total untracked tracked pycache tools spec other
-            total="$(wc -l <"$status_file" | tr -d ' ')"
-            untracked="$(grep -c '^?? ' "$status_file" || true)"
-            tracked=$((total - untracked))
-            pycache="$(awk 'substr($0,4) ~ /(^|\/)__pycache__\// || substr($0,4) ~ /\.pyc$/ {c++} END {print c+0}' "$status_file")"
-            tools="$(awk 'substr($0,4) ~ /^tools\// {c++} END {print c+0}' "$status_file")"
-            spec="$(awk 'substr($0,4) ~ /^spec\// {c++} END {print c+0}' "$status_file")"
-            other=$((total - tools - spec))
-            echo "LAS_MUTATION_DIAG_STAGE=$stage"
-            echo "LAS_MUTATION_DIAG_TOTAL=$total"
-            echo "LAS_MUTATION_DIAG_TRACKED=$tracked"
-            echo "LAS_MUTATION_DIAG_UNTRACKED=$untracked"
-            echo "LAS_MUTATION_DIAG_PYCACHE=$pycache"
-            echo "LAS_MUTATION_DIAG_TOOLS=$tools"
-            echo "LAS_MUTATION_DIAG_SPEC=$spec"
-            echo "LAS_MUTATION_DIAG_OTHER=$other"
-            echo "LAS_MUTATION_DIAG_STATUS_SHA256=$(sha256sum "$status_file" | awk '{print $1}')"
-            if (( total != 0 )); then
-              rm -f "$status_file"
-              return 86
-            fi
-            rm -f "$status_file"
-            return 0
-          }
-
-          report_status INITIAL
+          CACHE="$RUNNER_TEMP/canonical-python-cache-proof"
+          mkdir -p "$CACHE"
+          root_real="$(realpath "$ROOT")"
+          cache_real="$(realpath "$CACHE")"
+          case "$cache_real/" in
+            "$root_real/"*) echo "LAS_PYCACHE_PROOF_ISOLATION=FAIL"; exit 2 ;;
+          esac
 
           PY_LIST="$RUNNER_TEMP/workflow-python.txt"
           python3 - "$ROOT" > "$PY_LIST" <<'PY'
@@ -106,42 +84,25 @@ jobs:
               print(item)
           PY
 
-          py_log="$RUNNER_TEMP/python.private.log"
+          count=0
+          log="$RUNNER_TEMP/python.private.log"
           while IFS= read -r py; do
             [[ -n "$py" ]] || continue
             set +e
-            python3 "$py" >"$py_log" 2>&1
+            PYTHONPYCACHEPREFIX="$CACHE" python3 "$py" >"$log" 2>&1
             rc=$?
             set -e
-            echo "LAS_MUTATION_DIAG_PY_RC=$rc"
-            if ! report_status PYTHON; then
-              echo "LAS_MUTATION_DIAG_RESULT=DIRTY_AFTER_PYTHON"
-              exit 86
-            fi
+            echo "LAS_PYCACHE_PROOF_SCRIPT_RC=$rc"
+            [[ "$rc" -eq 0 ]] || { echo "LAS_PYCACHE_PROOF_SCRIPT=FAIL"; exit 1; }
+            test -z "$(git status --porcelain --untracked-files=all)"
+            count=$((count + 1))
           done < "$PY_LIST"
-          rm -f "$py_log" "$PY_LIST"
-          echo "LAS_MUTATION_DIAG_PYTHON_STAGE=CLEAN"
 
-          tla_jar="$RUNNER_TEMP/tla2tools.jar"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --silent --show-error \
-            --output "$tla_jar" \
-            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
-          test "$(sha256sum "$tla_jar" | awk '{print $1}')" == "$EXPECTED_TLA_SHA256"
-
-          sany_log="$RUNNER_TEMP/sany.private.log"
-          while IFS= read -r -d '' tla; do
-            dir="$(dirname "$tla")"
-            base="$(basename "$tla")"
-            set +e
-            (cd "$dir" && java -cp "$tla_jar" tla2sany.SANY "$base") >"$sany_log" 2>&1
-            rc=$?
-            set -e
-            echo "LAS_MUTATION_DIAG_SANY_RC=$rc"
-            if ! report_status SANY; then
-              echo "LAS_MUTATION_DIAG_RESULT=DIRTY_AFTER_SANY"
-              exit 86
-            fi
-          done < <(find spec -type f -name '*.tla' -print0 | sort -z)
-          rm -f "$sany_log"
-          echo "LAS_MUTATION_DIAG_SANY_STAGE=CLEAN"
-          echo "LAS_MUTATION_DIAG_RESULT=NO_LATE_STAGE_MUTATION"
+          pyc_count="$(find "$CACHE" -type f -name '*.pyc' | wc -l | tr -d ' ')"
+          [[ "$count" -gt 0 ]]
+          [[ "$pyc_count" -gt 0 ]]
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_PYCACHE_PROOF_SCRIPT_COUNT=$count"
+          echo "LAS_PYCACHE_PROOF_EXTERNAL_PYC_COUNT=$pyc_count"
+          echo "LAS_PYCACHE_PROOF_REPO_CLEAN=PASS"
+          echo "LAS_PYCACHE_PROOF_RELOCATION=PASS"
