@@ -127,6 +127,7 @@ jobs:
           { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
           src/effect_fabric/root_control_channel_authority.rs
+          src/effect_fabric/root_supervisor_linux_channel.rs
           src/effect_fabric/root_supervisor_linux_deployment.rs
           src/effect_fabric/root_supervisor_linux_guarded_session.rs
           src/effect_fabric/root_supervisor_linux_process_ingress.rs
@@ -167,6 +168,7 @@ jobs:
           git config user.email "las-verification@users.noreply.github.com"
           git add -A -- \
             src/effect_fabric/root_control_channel_authority.rs \
+            src/effect_fabric/root_supervisor_linux_channel.rs \
             src/effect_fabric/root_supervisor_linux_deployment.rs \
             src/effect_fabric/root_supervisor_linux_guarded_session.rs \
             src/effect_fabric/root_supervisor_linux_process_ingress.rs \
