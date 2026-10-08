@@ -1,0 +1,31 @@
+name: Resumable continuation idempotency v2
+
+on:
+  push:
+    branches: [verify/resumable-idempotency-v2-20261008]
+    paths:
+      - "tools/verification/verify_resumable_dispatch_idempotency.py"
+      - ".github/workflows/resumable-idempotency-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Pin and test idempotency contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          verifier=tools/verification/verify_resumable_dispatch_idempotency.py
+          cache="$RUNNER_TEMP/python-cache"
+          mkdir -p "$cache"
+          PYTHONPYCACHEPREFIX="$cache" python3 -m py_compile "$verifier"
+          out="$(python3 "$verifier" --self-test)"
+          printf '%s\n' "$out"
+          grep -Fx 'LAS_RESUMABLE_DISPATCH_IDEMPOTENCY_SELFTEST=PASS' <<<"$out"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_RESUMABLE_DISPATCH_IDEMPOTENCY_CONTRACT=PASS"
