@@ -1,0 +1,69 @@
+name: Diagnose current canonical TLC map
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-current-tlc-map-diagnostic.yml"
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 28a52175bfc55f4f8b2b0f4312cd2616a65a7082555149f4382746e2254e1b26
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cca195471f2c5a87b29e31aac07e5470d914b644ca6e1b470824507650b5830e
+  EXPECTED_VERIFIER_BLOB: 62e3e6dc0fad5dddc7fb0a453a3cd681d911e590
+
+jobs:
+  map:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Recover exact private revision
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          mkdir target; cd target; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" != "$TARGET_REF_HASH" ]] || { test -z "$matched_ref"; matched_ref="$ref"; }
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=512 origin "$matched_ref"
+          resolved=""
+          while read -r candidate; do
+            [[ "$(printf '%s' "$candidate" | sha256sum | awk '{print $1}')" != "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]] || { test -z "$resolved"; resolved="$candidate"; }
+          done < <(git rev-list --max-count=512 FETCH_HEAD)
+          test -n "$resolved"; git checkout -q --detach "$resolved"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+          unset PRIVATE_TOKEN auth matched_ref resolved candidate
+
+      - name: Count canonical TLC profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          map_py="$RUNNER_TEMP/tlc-map.py"
+          python3 - tools/verify_codespaces_all.sh "$map_py" <<'PY'
+          from pathlib import Path
+          import sys
+          src=Path(sys.argv[1]).read_text(encoding='utf-8')
+          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'
+          me='\nPY\n\nrun_tlc_profile() {'
+          if src.count(mh)!=1 or src.count(me)!=1: raise SystemExit('map anchors not unique')
+          start=src.index(mh)+len(mh); end=src.index(me,start)
+          Path(sys.argv[2]).write_text(src[start:end]+'\n',encoding='utf-8')
+          PY
+          map="$RUNNER_TEMP/tlc-map.tsv"
+          python3 "$map_py" "$PWD" >"$map"
+          count="$(wc -l <"$map" | tr -d ' ')"
+          test "$count" -gt 0
+          echo "LAS_CURRENT_CANONICAL_TLC_PROFILE_COUNT=$count"
+          echo "LAS_CURRENT_CANONICAL_TLC_MAP_SHA256=$(sha256sum "$map" | awk '{print $1}')"
