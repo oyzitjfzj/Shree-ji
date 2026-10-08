@@ -1,0 +1,168 @@
+name: Private guarded first-frame nonblocking materialization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-linux-guarded-first-frame-apply.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: aa719861f7785caff32c5544e61840d86bb48e6ea07b3120be87e429a1f5ed45
+  EXPECTED_HEAD_PROOF: 6fa3ff0007bb0c6ac889b071dfd3f01ecde6ee780fbcf8b258f714390c59ff48
+  EXPECTED_TREE_PROOF: 9fe94ccf890de2c5d7a6ab6ce182d1823055b222e5e01d89c28308432ada84f1
+  PATCH_BLOB: 9bd2356a89bd335e2ef3244885af96854be2f56b
+  RUST_TOOLCHAIN: 1.98.1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  recover-apply-verify-push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal >/dev/null
+          rustup component add --toolchain "$RUST_TOOLCHAIN" rustfmt clippy >/dev/null
+
+      - name: Recover exact private target and apply opaque patch
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          echo "::add-mask::$write_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          echo "LAS_GUARDED_ADMISSION_RECOVERY=PASS"
+
+          blob_json="$RUNNER_TEMP/private-patch-blob.json"
+          patch_gz="$RUNNER_TEMP/private.patch.gz"
+          patch_file="$RUNNER_TEMP/private.patch"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            -H "Authorization: Bearer $PRIVATE_READ_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${PRIVATE_REPOSITORY}/git/blobs/${PATCH_BLOB}" \
+            >"$blob_json"
+          python3 - "$blob_json" "$patch_gz" <<'PY'
+          import base64, json, pathlib, sys
+          source = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(source["content"]))
+          PY
+          gzip -dc "$patch_gz" >"$patch_file"
+          rm -f "$blob_json" "$patch_gz"
+
+          git apply --recount --check "$patch_file"
+          git apply --recount "$patch_file"
+          rm -f "$patch_file"
+          cargo +"$RUST_TOOLCHAIN" fmt --all
+          git diff --check
+
+          git diff --name-only | sort >"$RUNNER_TEMP/actual-paths"
+          cat >"$RUNNER_TEMP/allowed-paths" <<'EOF_PATHS'
+          src/effect_fabric/root_supervisor_linux_channel.rs
+          src/effect_fabric/root_supervisor_linux_deployment.rs
+          src/effect_fabric/root_supervisor_linux_guarded_session.rs
+          src/effect_fabric/root_supervisor_linux_process_ingress.rs
+          src/effect_fabric/root_supervisor_linux_service.rs
+          EOF_PATHS
+          sort -o "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/allowed-paths"
+          diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
+          echo "LAS_GUARDED_ADMISSION_SCOPE=PASS"
+
+          run_stage() {
+            local stage="$1"
+            shift
+            local log="$RUNNER_TEMP/${stage}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "LAS_GUARDED_ADMISSION_STAGE=${stage}"
+              echo "LAS_GUARDED_ADMISSION_RC=${rc}"
+              echo "LAS_GUARDED_ADMISSION_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_GUARDED_ADMISSION_LOG_LINES=$(wc -l < "$log")"
+              exit "$rc"
+            fi
+            echo "LAS_GUARDED_ADMISSION_${stage}=PASS"
+            echo "LAS_GUARDED_ADMISSION_${stage}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            rm -f "$log"
+          }
+
+          run_stage fmt_check cargo +"$RUST_TOOLCHAIN" fmt --all -- --check
+          run_stage linux_check env RUSTFLAGS=-Dwarnings cargo +"$RUST_TOOLCHAIN" check --locked --all-targets --features linux-peer-credentials --quiet
+          run_stage linux_tests env RUSTFLAGS=-Dwarnings cargo +"$RUST_TOOLCHAIN" test --locked --lib --features linux-peer-credentials --quiet
+          run_stage linux_clippy cargo +"$RUST_TOOLCHAIN" clippy --locked --all-targets --features linux-peer-credentials -- -D warnings
+          run_stage linux_release env RUSTFLAGS=-Dwarnings cargo +"$RUST_TOOLCHAIN" test --locked --lib --features linux-peer-credentials --release --no-run --quiet
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
+          diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
+          git commit -q -m "Make guarded first-frame admission nonblocking"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$remote_sha" = "$start_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+
+          echo "LAS_GUARDED_ADMISSION_PRIVATE_COMMIT=PASS"
+          echo "LAS_GUARDED_ADMISSION_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_GUARDED_ADMISSION_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
