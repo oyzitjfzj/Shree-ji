@@ -1,0 +1,120 @@
+name: Canonical slow-12 stalled-chain recovery
+
+on:
+  push:
+    branches: [verify/canonical-slow12-recovery-20261008]
+    paths:
+      - ".verification/canonical-slow12-recovery.trigger"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  recover:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - index: "29"
+            segment: "18"
+            parent_run: "37633696931"
+            parent_artifact: "tlc-state-29-17"
+            parent_artifact_digest: "sha256:50906a25eb9b7aa89783cd5164b050dbde548be5f5809d60aa7aebd993474f8d"
+          - index: "36"
+            segment: "19"
+            parent_run: "37633280905"
+            parent_artifact: "tlc-state-36-18"
+            parent_artifact_digest: "sha256:20e168d8b7bb0540df6d3e6b8206dfb1f457be08680a569e7bb6813b6a620697"
+          - index: "172"
+            segment: "11"
+            parent_run: "37628164135"
+            parent_artifact: "tlc-state-172-10"
+            parent_artifact_digest: "sha256:e99820dd9c421a79644c99c90ba4fb5158a63119b05576022b351d534eff64e5"
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Revalidate exact successful parent artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INDEX: ${{ matrix.index }}
+          SEGMENT: ${{ matrix.segment }}
+          PARENT_RUN: ${{ matrix.parent_run }}
+          PARENT_ARTIFACT: ${{ matrix.parent_artifact }}
+          PARENT_ARTIFACT_DIGEST: ${{ matrix.parent_artifact_digest }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          run_json="$RUNNER_TEMP/parent-run.json"
+          artifacts_json="$RUNNER_TEMP/parent-artifacts.json"
+          curl --proto '=https' --tlsv1.2 --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$api/actions/runs/$PARENT_RUN" >"$run_json"
+          curl --proto '=https' --tlsv1.2 --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$api/actions/runs/$PARENT_RUN/artifacts" >"$artifacts_json"
+          python3 - "$run_json" "$artifacts_json" "$PARENT_RUN" "$PARENT_ARTIFACT" "$PARENT_ARTIFACT_DIGEST" <<'PY'
+          import json, sys
+          rpath, apath, expected_run, expected_name, expected_digest = sys.argv[1:]
+          run=json.load(open(rpath,encoding='utf-8'))
+          if str(run.get('id')) != expected_run or run.get('status') != 'completed' or run.get('conclusion') != 'success':
+              raise SystemExit('parent run is not exact successful evidence')
+          arts=json.load(open(apath,encoding='utf-8')).get('artifacts',[])
+          hits=[a for a in arts if a.get('name') == expected_name]
+          if len(hits) != 1:
+              raise SystemExit(f'expected exactly one parent artifact, got {len(hits)}')
+          art=hits[0]
+          if art.get('expired') is not False:
+              raise SystemExit('parent artifact expired')
+          if art.get('digest') != expected_digest:
+              raise SystemExit(f"parent artifact digest mismatch: {art.get('digest')!r}")
+          print('LAS_SLOW12_RECOVERY_PARENT_ARTIFACT=PASS')
+          PY
+          echo "LAS_SLOW12_RECOVERY_PARENT_INDEX=$INDEX"
+          echo "LAS_SLOW12_RECOVERY_CHILD_SEGMENT=$SEGMENT"
+
+      - name: Dispatch exactly one canonical replay child
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INDEX: ${{ matrix.index }}
+          SEGMENT: ${{ matrix.segment }}
+          PARENT_RUN: ${{ matrix.parent_run }}
+          PARENT_ARTIFACT: ${{ matrix.parent_artifact }}
+        run: |
+          set -euo pipefail
+          payload="$(python3 - "$INDEX" "$SEGMENT" "$PARENT_RUN" "$PARENT_ARTIFACT" <<'PY'
+          import json, sys
+          index, segment, run_id, artifact = sys.argv[1:]
+          print(json.dumps({
+              'ref':'verify/current-exact-resumable-24244fc8',
+              'inputs':{
+                  'index':index,
+                  'segment':segment,
+                  'resume_run_id':run_id,
+                  'resume_artifact':artifact,
+              },
+          }, separators=(',',':')))
+          PY
+          )"
+          # Deliberately no retry: workflow_dispatch POST is not idempotent. A transport
+          # error must remain visible rather than risk creating ambiguous duplicate children.
+          code="$(curl --proto '=https' --tlsv1.2 --silent --show-error \
+            -o "$RUNNER_TEMP/dispatch-response" -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/private-assurance-slow-tlc-continuation.yml/dispatches" \
+            -d "$payload")"
+          if [[ "$code" != "204" ]]; then
+            echo "ERROR: recovery dispatch failed with HTTP $code" >&2
+            cat "$RUNNER_TEMP/dispatch-response" >&2 || true
+            exit 1
+          fi
+          echo "LAS_SLOW12_RECOVERY_DISPATCH_INDEX_${INDEX}=PASS"
