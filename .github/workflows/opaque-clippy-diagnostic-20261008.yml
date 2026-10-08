@@ -91,6 +91,7 @@ jobs:
           levels = Counter()
           fingerprints = Counter()
           primaries = Counter()
+          locations = []
           with open(sys.argv[1], 'r', encoding='utf-8', errors='replace') as fh:
               for raw in fh:
                   try:
@@ -108,11 +109,22 @@ jobs:
                   codes[code] += 1
                   text = str(msg.get('message') or '')
                   fingerprints[hashlib.sha256(text.encode()).hexdigest()[:16]] += 1
-                  primaries[sum(1 for span in (msg.get('spans') or []) if span.get('is_primary'))] += 1
+                  primary_spans = [span for span in (msg.get('spans') or []) if span.get('is_primary')]
+                  primaries[len(primary_spans)] += 1
+                  for span in primary_spans:
+                      path = str(span.get('file_name') or '')
+                      locations.append((
+                          code,
+                          hashlib.sha256(path.encode()).hexdigest(),
+                          int(span.get('line_start') or 0),
+                          int(span.get('column_start') or 0),
+                      ))
           print('OPAQUE_CLIPPY_LEVELS=' + ','.join(f'{k}:{v}' for k,v in sorted(levels.items())))
           print('OPAQUE_CLIPPY_CODES=' + ','.join(f'{k}:{v}' for k,v in sorted(codes.items())))
           print('OPAQUE_CLIPPY_FINGERPRINTS=' + ','.join(f'{k}:{v}' for k,v in sorted(fingerprints.items())))
           print('OPAQUE_CLIPPY_PRIMARY_SPANS=' + ','.join(f'{k}:{v}' for k,v in sorted(primaries.items())))
+          for ordinal, (code, path_hash, line, column) in enumerate(locations, 1):
+              print(f'OPAQUE_CLIPPY_LOCATION_{ordinal}={code}:{path_hash}:{line}:{column}')
           PY
           rm -f "$json"
           test "$rc" -ne 0
