@@ -1,0 +1,162 @@
+name: Private Linux guarded pending contract apply 20261009
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-linux-guarded-pending-contract-apply-20261009.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 0adaa66a5aff812fb9bdeedd27f6b7cb115183334b893ee7b60e8725b6470eff
+  EXPECTED_HEAD_PROOF: 3ca6766283839024957da4b542271a05befc93867910cb79ef4a89b70a99c222
+  EXPECTED_TREE_PROOF: 74b71656fc43839c4acc83e2f2aba678b71703df94c7ddf3897090690436607c
+  EXPECTED_HELPER_BLOB: 3831e2fb76fedefcd1e42948eeeb14447aab740c
+
+jobs:
+  apply-verify-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Apply verify and commit guarded pending contract
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/private"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          echo "::add-mask::$write_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD:tools/tmp_apply_linux_guarded_pending_contract.py)" = "$EXPECTED_HELPER_BLOB"
+
+          patch_log="$RUNNER_TEMP/pending-contract-patch.private.log"
+          set +e
+          python3 tools/tmp_apply_linux_guarded_pending_contract.py >"$patch_log" 2>&1
+          patch_rc=$?
+          set -e
+          if [[ $patch_rc -ne 0 ]]; then
+            echo 'LAS_PENDING_CONTRACT_STAGE=private_patch'
+            echo "LAS_PENDING_CONTRACT_RC=$patch_rc"
+            echo "LAS_PENDING_CONTRACT_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            safe_diag="$(grep -E '^[^:]+: expected exactly one replacement target, found [0-9]+$' "$patch_log" | tail -n 1 || true)"
+            if [[ -n "$safe_diag" ]]; then echo "LAS_PENDING_CONTRACT_SAFE_DIAG=$safe_diag"; fi
+            exit "$patch_rc"
+          fi
+          rm -f "$patch_log"
+          test ! -e tools/tmp_apply_linux_guarded_pending_contract.py
+
+          cargo +1.98.1 fmt --all >"$RUNNER_TEMP/fmt-apply.private.log" 2>&1
+          git diff --check >>"$RUNNER_TEMP/fmt-apply.private.log" 2>&1
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
+          cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
+          src/effect_fabric/root_supervisor_linux_process_ingress.rs
+          tools/tmp_apply_linux_guarded_pending_contract.py
+          EOF
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
+          diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
+          rm -f "$RUNNER_TEMP/fmt-apply.private.log"
+          echo 'LAS_PENDING_CONTRACT_SCOPE=PASS'
+
+          run_stage() {
+            local stage="$1"; shift
+            local log="$RUNNER_TEMP/${stage}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "LAS_PENDING_CONTRACT_STAGE=${stage}"
+              echo "LAS_PENDING_CONTRACT_RC=${rc}"
+              echo "LAS_PENDING_CONTRACT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              exit "$rc"
+            fi
+            echo "LAS_PENDING_CONTRACT_${stage}=PASS"
+            echo "LAS_PENDING_CONTRACT_${stage}_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+            rm -f "$log"
+          }
+
+          run_stage fmt_check cargo +1.98.1 fmt --all -- --check
+          run_stage check_default env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          run_stage check_linux env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials
+          run_stage clippy_linux cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials -- -D warnings
+          run_stage test_default env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --all-targets -- --test-threads=1
+          run_stage test_linux env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --all-targets --features linux-peer-credentials -- --test-threads=1
+          run_stage release_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --release --locked --all-targets --features linux-peer-credentials
+          run_stage release_test env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --all-targets --features linux-peer-credentials -- --test-threads=1
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -A -- src/effect_fabric/root_supervisor_linux_process_ingress.rs tools/tmp_apply_linux_guarded_pending_contract.py
+          git diff --cached --check
+          git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
+          diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
+          git commit -q -m "Expose retained guarded admission as pending"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo 'LAS_PENDING_CONTRACT_PRIVATE_COMMIT=PASS'
+          echo "LAS_PENDING_CONTRACT_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PENDING_CONTRACT_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
