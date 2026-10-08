@@ -1,0 +1,62 @@
+name: Exact promotion acceptance
+
+on:
+  push:
+    branches: [verify/promotion-exact-acceptance-20261008]
+    paths:
+      - ".github/workflows/promotion-exact-acceptance.yml"
+      - "tools/verification/verify_promotion_exact_acceptance_v1.py"
+      - ".verification/promotion-exact-acceptance.json"
+      - ".verification/promotion-exact-acceptance.arm"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  accept:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact public acceptance revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Pin and adversarially self-test promotion verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          verifier=tools/verification/verify_promotion_exact_acceptance_v1.py
+          test "$(git hash-object "$verifier")" = "8ab99ba07b2dd357811a8f05a020cd6b948e78f7"
+          cache="$RUNNER_TEMP/python-cache"
+          mkdir -p "$cache"
+          PYTHONPYCACHEPREFIX="$cache" python3 -m py_compile "$verifier"
+          output="$(python3 "$verifier" --self-test)"
+          printf '%s\n' "$output"
+          grep -Fx 'LAS_PROMOTION_EXACT_ACCEPTANCE_V1_SELF_TEST=PASS' <<<"$output"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_PROMOTION_ACCEPTANCE_VERIFIER_PIN=PASS"
+          echo "LAS_PROMOTION_ACCEPTANCE_VERIFIER_SELF_TEST=PASS"
+
+      - name: Verify pinned promotion evidence when armed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          arm=.verification/promotion-exact-acceptance.arm
+          manifest=.verification/promotion-exact-acceptance.json
+          if [[ ! -f "$arm" ]]; then
+            echo "LAS_PROMOTION_ACCEPTANCE_HARNESS_SELF_TEST_ONLY=PASS"
+            exit 0
+          fi
+          test "$(cat "$arm")" = "armed"
+          test -f "$manifest"
+          verifier=tools/verification/verify_promotion_exact_acceptance_v1.py
+          output="$RUNNER_TEMP/promotion-exact-acceptance.log"
+          python3 "$verifier" --manifest "$manifest" --token "$GH_TOKEN" | tee "$output"
+          grep -Fx 'LAS_PROMOTION_CURRENT_203_ACCEPTANCE=PASS' "$output"
+          grep -Fx 'LAS_PROMOTION_GRAPH_EVIDENCE=PASS' "$output"
+          grep -Fx 'LAS_PROMOTION_EXACT_BOUNDARY=PASS' "$output"
+          grep -Fx 'LAS_PROMOTION_EXACT_ACCEPTANCE=PASS' "$output"
+          echo "LAS_PROMOTION_EXACT_ARMED_ACCEPTANCE=PASS"
