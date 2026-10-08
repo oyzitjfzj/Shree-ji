@@ -1,0 +1,158 @@
+name: Canonical formal-input equivalence
+
+on:
+  push:
+    branches: [verify/canonical-formal-equivalence-20261008]
+    paths:
+      - ".github/workflows/canonical-formal-equivalence.yml"
+      - ".verification/canonical-formal-equivalence.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASE_SNAPSHOT_PROOF: abb7edc70bc685527a44c36f8997b45c863891b54fe9307e3c8c1c7cfe81c48d
+  HEAD_SNAPSHOT_PROOF: d893f63ec5c6e07f1541691204a7e701ea7e435df45c3877ba4ffe1fbebb994f
+  EXPECTED_BASE_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_PROFILE39_RUNNER_BLOB: 5dace5ea82581f820a69f7df46d65ac1a7d34021
+  EXPECTED_TLA_SHA1: bee4a54f3ee3d4afc347c3240ec2d9e93b075104
+  EXPECTED_TLA_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Recover exact private revisions opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-equivalence"
+          mkdir -p "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" \
+            fetch -q --depth=1024 origin '+refs/heads/*:refs/remotes/origin/*'
+
+          find_by_proof() {
+            local expected="$1" found=""
+            while IFS= read -r oid; do
+              [[ -n "$oid" ]] || continue
+              if [[ "$(printf '%s' "$oid" | sha256sum | awk '{print $1}')" == "$expected" ]]; then
+                test -z "$found"
+                found="$oid"
+              fi
+            done < <(git rev-list --all --max-count=16384 | sort -u)
+            test -n "$found"
+            printf '%s' "$found"
+          }
+
+          base="$(find_by_proof "$BASE_SNAPSHOT_PROOF")"
+          head="$(find_by_proof "$HEAD_SNAPSHOT_PROOF")"
+          echo "::add-mask::$base"; echo "::add-mask::$head"
+          git merge-base --is-ancestor "$base" "$head"
+          printf '%s' "$base" >"$RUNNER_TEMP/base"
+          printf '%s' "$head" >"$RUNNER_TEMP/head"
+          echo "LAS_FORMAL_EQ_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth base head
+
+      - name: Prove repository delta is wrapper-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-equivalence"
+          base="$(cat "$RUNNER_TEMP/base")"
+          head="$(cat "$RUNNER_TEMP/head")"
+          delta="$RUNNER_TEMP/delta.private"
+          git diff --name-only "$base" "$head" >"$delta"
+          test "$(wc -l <"$delta" | tr -d ' ')" = "1"
+          grep -qx 'tools/verification/run_canonical_verifier_hardened.sh' "$delta"
+          test -z "$(git diff --name-only "$base" "$head" -- . ':(exclude)tools/verification/run_canonical_verifier_hardened.sh')"
+          echo "LAS_FORMAL_EQ_WRAPPER_ONLY_DELTA=PASS"
+
+      - name: Prove complete formal inputs are byte-identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-equivalence"
+          base="$(cat "$RUNNER_TEMP/base")"
+          head="$(cat "$RUNNER_TEMP/head")"
+
+          base_spec_tree="$(git rev-parse "$base:spec")"
+          head_spec_tree="$(git rev-parse "$head:spec")"
+          echo "::add-mask::$base_spec_tree"; echo "::add-mask::$head_spec_tree"
+          test "$base_spec_tree" = "$head_spec_tree"
+
+          base_engine="$(git rev-parse "$base:tools/verify_codespaces_all.sh")"
+          head_engine="$(git rev-parse "$head:tools/verify_codespaces_all.sh")"
+          test "$base_engine" = "$EXPECTED_BASE_VERIFIER_BLOB"
+          test "$head_engine" = "$EXPECTED_BASE_VERIFIER_BLOB"
+
+          base_p39="$(git rev-parse "$base:tools/verification/run_candidate_assurance_profile39_compositional.sh")"
+          head_p39="$(git rev-parse "$head:tools/verification/run_candidate_assurance_profile39_compositional.sh")"
+          test "$base_p39" = "$EXPECTED_PROFILE39_RUNNER_BLOB"
+          test "$head_p39" = "$EXPECTED_PROFILE39_RUNNER_BLOB"
+
+          # The wrapper-only repository delta above proves every other tracked helper,
+          # checker, workflow-referenced verification input, and formal artifact is
+          # unchanged. These explicit pins make the two formal execution engines visible.
+          echo "LAS_FORMAL_EQ_SPEC_TREE=PASS"
+          echo "LAS_FORMAL_EQ_CANONICAL_ENGINE=PASS"
+          echo "LAS_FORMAL_EQ_PROFILE39_RUNNER=PASS"
+
+      - name: Authenticate exact TLA toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/tla2tools-equivalence.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --silent --show-error \
+            --output "$jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          test "$(sha1sum "$jar" | awk '{print $1}')" = "$EXPECTED_TLA_SHA1"
+          test "$(sha256sum "$jar" | awk '{print $1}')" = "$EXPECTED_TLA_SHA256"
+          echo "LAS_FORMAL_EQ_TLA_TOOLCHAIN=PASS"
+
+      - name: Prove equivalence gate fails closed on formal drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-equivalence"
+          base="$(cat "$RUNNER_TEMP/base")"
+          head="$(cat "$RUNNER_TEMP/head")"
+          git checkout -q -B negative-control "$head"
+          probe="$(git ls-tree -r --name-only HEAD spec | grep -E '\.(tla|cfg)$' | head -n 1)"
+          test -n "$probe"
+          printf '\n\\* equivalence-negative-control\n' >>"$probe"
+          git add "$probe"
+          git -c user.name='LAS Equivalence Validator' -c user.email='validator@invalid' \
+            commit -qm 'equivalence negative control'
+          negative="$(git rev-parse HEAD)"
+          echo "::add-mask::$negative"
+
+          # A formal drift must break both whole-repository-except-wrapper equivalence
+          # and the immutable spec subtree identity.
+          set +e
+          git diff --quiet "$base" "$negative" -- . ':(exclude)tools/verification/run_canonical_verifier_hardened.sh'
+          repo_rc=$?
+          set -e
+          test "$repo_rc" -ne 0
+          test "$(git rev-parse "$base:spec")" != "$(git rev-parse "$negative:spec")"
+          git checkout -q --detach "$head"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_FORMAL_EQ_NEGATIVE_SPEC_DRIFT=PASS"
+
+      - name: Seal formal-equivalence result
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-equivalence"
+          head="$(cat "$RUNNER_TEMP/head")"
+          git checkout -q --detach "$head"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_FORMAL_INPUT_EQUIVALENCE=PASS"
