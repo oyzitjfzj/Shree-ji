@@ -1,0 +1,147 @@
+name: Canonical pre-TLC mutation diagnostic
+
+on:
+  push:
+    branches: [verify/canonical-pre-tlc-mutation-diagnostic-20261008]
+    paths:
+      - ".verification/canonical-pre-tlc-mutation-diagnostic.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: abb7edc70bc685527a44c36f8997b45c863891b54fe9307e3c8c1c7cfe81c48d
+  EXPECTED_PRIVATE_TREE_PROOF: 9de00bccc13c07d4e99f471a26ae749c00091afd2599f12082f2ba4a0f7daa22
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_TLA_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Recover exact private candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-target"
+          mkdir -p "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q -B verify-target "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" == "$EXPECTED_VERIFIER_BLOB"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_MUTATION_DIAG_EXACT_RECOVERY=PASS"
+
+      - name: Probe late pre-TLC writers without leaking paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-target"
+          cd "$ROOT"
+
+          report_status() {
+            local stage="$1"
+            local status_file="$RUNNER_TEMP/status.private"
+            git status --porcelain --untracked-files=all >"$status_file"
+            local total untracked tracked pycache tools spec other
+            total="$(wc -l <"$status_file" | tr -d ' ')"
+            untracked="$(grep -c '^?? ' "$status_file" || true)"
+            tracked=$((total - untracked))
+            pycache="$(awk 'substr($0,4) ~ /(^|\/)__pycache__\// || substr($0,4) ~ /\.pyc$/ {c++} END {print c+0}' "$status_file")"
+            tools="$(awk 'substr($0,4) ~ /^tools\// {c++} END {print c+0}' "$status_file")"
+            spec="$(awk 'substr($0,4) ~ /^spec\// {c++} END {print c+0}' "$status_file")"
+            other=$((total - tools - spec))
+            echo "LAS_MUTATION_DIAG_STAGE=$stage"
+            echo "LAS_MUTATION_DIAG_TOTAL=$total"
+            echo "LAS_MUTATION_DIAG_TRACKED=$tracked"
+            echo "LAS_MUTATION_DIAG_UNTRACKED=$untracked"
+            echo "LAS_MUTATION_DIAG_PYCACHE=$pycache"
+            echo "LAS_MUTATION_DIAG_TOOLS=$tools"
+            echo "LAS_MUTATION_DIAG_SPEC=$spec"
+            echo "LAS_MUTATION_DIAG_OTHER=$other"
+            echo "LAS_MUTATION_DIAG_STATUS_SHA256=$(sha256sum "$status_file" | awk '{print $1}')"
+            if (( total != 0 )); then
+              rm -f "$status_file"
+              return 86
+            fi
+            rm -f "$status_file"
+            return 0
+          }
+
+          report_status INITIAL
+
+          PY_LIST="$RUNNER_TEMP/workflow-python.txt"
+          python3 - "$ROOT" > "$PY_LIST" <<'PY'
+          import pathlib, re, sys
+          root = pathlib.Path(sys.argv[1])
+          found = set()
+          for wf in (root / ".github" / "workflows").glob("*.yml"):
+              text = wf.read_text(encoding="utf-8")
+              found.update(re.findall(r'python(?:3)?\s+(tools/verification/[A-Za-z0-9_./-]+\.py)', text))
+          for item in sorted(found):
+              print(item)
+          PY
+
+          py_log="$RUNNER_TEMP/python.private.log"
+          while IFS= read -r py; do
+            [[ -n "$py" ]] || continue
+            set +e
+            python3 "$py" >"$py_log" 2>&1
+            rc=$?
+            set -e
+            echo "LAS_MUTATION_DIAG_PY_RC=$rc"
+            if ! report_status PYTHON; then
+              echo "LAS_MUTATION_DIAG_RESULT=DIRTY_AFTER_PYTHON"
+              exit 86
+            fi
+          done < "$PY_LIST"
+          rm -f "$py_log" "$PY_LIST"
+          echo "LAS_MUTATION_DIAG_PYTHON_STAGE=CLEAN"
+
+          tla_jar="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --silent --show-error \
+            --output "$tla_jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          test "$(sha256sum "$tla_jar" | awk '{print $1}')" == "$EXPECTED_TLA_SHA256"
+
+          sany_log="$RUNNER_TEMP/sany.private.log"
+          while IFS= read -r -d '' tla; do
+            dir="$(dirname "$tla")"
+            base="$(basename "$tla")"
+            set +e
+            (cd "$dir" && java -cp "$tla_jar" tla2sany.SANY "$base") >"$sany_log" 2>&1
+            rc=$?
+            set -e
+            echo "LAS_MUTATION_DIAG_SANY_RC=$rc"
+            if ! report_status SANY; then
+              echo "LAS_MUTATION_DIAG_RESULT=DIRTY_AFTER_SANY"
+              exit 86
+            fi
+          done < <(find spec -type f -name '*.tla' -print0 | sort -z)
+          rm -f "$sany_log"
+          echo "LAS_MUTATION_DIAG_SANY_STAGE=CLEAN"
+          echo "LAS_MUTATION_DIAG_RESULT=NO_LATE_STAGE_MUTATION"
