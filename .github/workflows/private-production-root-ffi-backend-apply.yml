@@ -1,0 +1,233 @@
+name: Private production Root FFI backend apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-production-root-ffi-backend-apply.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: f46e7170826acc481e19f9edf9fbf433362defdfb251fbfa87e7c67295183437
+  EXPECTED_HEAD_PROOF: 894f934c87ab3c8325713b3ca243e58ffa180166ff9c5dc93613f3d917e648d7
+  EXPECTED_TREE_PROOF: f5ee0a195ace97dc833257f73911df7e173c1332cc10122600b039641485f321
+
+jobs:
+  verify-apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Install checksum-pinned Ada toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/alr.zip"
+          prefix="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" \
+            | sha256sum --check --strict
+          mkdir -p "$prefix"
+          unzip -q "$archive" -d "$prefix"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+
+      - name: Apply verify and commit exact private production backend
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          workspace="$RUNNER_TEMP/root-production-toolchain"
+          mkdir -p "$workspace"
+          cd "$workspace"
+          alr -n init --in-place --no-skel --lib root_production_toolchain >/dev/null
+          gpr_path="$(alr exec -- sh -lc 'command -v gprbuild')"
+          test -x "$gpr_path"
+          export GPRBUILD="$gpr_path"
+          echo "GPRBUILD=$gpr_path" >> "$GITHUB_ENV"
+
+          root="$GITHUB_WORKSPACE/private"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          echo "::add-mask::$write_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          start_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$start_tree"
+          test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          echo 'LAS_ROOT_FFI_PRODUCTION_IDENTITY=PASS'
+
+          patch_log="$RUNNER_TEMP/private-patch.log"
+          set +e
+          python3 tools/tmp_apply_production_root_ffi_backend.py >"$patch_log" 2>&1
+          patch_rc=$?
+          set -e
+          if [[ $patch_rc -ne 0 ]]; then
+            echo 'LAS_ROOT_FFI_PRODUCTION_STAGE=private_patch'
+            echo "LAS_ROOT_FFI_PRODUCTION_RC=$patch_rc"
+            echo "LAS_ROOT_FFI_PRODUCTION_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            exit "$patch_rc"
+          fi
+          rm -f "$patch_log"
+          echo 'LAS_ROOT_FFI_PRODUCTION_private_patch=PASS'
+
+          fmt_apply_log="$RUNNER_TEMP/fmt-apply.log"
+          set +e
+          cargo +1.98.1 fmt --all >"$fmt_apply_log" 2>&1
+          fmt_apply_rc=$?
+          set -e
+          if [[ $fmt_apply_rc -ne 0 ]]; then
+            echo 'LAS_ROOT_FFI_PRODUCTION_STAGE=fmt_apply'
+            echo "LAS_ROOT_FFI_PRODUCTION_RC=$fmt_apply_rc"
+            echo "LAS_ROOT_FFI_PRODUCTION_LOG_SHA256=$(sha256sum "$fmt_apply_log" | awk '{print $1}')"
+            exit "$fmt_apply_rc"
+          fi
+          rm -f "$fmt_apply_log"
+
+          diff_log="$RUNNER_TEMP/diff-check.log"
+          set +e
+          git diff --check >"$diff_log" 2>&1
+          diff_rc=$?
+          set -e
+          if [[ $diff_rc -ne 0 ]]; then
+            echo 'LAS_ROOT_FFI_PRODUCTION_STAGE=diff_check'
+            echo "LAS_ROOT_FFI_PRODUCTION_RC=$diff_rc"
+            echo "LAS_ROOT_FFI_PRODUCTION_LOG_SHA256=$(sha256sum "$diff_log" | awk '{print $1}')"
+            exit "$diff_rc"
+          fi
+          rm -f "$diff_log"
+
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
+          cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
+          src/effect_fabric/dispatch_commit.rs
+          src/effect_fabric/root_control_channel_authority.rs
+          src/effect_fabric/root_ffi.rs
+          src/lib.rs
+          tools/tmp_apply_production_root_ffi_backend.py
+          EOF
+          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
+          diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
+          echo 'LAS_ROOT_FFI_PRODUCTION_SCOPE=PASS'
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+
+          capture_private_failure() {
+            local stage="$1"
+            local log="$2"
+            local diag_path="tools/tmp_root_ffi_production_${stage}_${GITHUB_RUN_ID}.log"
+            cp "$log" "$diag_path"
+            git add -- "$diag_path"
+            git commit -q -m "Capture private production Root FFI ${stage} diagnostic"
+            local diag_ref="refs/heads/tmp/root-ffi-production-diagnostic-${GITHUB_RUN_ID}"
+            git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
+            echo 'LAS_ROOT_FFI_PRODUCTION_PRIVATE_DIAGNOSTIC=CAPTURED'
+          }
+
+          run_gate() {
+            local stage="$1"
+            shift
+            local log="$RUNNER_TEMP/${stage}.log"
+            set +e
+            "$@" >"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "LAS_ROOT_FFI_PRODUCTION_STAGE=${stage}"
+              echo "LAS_ROOT_FFI_PRODUCTION_RC=${rc}"
+              echo "LAS_ROOT_FFI_PRODUCTION_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              capture_private_failure "$stage" "$log"
+              exit "$rc"
+            fi
+            rm -f "$log"
+            echo "LAS_ROOT_FFI_PRODUCTION_${stage}=PASS"
+          }
+
+          run_gate trust_contract python3 tools/verification/root_trust_input_contract.py
+          run_gate fmt_check cargo +1.98.1 fmt --all -- --check
+          run_gate base_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          run_gate production_lib_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features "root-ffi linux-peer-credentials"
+          run_gate production_all_targets_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --features "root-ffi linux-peer-credentials"
+          run_gate production_clippy cargo +1.98.1 clippy --locked --all-targets --features "root-ffi linux-peer-credentials" -- -D warnings
+          run_gate production_lib_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
+          run_gate delegation_abi_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --features "root-ffi linux-peer-credentials" --test root_delegation_abi_integration -- --test-threads=1
+          run_gate production_release_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --release --locked --all-targets --features "root-ffi linux-peer-credentials"
+          run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
+          run_gate delegation_abi_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --features "root-ffi linux-peer-credentials" --test root_delegation_abi_integration -- --test-threads=1
+
+          git add -A -- \
+            src/effect_fabric/dispatch_commit.rs \
+            src/effect_fabric/root_control_channel_authority.rs \
+            src/effect_fabric/root_ffi.rs \
+            src/lib.rs \
+            tools/tmp_apply_production_root_ffi_backend.py
+          git diff --cached --check
+          git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
+          diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
+          git commit -q -m "Restore sealed production Root FFI channel backend"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo 'LAS_ROOT_FFI_PRODUCTION_PRIVATE_COMMIT=PASS'
+          echo "LAS_ROOT_FFI_PRODUCTION_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_ROOT_FFI_PRODUCTION_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
