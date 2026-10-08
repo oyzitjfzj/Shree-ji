@@ -1,0 +1,163 @@
+name: Private exact Rust boundary 20261008
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-exact-rust-boundary-20261008.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: aa719861f7785caff32c5544e61840d86bb48e6ea07b3120be87e429a1f5ed45
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: cdbbd2f6616fbd1d7e2f9867dd85cd1854ab250f12a998315c564d8647f3e2f0
+  EXPECTED_PRIVATE_TREE_PROOF: f36c60ad7839f693d34eb22c060779678364b6b034170d55fe7442dc7c2bdc9a
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          matched_sha=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              matched_sha="$sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$matched_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$matched_sha"
+          test "$(printf '%s' "$matched_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$matched_sha"
+          git checkout -q --detach "$matched_sha"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          echo "LAS_EXACT_RECOVERY=PASS"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null 2>&1
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null 2>&1
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          echo "LAS_EXACT_TOOLCHAIN=PASS"
+
+      - name: Require formatting clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/rustfmt.log"
+          if cargo +1.98.1 fmt --all -- --check >"$log" 2>&1; then
+            echo "LAS_EXACT_FORMAT=PASS"
+          else
+            echo "LAS_EXACT_FORMAT=FAIL"
+            echo "LAS_EXACT_FORMAT_LOG_LINES=$(wc -l <"$log")"
+            exit 1
+          fi
+
+      - name: Execute Linux-enabled library tests
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/lib-tests.log"
+          if cargo +1.98.1 test --locked --lib --features linux-peer-credentials -- --test-threads=1 >"$log" 2>&1; then
+            echo "LAS_EXACT_LINUX_LIB=PASS"
+          else
+            echo "LAS_EXACT_LINUX_LIB=FAIL"
+            echo "LAS_EXACT_LINUX_LIB_LOG_LINES=$(wc -l <"$log")"
+            echo "LAS_EXACT_LINUX_LIB_ERROR_MARKERS=$(grep -Ec '(^|[^[:alpha:]])error([^[:alpha:]]|$)' "$log" || true)"
+            exit 1
+          fi
+
+      - name: Require Linux-enabled all-target check
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/check.log"
+          if cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials >"$log" 2>&1; then
+            echo "LAS_EXACT_CHECK=PASS"
+          else
+            echo "LAS_EXACT_CHECK=FAIL"
+            echo "LAS_EXACT_CHECK_LOG_LINES=$(wc -l <"$log")"
+            echo "LAS_EXACT_CHECK_ERROR_MARKERS=$(grep -Ec '(^|[^[:alpha:]])error([^[:alpha:]]|$)' "$log" || true)"
+            exit 1
+          fi
+
+      - name: Require strict Linux-enabled Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/clippy.log"
+          if cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials -- -D warnings >"$log" 2>&1; then
+            echo "LAS_EXACT_CLIPPY=PASS"
+          else
+            echo "LAS_EXACT_CLIPPY=FAIL"
+            echo "LAS_EXACT_CLIPPY_LOG_LINES=$(wc -l <"$log")"
+            echo "LAS_EXACT_CLIPPY_WARNING_MARKERS=$(grep -Ec '(^|[^[:alpha:]])warning([^[:alpha:]]|$)' "$log" || true)"
+            echo "LAS_EXACT_CLIPPY_ERROR_MARKERS=$(grep -Ec '(^|[^[:alpha:]])error([^[:alpha:]]|$)' "$log" || true)"
+            exit 1
+          fi
+
+      - name: Execute canonical current-boundary verifier opaquely
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          log="$RUNNER_TEMP/canonical.log"
+          if bash tools/verify_current_boundary.sh >"$log" 2>&1; then
+            echo "LAS_EXACT_CANONICAL=PASS"
+          else
+            echo "LAS_EXACT_CANONICAL=FAIL"
+            echo "LAS_EXACT_CANONICAL_LOG_LINES=$(wc -l <"$log")"
+            exit 1
+          fi
+
+      - name: Require unchanged exact snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(printf '%s' "$(git rev-parse HEAD)" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          test "$(printf '%s' "$(git rev-parse 'HEAD^{tree}')" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          echo "LAS_EXACT_SNAPSHOT=PASS"
