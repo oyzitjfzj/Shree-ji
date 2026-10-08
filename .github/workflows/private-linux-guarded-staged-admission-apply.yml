@@ -80,9 +80,49 @@ jobs:
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
 
-          python3 tools/tmp_apply_linux_guarded_staged_admission.py >"$RUNNER_TEMP/patch.log" 2>&1
-          cargo +1.98.1 fmt --all >>"$RUNNER_TEMP/patch.log" 2>&1
-          git diff --check >>"$RUNNER_TEMP/patch.log" 2>&1
+          patch_log="$RUNNER_TEMP/patch.log"
+          set +e
+          python3 tools/tmp_apply_linux_guarded_staged_admission.py >"$patch_log" 2>&1
+          patch_rc=$?
+          set -e
+          if [[ $patch_rc -ne 0 ]]; then
+            echo 'LAS_GUARDED_STAGED_ADMISSION_STAGE=private_patch'
+            echo "LAS_GUARDED_STAGED_ADMISSION_RC=$patch_rc"
+            echo "LAS_GUARDED_STAGED_ADMISSION_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            safe_diag="$(grep -E '^[^:]+: expected exactly one replacement target, found [0-9]+$' "$patch_log" | tail -n 1 || true)"
+            if [[ -n "$safe_diag" ]]; then
+              echo "LAS_GUARDED_STAGED_ADMISSION_SAFE_DIAG=$safe_diag"
+            fi
+            exit "$patch_rc"
+          fi
+          rm -f "$patch_log"
+          echo 'LAS_GUARDED_STAGED_ADMISSION_private_patch=PASS'
+
+          fmt_apply_log="$RUNNER_TEMP/fmt_apply.log"
+          set +e
+          cargo +1.98.1 fmt --all >"$fmt_apply_log" 2>&1
+          fmt_apply_rc=$?
+          set -e
+          if [[ $fmt_apply_rc -ne 0 ]]; then
+            echo 'LAS_GUARDED_STAGED_ADMISSION_STAGE=fmt_apply'
+            echo "LAS_GUARDED_STAGED_ADMISSION_RC=$fmt_apply_rc"
+            echo "LAS_GUARDED_STAGED_ADMISSION_LOG_SHA256=$(sha256sum "$fmt_apply_log" | awk '{print $1}')"
+            exit "$fmt_apply_rc"
+          fi
+          rm -f "$fmt_apply_log"
+
+          diff_check_log="$RUNNER_TEMP/diff_check.log"
+          set +e
+          git diff --check >"$diff_check_log" 2>&1
+          diff_check_rc=$?
+          set -e
+          if [[ $diff_check_rc -ne 0 ]]; then
+            echo 'LAS_GUARDED_STAGED_ADMISSION_STAGE=diff_check'
+            echo "LAS_GUARDED_STAGED_ADMISSION_RC=$diff_check_rc"
+            echo "LAS_GUARDED_STAGED_ADMISSION_LOG_SHA256=$(sha256sum "$diff_check_log" | awk '{print $1}')"
+            exit "$diff_check_rc"
+          fi
+          rm -f "$diff_check_log"
 
           { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
@@ -109,7 +149,6 @@ jobs:
               echo "LAS_GUARDED_STAGED_ADMISSION_STAGE=${stage}"
               echo "LAS_GUARDED_STAGED_ADMISSION_RC=${rc}"
               echo "LAS_GUARDED_STAGED_ADMISSION_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-              tail -n 120 "$log"
               exit "$rc"
             fi
             rm -f "$log"
