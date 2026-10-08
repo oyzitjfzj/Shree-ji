@@ -1,0 +1,167 @@
+name: Canonical exact current pre-TLC
+
+on:
+  push:
+    branches: [verify/canonical-exact-current-20261008]
+    paths:
+      - ".github/workflows/canonical-exact-current-pre-tlc.yml"
+      - ".verification/canonical-exact-current-pre-tlc.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canonical-exact-current-pre-tlc
+  cancel-in-progress: true
+
+env:
+  TARGET_REF_HASH: c9f987ee30c9e07dda494c4e53606bc62571c604bf2e786200c0f32f871f88c4
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: abb7edc70bc685527a44c36f8997b45c863891b54fe9307e3c8c1c7cfe81c48d
+  EXPECTED_PRIVATE_TREE_PROOF: 9de00bccc13c07d4e99f471a26ae749c00091afd2599f12082f2ba4a0f7daa22
+  EXPECTED_VERIFIER_BLOB: 8ea6dbe77db10592baf8f56c9719626c36687f9a
+  EXPECTED_VERIFIER_SHA256: 25aaaf9084e2e41d7611a78d018ede77222f8b3a4e29d7f9b4cd819068e702ca
+  EXPECTED_TLA_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+
+jobs:
+  pre_tlc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Recover exact private candidate
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$RUNNER_TEMP/private-target"
+          test ! -e "$ROOT"
+          mkdir -p "$ROOT"; cd "$ROOT"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          while read -r sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git checkout -q -B verify-target "$actual"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" == "$EXPECTED_PRIVATE_TREE_PROOF"
+          test "$(git hash-object tools/verify_codespaces_all.sh)" == "$EXPECTED_VERIFIER_BLOB"
+          test "$(sha256sum tools/verify_codespaces_all.sh | awk '{print $1}')" == "$EXPECTED_VERIFIER_SHA256"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo "LAS_CURRENT_PRE_TLC_EXACT_RECOVERY=PASS"
+          unset PRIVATE_TOKEN auth matched_ref actual tree
+
+      - name: Run hardened canonical pre-TLC stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/private-target"
+          cd "$ROOT"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+          staged="$RUNNER_TEMP/canonical-pre-tlc.sh"
+          python3 - tools/verify_codespaces_all.sh "$staged" <<'PY'
+          from pathlib import Path
+          import sys
+
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          needle = 'TLC_MAP="$TMP/tlc-map.tsv"'
+          if src.count(needle) != 1:
+              raise SystemExit("canonical TLC boundary is not unique")
+          insertion = '''\nrecord "tracked tree unchanged after pre-TLC verification" bash -c '\n  test -z "$(git status --porcelain --untracked-files=no)"\n'\nif (( FAIL )); then\n  echo "LAS_CURRENT_PRE_TLC_INTERNAL_RESULT=FAIL"\n  exit 1\nfi\necho "LAS_CURRENT_PRE_TLC_INTERNAL_RESULT=PASS"\nexit 0\n\n'''
+          Path(sys.argv[2]).write_text(src.replace(needle, insertion + needle, 1), encoding="utf-8")
+          PY
+          chmod 0500 "$staged"
+
+          REAL_CURL="$(command -v curl)"
+          REAL_CURL="$(readlink -f "$REAL_CURL" 2>/dev/null || printf '%s' "$REAL_CURL")"
+          test -x "$REAL_CURL"
+          SHIM_DIR="$RUNNER_TEMP/canonical-bin"
+          PIN_MARKER="$RUNNER_TEMP/tla-sha256.ok"
+          mkdir -p "$SHIM_DIR"
+          export LAS_CANONICAL_REAL_CURL="$REAL_CURL"
+          export LAS_CANONICAL_TLA_SHA256="$EXPECTED_TLA_SHA256"
+          export LAS_CANONICAL_TLA_PIN_MARKER="$PIN_MARKER"
+          cat > "$SHIM_DIR/curl" <<'SHIM'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          real_curl="${LAS_CANONICAL_REAL_CURL:?}"
+          expected="${LAS_CANONICAL_TLA_SHA256:?}"
+          marker="${LAS_CANONICAL_TLA_PIN_MARKER:?}"
+          tla_url="https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+          output=""; url=""; args=("$@")
+          for ((i=0; i<${#args[@]}; i++)); do
+            arg="${args[$i]}"
+            case "$arg" in
+              --output|-o)
+                (( i + 1 < ${#args[@]} )) || exit 2
+                output="${args[$((i + 1))]}"; ((i += 1)) ;;
+              --output=*) output="${arg#--output=}" ;;
+              http://*|https://*) url="$arg" ;;
+            esac
+          done
+          "$real_curl" "$@"
+          if [[ "$url" == "$tla_url" ]]; then
+            test -n "$output"; test -f "$output"
+            actual="$(sha256sum "$output" | awk '{print $1}')"
+            if [[ "$actual" != "$expected" ]]; then
+              rm -f -- "$output"
+              echo "ERROR: canonical TLA+ SHA-256 mismatch" >&2
+              exit 2
+            fi
+            printf '%s\n' "$actual" >"$marker"
+          fi
+          SHIM
+          chmod 0500 "$SHIM_DIR/curl"
+
+          CANONICAL_TMPDIR="$RUNNER_TEMP/canonical-runtime"
+          CANONICAL_CARGO_TARGET="$RUNNER_TEMP/canonical-cargo-target"
+          mkdir -p "$CANONICAL_TMPDIR" "$CANONICAL_CARGO_TARGET"
+          root_real="$(realpath "$ROOT")"
+          for p in "$CANONICAL_TMPDIR" "$CANONICAL_CARGO_TARGET"; do
+            p_real="$(realpath "$p")"
+            case "$p_real/" in
+              "$root_real/"*) echo "ERROR: canonical scratch path entered repository" >&2; exit 2 ;;
+            esac
+          done
+          echo "LAS_CURRENT_PRE_TLC_ISOLATION=PASS"
+
+          private_log="$RUNNER_TEMP/pre-tlc.private.log"
+          set +e
+          PATH="$SHIM_DIR:$PATH" \
+          TMPDIR="$CANONICAL_TMPDIR" \
+          CARGO_TARGET_DIR="$CANONICAL_CARGO_TARGET" \
+          LAS_VERIFY_EXPECTED_BRANCH=verify-target \
+            bash "$staged" >"$private_log" 2>&1
+          rc=$?
+          set -e
+
+          test -z "$(git status --porcelain --untracked-files=all)"
+          if [[ ! -f "$PIN_MARKER" ]] || [[ "$(cat "$PIN_MARKER")" != "$EXPECTED_TLA_SHA256" ]]; then
+            echo "LAS_CURRENT_PRE_TLC_TLA_SHA256_PIN=FAIL"
+            echo "LAS_CURRENT_PRE_TLC_PRIVATE_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+            exit 1
+          fi
+          echo "LAS_CURRENT_PRE_TLC_TLA_SHA256_PIN=PASS"
+          if [[ "$rc" -ne 0 ]] || ! grep -qx 'LAS_CURRENT_PRE_TLC_INTERNAL_RESULT=PASS' "$private_log"; then
+            echo "LAS_CURRENT_PRE_TLC_RC=$rc"
+            echo "LAS_CURRENT_PRE_TLC_PRIVATE_LOG_SHA256=$(sha256sum "$private_log" | awk '{print $1}')"
+            echo "LAS_CURRENT_PRE_TLC_RESULT=FAIL"
+            exit 1
+          fi
+          rm -f "$private_log"
+          echo "LAS_CURRENT_PRE_TLC_RESULT=PASS"
