@@ -1,0 +1,242 @@
+name: Private Linux pre-action authentication apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-linux-pre-action-auth-apply.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: e089fda1e2738baf1bb2fe08a55c08ae2464c642ea61671289d13a01f8dbe324
+  EXPECTED_HEAD_PROOF: cc8358c28166ef7eecc0480b419e0d866efd3e44e46c16a5ee1928e5504d247d
+  EXPECTED_TREE_PROOF: 8e021ba4c85ef10163590c7363046213bd1d94ba87b2607692a58d306f8e1af0
+
+jobs:
+  verify-apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Install checksum-pinned Ada toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/alr.zip"
+          prefix="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" \
+            | sha256sum --check --strict
+          mkdir -p "$prefix"
+          unzip -q "$archive" -d "$prefix"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+
+      - name: Apply verify and commit exact private pre-action boundary
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          alr_bin="$(command -v alr)"
+          test -x "$alr_bin"
+          workspace="$RUNNER_TEMP/root-production-toolchain"
+          mkdir -p "$workspace"
+          cd "$workspace"
+          alr -n init --in-place --no-skel --lib root_production_toolchain >/dev/null
+          gpr_wrapper="$RUNNER_TEMP/gprbuild-wrapper"
+          cat >"$gpr_wrapper" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$workspace"
+          exec "$alr_bin" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$gpr_wrapper"
+          "$gpr_wrapper" --version >/dev/null
+          export GPRBUILD="$gpr_wrapper"
+          echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
+          echo 'LAS_PRE_ACTION_AUTH_TOOLCHAIN=PASS'
+
+          root="$GITHUB_WORKSPACE/private"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          write_auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+          echo "::add-mask::$write_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
+          git checkout -q --detach "$start_sha"
+          start_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$start_tree"
+          test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          echo 'LAS_PRE_ACTION_AUTH_IDENTITY=PASS'
+
+          helper=tools/tmp_apply_linux_pre_action_auth.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = "tools/tmp_apply_linux_pre_action_auth.py"
+          compile(Path(p).read_text(), p, "exec")
+          PY
+          echo 'LAS_PRE_ACTION_AUTH_HELPER_SYNTAX=PASS'
+
+          patch_log="$RUNNER_TEMP/private-patch.log"
+          set +e
+          (
+            set -euo pipefail
+            python3 "$helper"
+          ) >"$patch_log" 2>&1
+          patch_rc=$?
+          set -e
+          if [[ $patch_rc -ne 0 ]]; then
+            echo 'LAS_PRE_ACTION_AUTH_STAGE=private_patch'
+            echo "LAS_PRE_ACTION_AUTH_RC=$patch_rc"
+            echo "LAS_PRE_ACTION_AUTH_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            exit "$patch_rc"
+          fi
+          rm -f "$patch_log"
+          echo 'LAS_PRE_ACTION_AUTH_private_patch=PASS'
+
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+
+          capture_private_failure() {
+            local stage="$1"
+            local log="$2"
+            local diag_path="tools/tmp_pre_action_auth_${stage}_${GITHUB_RUN_ID}.log"
+            cp "$log" "$diag_path"
+            git add -- "$diag_path"
+            git commit -q -m "Capture private pre-action-auth ${stage} diagnostic"
+            local diag_ref="refs/heads/tmp/pre-action-auth-diagnostic-${GITHUB_RUN_ID}"
+            git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
+            echo 'LAS_PRE_ACTION_AUTH_PRIVATE_DIAGNOSTIC=CAPTURED'
+          }
+
+          preflight_log="$RUNNER_TEMP/preflight.log"
+          set +e
+          (
+            set -euo pipefail
+            cargo +1.98.1 fmt --all
+            git diff --check
+            { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
+            cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
+          src/effect_fabric/root_supervisor_linux_process_ingress.rs
+          src/lib.rs
+          tools/tmp_apply_linux_pre_action_auth.py
+          EOF
+            sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
+            diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths"
+          ) >"$preflight_log" 2>&1
+          preflight_rc=$?
+          set -e
+          if [[ $preflight_rc -ne 0 ]]; then
+            echo 'LAS_PRE_ACTION_AUTH_STAGE=preflight'
+            echo "LAS_PRE_ACTION_AUTH_RC=$preflight_rc"
+            echo "LAS_PRE_ACTION_AUTH_LOG_SHA256=$(sha256sum "$preflight_log" | awk '{print $1}')"
+            capture_private_failure preflight "$preflight_log"
+            exit "$preflight_rc"
+          fi
+          rm -f "$preflight_log"
+          echo 'LAS_PRE_ACTION_AUTH_PREFLIGHT=PASS'
+
+          run_gate() {
+            local stage="$1"
+            shift
+            local log="$RUNNER_TEMP/${stage}.log"
+            set +e
+            "$@" >"$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              echo "LAS_PRE_ACTION_AUTH_STAGE=${stage}"
+              echo "LAS_PRE_ACTION_AUTH_RC=${rc}"
+              echo "LAS_PRE_ACTION_AUTH_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              capture_private_failure "$stage" "$log"
+              exit "$rc"
+            fi
+            rm -f "$log"
+            echo "LAS_PRE_ACTION_AUTH_${stage}=PASS"
+          }
+
+          run_gate trust_contract python3 tools/verification/root_trust_input_contract.py
+          run_gate fmt_check cargo +1.98.1 fmt --all -- --check
+          run_gate base_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets
+          run_gate production_lib_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --lib --features "root-ffi linux-peer-credentials"
+          run_gate production_all_targets_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --locked --all-targets --features "root-ffi linux-peer-credentials"
+          run_gate production_clippy cargo +1.98.1 clippy --locked --all-targets --features "root-ffi linux-peer-credentials" -- -D warnings
+          run_gate production_lib_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
+          run_gate production_integration_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --locked --features "root-ffi linux-peer-credentials" --tests -- --test-threads=1
+          run_gate production_release_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --release --locked --all-targets --features "root-ffi linux-peer-credentials"
+          run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
+
+          git add -A
+          test ! -e "$helper"
+          test -z "$(git ls-files -- "$helper")"
+          test -z "$(git diff --name-only)"
+          test -z "$(git ls-files --others --exclude-standard)"
+          git diff --cached --check
+          git diff --cached --no-renames --name-only | sort -u >"$RUNNER_TEMP/staged-paths"
+          diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
+          echo 'LAS_PRE_ACTION_AUTH_COMMIT_SCOPE=PASS'
+
+          git commit -q -m "Wire authenticated Linux pre-action plan boundary"
+          test "$(git rev-parse HEAD^)" = "$start_sha"
+          new_sha="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$new_sha"
+          echo "::add-mask::$new_tree"
+
+          remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          echo "::add-mask::$remote_sha"
+          test "$remote_sha" = "$start_sha"
+          test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$post_sha" = "$new_sha"
+          echo 'LAS_PRE_ACTION_AUTH_PRIVATE_COMMIT=PASS'
+          echo "LAS_PRE_ACTION_AUTH_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRE_ACTION_AUTH_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
