@@ -1,0 +1,116 @@
+name: Opaque private joint const fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/opaque-private-joint-const-fix-20261010.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 937e43eb7e37dbf1cd43ef2dbde987413754f7ff0d8629bf83d9c6d477cf455a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 710a309e77aeccf5935ca7c02b77981f096492a11f01986ffd0ff152506ad819
+  EXPECTED_PRIVATE_TREE_PROOF: bd939b1de56145614211e39e815aec3637182e478cc57b932272b6e6e8874dbe
+  TARGET_PATH_HASH: 97de66527aa7c62e3e352be9b0c92f91a6247e3ba24df6c487af38ebb090e3bf
+  TARGET_DECL_LINE: "243"
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Install exact formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+
+      - name: Recover exact private revision with write lease
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_WRITE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_WRITE_TOKEN"
+          root="$RUNNER_TEMP/private-target"; mkdir "$root"; cd "$root"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_WRITE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"; git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""; private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"; private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; test -n "$private_head"
+          echo "::add-mask::$matched_ref"; echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"; git checkout -q -B repair-target "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          printf '%s' "$matched_ref" >"$RUNNER_TEMP/private-ref"
+          printf '%s' "$private_head" >"$RUNNER_TEMP/private-start-sha"
+          printf '%s' "$auth" >"$RUNNER_TEMP/private-auth"
+          chmod 600 "$RUNNER_TEMP/private-ref" "$RUNNER_TEMP/private-start-sha" "$RUNNER_TEMP/private-auth"
+          unset PRIVATE_WRITE_TOKEN auth matched_ref private_head tree candidate_sha ref
+          echo "OPAQUE_CONST_FIX_RECOVERY=PASS"
+
+      - name: Apply exact diagnosed edit without exposing private path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          target=""
+          while IFS= read -r -d '' path; do
+            if [[ "$(printf '%s' "$path" | sha256sum | awk '{print $1}')" = "$TARGET_PATH_HASH" ]]; then
+              test -z "$target"; target="$path"
+            fi
+          done < <(git ls-files -z)
+          test -n "$target"; echo "::add-mask::$target"
+          python3 - "$target" "$TARGET_DECL_LINE" <<'PY'
+          from pathlib import Path
+          import sys
+          path=Path(sys.argv[1]); line_no=int(sys.argv[2]); lines=path.read_text(encoding='utf-8').splitlines(keepends=True)
+          if line_no < 1 or line_no > len(lines): raise SystemExit('target line out of range')
+          old=lines[line_no-1]
+          if 'pub(super) const fn' not in old: raise SystemExit('diagnosed declaration shape changed')
+          new=old.replace('pub(super) const fn','pub(super) fn',1)
+          if new == old: raise SystemExit('no edit applied')
+          lines[line_no-1]=new
+          path.write_text(''.join(lines),encoding='utf-8')
+          PY
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --all -- --check
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "$target"
+          git diff --check
+          echo "OPAQUE_CONST_FIX_SCOPE=PASS"
+
+      - name: Commit and fast-forward exact private ref
+        shell: bash
+        env:
+          PRIVATE_WRITE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          ref="$(cat "$RUNNER_TEMP/private-ref")"; start="$(cat "$RUNNER_TEMP/private-start-sha")"; auth="$(cat "$RUNNER_TEMP/private-auth")"
+          echo "::add-mask::$PRIVATE_WRITE_TOKEN"; echo "::add-mask::$auth"; echo "::add-mask::$start"
+          remote="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$ref" | awk '{print $1}')"; echo "::add-mask::$remote"
+          test "$remote" = "$start"
+          git config user.name "LAS Verification Repair"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add -u
+          git commit -q -m "Remove invalid const qualifier from archive matcher"
+          new_sha="$(git rev-parse HEAD)"; echo "::add-mask::$new_sha"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin HEAD:"$ref"
+          echo "OPAQUE_CONST_FIX_RESULT=PASS"
+          echo "OPAQUE_CONST_FIX_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
