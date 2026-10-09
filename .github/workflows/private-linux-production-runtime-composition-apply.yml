@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 1e1d58dc4adf26133cb4de7c8e2dffd04637ea011540d3dd71c8a5a4b0969311
-  EXPECTED_HEAD_PROOF: ec42e5881d3a359841d48eac7f6f40a40e809812043a2368e78aa5aa9c7e4acb
-  EXPECTED_TREE_PROOF: ed19b53827bda596e89367e59b892052c0941e86bcb2d0d6c05af94df98ecdb8
+  EXPECTED_HEAD_PROOF: 581a6fabd7705eaf8ab353ea07c8fb65bba5c8efe866f865bc4b62f0c0bab2ce
+  EXPECTED_TREE_PROOF: 9d29f79235db9136f3c29ece35cf51ec50041e1510559fde8a4d1cd0b381e478
 
 jobs:
   verify-apply:
@@ -118,7 +118,10 @@ jobs:
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          python3 tools/tmp_apply_linux_production_runtime_composition.py >"$patch_log" 2>&1
+          {
+            python3 tools/tmp_apply_linux_production_runtime_composition.py
+            python3 tools/tmp_refine_linux_production_runtime_composition.py
+          } >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
@@ -162,6 +165,7 @@ jobs:
           src/effect_fabric/root_supervisor_linux_production_bootstrap.rs
           src/lib.rs
           tools/tmp_apply_linux_production_runtime_composition.py
+          tools/tmp_refine_linux_production_runtime_composition.py
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
           diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
