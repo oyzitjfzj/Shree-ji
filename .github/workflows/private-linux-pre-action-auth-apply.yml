@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 67605dc33fc06e23bd4feae6f3f959b0689250029ae6dd667555113291ab090b
-  EXPECTED_HEAD_PROOF: 6be04164b30c6f8414d5649c7a82848dd47cae10284d9d5c04db3a546b51d379
-  EXPECTED_TREE_PROOF: d454ae145d1a40ff86c57a8328120e0f1e6443f5eb452147905e3df3c50a3479
+  EXPECTED_HEAD_PROOF: 1bb2d3bd9eba8937d84613ef5cefbee9db531f2f9319b99249a307b575368203
+  EXPECTED_TREE_PROOF: 70aa7cc59a8de8f4d8b17816f9f2aaa9efa387361400d6d912c882e92c5794f3
 
 jobs:
   verify-apply:
@@ -117,16 +117,24 @@ jobs:
           echo 'LAS_PRE_ACTION_OWNER_IDENTITY=PASS'
 
           helper=tools/tmp_refine_linux_pre_action_authenticator_owner.py
+          helper_fix=tools/tmp_fix_linux_pre_action_owner_test_scope.py
           python3 - <<'PY'
           from pathlib import Path
-          p = "tools/tmp_refine_linux_pre_action_authenticator_owner.py"
-          compile(Path(p).read_text(), p, "exec")
+          for p in (
+              "tools/tmp_refine_linux_pre_action_authenticator_owner.py",
+              "tools/tmp_fix_linux_pre_action_owner_test_scope.py",
+          ):
+              compile(Path(p).read_text(), p, "exec")
           PY
           echo 'LAS_PRE_ACTION_OWNER_HELPER_SYNTAX=PASS'
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          (set -euo pipefail; python3 "$helper") >"$patch_log" 2>&1
+          (
+            set -euo pipefail
+            python3 "$helper"
+            python3 "$helper_fix"
+          ) >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
@@ -164,6 +172,7 @@ jobs:
           src/effect_fabric/root_supervisor_linux_pre_action_authenticator.rs
           src/effect_fabric/root_supervisor_linux_pre_action_plan.rs
           src/lib.rs
+          tools/tmp_fix_linux_pre_action_owner_test_scope.py
           tools/tmp_refine_linux_pre_action_authenticator_owner.py
           EOF
             sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
@@ -213,7 +222,8 @@ jobs:
 
           git add -A
           test ! -e "$helper"
-          test -z "$(git ls-files -- "$helper")"
+          test ! -e "$helper_fix"
+          test -z "$(git ls-files -- "$helper" "$helper_fix")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
