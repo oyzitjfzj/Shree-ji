@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 937e43eb7e37dbf1cd43ef2dbde987413754f7ff0d8629bf83d9c6d477cf455a
-  EXPECTED_HEAD_PROOF: cae8c4a85b1fd1e70b8e525af3da719a984057f500c78370b4869dc2412319ad
-  EXPECTED_TREE_PROOF: e9c269b680c950c124536223f4bce0885bc51ac255d2da46c423df0fa77af149
+  EXPECTED_HEAD_PROOF: 811990b9fc55bbb2a7644e854b5fa0ee2e2aa2db81dc34518575d0e058da7b07
+  EXPECTED_TREE_PROOF: ea32e454190a681025da1ea9b6b2d630b4a58a5372565d0b9344aa7045222840
   EXPECTED_BASE_PROOF: 3f0e208a51fc28feb2c837cbe8cb96f8469310fef7748c8dba662800210409de
 
 jobs:
@@ -98,11 +98,11 @@ jobs:
           echo "::add-mask::$start_sha"
           test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
 
-          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=4 origin "$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=5 origin "$matched_ref"
           git checkout -q --detach "$start_sha"
           test "$(git rev-parse HEAD)" = "$start_sha"
           start_tree="$(git rev-parse 'HEAD^{tree}')"
-          base_sha="$(git rev-parse HEAD~3)"
+          base_sha="$(git rev-parse HEAD~4)"
           echo "::add-mask::$start_tree"
           echo "::add-mask::$base_sha"
           test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
