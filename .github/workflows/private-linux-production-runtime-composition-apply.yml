@@ -1,4 +1,4 @@
-name: Private Linux production socket activation apply
+name: Private Linux production durable activation apply
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: 54d6ed9ee74c8596185197e4cea9f2f0bfcfecbd39992d9cf9d5808f4ac90425
-  EXPECTED_HEAD_PROOF: b4f5bf7fea5b2f550ceddc71263876280c636c188a66764860a88740f427774d
-  EXPECTED_TREE_PROOF: 6d99cf55e19715499284e3a905d0c052dc5c0a67759e8ccfb3577a9f660f67fe
+  TARGET_REF_HASH: 67a7613cc33c109ae5ab3e72998b7e88744c5d79f59d80379cb01bb7a9b4aff2
+  EXPECTED_HEAD_PROOF: 5ceb177d570c8055862807b505765b86af254b1d50940bccf221dca99477c659
+  EXPECTED_TREE_PROOF: 4a5f16b1683401f455d6edac37c1e40fb498478893e7a37c7ee8ef1902d31597
 
 jobs:
   verify-apply:
@@ -44,7 +44,7 @@ jobs:
           unzip -q "$archive" -d "$prefix"
           echo "$prefix/bin" >> "$GITHUB_PATH"
 
-      - name: Apply verify and commit exact private socket activation
+      - name: Apply verify and commit exact private durable activation
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -77,7 +77,7 @@ jobs:
           "$gpr_wrapper" --version >/dev/null
           export GPRBUILD="$gpr_wrapper"
           echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
-          echo 'LAS_PRODUCTION_SOCKET_TOOLCHAIN=PASS'
+          echo 'LAS_PRODUCTION_DURABLE_TOOLCHAIN=PASS'
 
           root="$GITHUB_WORKSPACE/private"
           mkdir "$root"
@@ -114,38 +114,35 @@ jobs:
           echo "::add-mask::$start_tree"
           test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo 'LAS_PRODUCTION_SOCKET_IDENTITY=PASS'
+          echo 'LAS_PRODUCTION_DURABLE_IDENTITY=PASS'
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          {
-            python3 tools/tmp_apply_linux_production_socket_activation.py
-            python3 tools/tmp_refine_linux_production_socket_activation.py
-          } >"$patch_log" 2>&1
+          python3 tools/tmp_apply_linux_production_durable_activation.py >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
-            echo 'LAS_PRODUCTION_SOCKET_STAGE=private_patch'
-            echo "LAS_PRODUCTION_SOCKET_RC=$patch_rc"
-            echo "LAS_PRODUCTION_SOCKET_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            echo 'LAS_PRODUCTION_DURABLE_STAGE=private_patch'
+            echo "LAS_PRODUCTION_DURABLE_RC=$patch_rc"
+            echo "LAS_PRODUCTION_DURABLE_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
             exit "$patch_rc"
           fi
           rm -f "$patch_log"
-          echo 'LAS_PRODUCTION_SOCKET_private_patch=PASS'
+          echo 'LAS_PRODUCTION_DURABLE_private_patch=PASS'
 
           cargo +1.98.1 fmt --all
           git diff --check
           { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
           src/effect_fabric/root_supervisor_linux_production_process.rs
+          src/effect_fabric/root_supervisor_linux_production_resources.rs
           src/effect_fabric/root_supervisor_linux_socket_activation.rs
           src/lib.rs
-          tools/tmp_apply_linux_production_socket_activation.py
-          tools/tmp_refine_linux_production_socket_activation.py
+          tools/tmp_apply_linux_production_durable_activation.py
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
           diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
-          echo 'LAS_PRODUCTION_SOCKET_SCOPE=PASS'
+          echo 'LAS_PRODUCTION_DURABLE_SCOPE=PASS'
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
@@ -153,13 +150,13 @@ jobs:
           capture_private_failure() {
             local stage="$1"
             local log="$2"
-            local diag_path="tools/tmp_production_socket_${stage}_${GITHUB_RUN_ID}.log"
+            local diag_path="tools/tmp_production_durable_${stage}_${GITHUB_RUN_ID}.log"
             cp "$log" "$diag_path"
             git add -- "$diag_path"
-            git commit -q -m "Capture private Linux production socket ${stage} diagnostic"
-            local diag_ref="refs/heads/tmp/production-socket-diagnostic-${GITHUB_RUN_ID}"
+            git commit -q -m "Capture private Linux production durable ${stage} diagnostic"
+            local diag_ref="refs/heads/tmp/production-durable-diagnostic-${GITHUB_RUN_ID}"
             git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
-            echo 'LAS_PRODUCTION_SOCKET_PRIVATE_DIAGNOSTIC=CAPTURED'
+            echo 'LAS_PRODUCTION_DURABLE_PRIVATE_DIAGNOSTIC=CAPTURED'
           }
 
           run_gate() {
@@ -171,14 +168,14 @@ jobs:
             local rc=$?
             set -e
             if [[ $rc -ne 0 ]]; then
-              echo "LAS_PRODUCTION_SOCKET_STAGE=${stage}"
-              echo "LAS_PRODUCTION_SOCKET_RC=${rc}"
-              echo "LAS_PRODUCTION_SOCKET_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_PRODUCTION_DURABLE_STAGE=${stage}"
+              echo "LAS_PRODUCTION_DURABLE_RC=${rc}"
+              echo "LAS_PRODUCTION_DURABLE_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
               capture_private_failure "$stage" "$log"
               exit "$rc"
             fi
             rm -f "$log"
-            echo "LAS_PRODUCTION_SOCKET_${stage}=PASS"
+            echo "LAS_PRODUCTION_DURABLE_${stage}=PASS"
           }
 
           run_gate trust_contract python3 tools/verification/root_trust_input_contract.py
@@ -193,19 +190,17 @@ jobs:
           run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
 
           git add -A
-          helper_apply=tools/tmp_apply_linux_production_socket_activation.py
-          helper_refine=tools/tmp_refine_linux_production_socket_activation.py
-          test ! -e "$helper_apply"
-          test ! -e "$helper_refine"
-          test -z "$(git ls-files -- "$helper_apply" "$helper_refine")"
+          helper=tools/tmp_apply_linux_production_durable_activation.py
+          test ! -e "$helper"
+          test -z "$(git ls-files -- "$helper")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
           git diff --cached --no-renames --name-only | sort -u >"$RUNNER_TEMP/staged-paths"
           diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
-          echo 'LAS_PRODUCTION_SOCKET_COMMIT_SCOPE=PASS'
+          echo 'LAS_PRODUCTION_DURABLE_COMMIT_SCOPE=PASS'
 
-          git commit -q -m "Acquire Linux production listeners from exact systemd activation roles"
+          git commit -q -m "Acquire Linux production journals as exact named activation resources"
           test "$(git rev-parse HEAD^)" = "$start_sha"
           new_sha="$(git rev-parse HEAD)"
           new_tree="$(git rev-parse 'HEAD^{tree}')"
@@ -219,6 +214,6 @@ jobs:
           git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
           post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$post_sha" = "$new_sha"
-          echo 'LAS_PRODUCTION_SOCKET_PRIVATE_COMMIT=PASS'
-          echo "LAS_PRODUCTION_SOCKET_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          echo "LAS_PRODUCTION_SOCKET_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+          echo 'LAS_PRODUCTION_DURABLE_PRIVATE_COMMIT=PASS'
+          echo "LAS_PRODUCTION_DURABLE_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRODUCTION_DURABLE_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
