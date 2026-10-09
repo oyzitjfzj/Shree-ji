@@ -1,4 +1,4 @@
-name: Private Linux production process composition apply
+name: Private Linux production launch assembly apply
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: 47cb8c7152c5b0d707dbe320203a819011431c7b6ea0da73a126c110c464f369
-  EXPECTED_HEAD_PROOF: a2090a8adcb7a2575d5a0974d5c26cfdae43d2264f3f703a820cd9f9349fc281
-  EXPECTED_TREE_PROOF: f71b54bae31c9cd27c26b73ddca05d0db2f980bdab17673e733da313f5c275fd
+  TARGET_REF_HASH: da11e8096e7f2079c47d2578cfec3ab4571ab11d1c79494dfed0620cff78e7c5
+  EXPECTED_HEAD_PROOF: d15b14cdf1f3baf3d3b23d3a1631be52cefefb8d2f109fb3c9bc8dfb6830a485
+  EXPECTED_TREE_PROOF: 386cd74ad517c7e0e8807f9cc6bb4b53cae40fad754be5e837a0a5c62c01eee8
 
 jobs:
   verify-apply:
@@ -44,7 +44,7 @@ jobs:
           unzip -q "$archive" -d "$prefix"
           echo "$prefix/bin" >> "$GITHUB_PATH"
 
-      - name: Apply verify and commit exact private process composition
+      - name: Apply verify and commit exact private launch assembly
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -77,7 +77,7 @@ jobs:
           "$gpr_wrapper" --version >/dev/null
           export GPRBUILD="$gpr_wrapper"
           echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
-          echo 'LAS_PRODUCTION_PROCESS_TOOLCHAIN=PASS'
+          echo 'LAS_PRODUCTION_LAUNCH_TOOLCHAIN=PASS'
 
           root="$GITHUB_WORKSPACE/private"
           mkdir "$root"
@@ -114,37 +114,33 @@ jobs:
           echo "::add-mask::$start_tree"
           test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo 'LAS_PRODUCTION_PROCESS_IDENTITY=PASS'
+          echo 'LAS_PRODUCTION_LAUNCH_IDENTITY=PASS'
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          {
-            python3 tools/tmp_apply_linux_production_process_composition.py
-            python3 tools/tmp_refine_linux_production_process_composition.py
-          } >"$patch_log" 2>&1
+          python3 tools/tmp_apply_linux_production_launch_assembly.py >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
-            echo 'LAS_PRODUCTION_PROCESS_STAGE=private_patch'
-            echo "LAS_PRODUCTION_PROCESS_RC=$patch_rc"
-            echo "LAS_PRODUCTION_PROCESS_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            echo 'LAS_PRODUCTION_LAUNCH_STAGE=private_patch'
+            echo "LAS_PRODUCTION_LAUNCH_RC=$patch_rc"
+            echo "LAS_PRODUCTION_LAUNCH_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
             exit "$patch_rc"
           fi
           rm -f "$patch_log"
-          echo 'LAS_PRODUCTION_PROCESS_private_patch=PASS'
+          echo 'LAS_PRODUCTION_LAUNCH_private_patch=PASS'
 
           cargo +1.98.1 fmt --all
           git diff --check
           { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
-          src/effect_fabric/root_supervisor_linux_production_process.rs
+          src/effect_fabric/root_supervisor_linux_production_launch.rs
           src/lib.rs
-          tools/tmp_apply_linux_production_process_composition.py
-          tools/tmp_refine_linux_production_process_composition.py
+          tools/tmp_apply_linux_production_launch_assembly.py
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
           diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
-          echo 'LAS_PRODUCTION_PROCESS_SCOPE=PASS'
+          echo 'LAS_PRODUCTION_LAUNCH_SCOPE=PASS'
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
@@ -152,13 +148,13 @@ jobs:
           capture_private_failure() {
             local stage="$1"
             local log="$2"
-            local diag_path="tools/tmp_production_process_${stage}_${GITHUB_RUN_ID}.log"
+            local diag_path="tools/tmp_production_launch_${stage}_${GITHUB_RUN_ID}.log"
             cp "$log" "$diag_path"
             git add -- "$diag_path"
-            git commit -q -m "Capture private Linux production process ${stage} diagnostic"
-            local diag_ref="refs/heads/tmp/production-process-diagnostic-${GITHUB_RUN_ID}"
+            git commit -q -m "Capture private Linux production launch ${stage} diagnostic"
+            local diag_ref="refs/heads/tmp/production-launch-diagnostic-${GITHUB_RUN_ID}"
             git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
-            echo 'LAS_PRODUCTION_PROCESS_PRIVATE_DIAGNOSTIC=CAPTURED'
+            echo 'LAS_PRODUCTION_LAUNCH_PRIVATE_DIAGNOSTIC=CAPTURED'
           }
 
           run_gate() {
@@ -170,14 +166,14 @@ jobs:
             local rc=$?
             set -e
             if [[ $rc -ne 0 ]]; then
-              echo "LAS_PRODUCTION_PROCESS_STAGE=${stage}"
-              echo "LAS_PRODUCTION_PROCESS_RC=${rc}"
-              echo "LAS_PRODUCTION_PROCESS_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_PRODUCTION_LAUNCH_STAGE=${stage}"
+              echo "LAS_PRODUCTION_LAUNCH_RC=${rc}"
+              echo "LAS_PRODUCTION_LAUNCH_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
               capture_private_failure "$stage" "$log"
               exit "$rc"
             fi
             rm -f "$log"
-            echo "LAS_PRODUCTION_PROCESS_${stage}=PASS"
+            echo "LAS_PRODUCTION_LAUNCH_${stage}=PASS"
           }
 
           run_gate trust_contract python3 tools/verification/root_trust_input_contract.py
@@ -192,20 +188,17 @@ jobs:
           run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
 
           git add -A
-          for helper in \
-            tools/tmp_apply_linux_production_process_composition.py \
-            tools/tmp_refine_linux_production_process_composition.py; do
-            test ! -e "$helper"
-            test -z "$(git ls-files -- "$helper")"
-          done
+          helper=tools/tmp_apply_linux_production_launch_assembly.py
+          test ! -e "$helper"
+          test -z "$(git ls-files -- "$helper")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
           git diff --cached --no-renames --name-only | sort -u >"$RUNNER_TEMP/staged-paths"
           diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
-          echo 'LAS_PRODUCTION_PROCESS_COMMIT_SCOPE=PASS'
+          echo 'LAS_PRODUCTION_LAUNCH_COMMIT_SCOPE=PASS'
 
-          git commit -q -m "Compose concrete Linux production process ingress"
+          git commit -q -m "Compose ownership-preserving Linux production launch"
           test "$(git rev-parse HEAD^)" = "$start_sha"
           new_sha="$(git rev-parse HEAD)"
           new_tree="$(git rev-parse 'HEAD^{tree}')"
@@ -219,6 +212,6 @@ jobs:
           git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
           post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$post_sha" = "$new_sha"
-          echo 'LAS_PRODUCTION_PROCESS_PRIVATE_COMMIT=PASS'
-          echo "LAS_PRODUCTION_PROCESS_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          echo "LAS_PRODUCTION_PROCESS_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+          echo 'LAS_PRODUCTION_LAUNCH_PRIVATE_COMMIT=PASS'
+          echo "LAS_PRODUCTION_LAUNCH_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PRODUCTION_LAUNCH_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
