@@ -60,14 +60,24 @@ jobs:
           echo "::add-mask::$PRIVATE_WRITE_TOKEN"
 
           alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          alr_bin="$(command -v alr)"
+          test -x "$alr_bin"
           workspace="$RUNNER_TEMP/root-production-toolchain"
           mkdir -p "$workspace"
           cd "$workspace"
           alr -n init --in-place --no-skel --lib root_production_toolchain >/dev/null
-          gpr_path="$(alr exec -- sh -lc 'command -v gprbuild')"
-          test -x "$gpr_path"
-          export GPRBUILD="$gpr_path"
-          echo "GPRBUILD=$gpr_path" >> "$GITHUB_ENV"
+          gpr_wrapper="$RUNNER_TEMP/gprbuild-wrapper"
+          cat >"$gpr_wrapper" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$workspace"
+          exec "$alr_bin" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$gpr_wrapper"
+          "$gpr_wrapper" --version >/dev/null
+          export GPRBUILD="$gpr_wrapper"
+          echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
+          echo 'LAS_ROOT_FFI_PRODUCTION_TOOLCHAIN=PASS'
 
           root="$GITHUB_WORKSPACE/private"
           mkdir "$root"
