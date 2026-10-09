@@ -13,8 +13,8 @@ permissions:
 env:
   TARGET_REF_HASH: 937e43eb7e37dbf1cd43ef2dbde987413754f7ff0d8629bf83d9c6d477cf455a
   BASE_REF_HASH: 67605dc33fc06e23bd4feae6f3f959b0689250029ae6dd667555113291ab090b
-  EXPECTED_HEAD_PROOF: b0a914744f085356550a98b00cb0fd2a5d613bb8b468a3df0e1814ee6147d4d1
-  EXPECTED_TREE_PROOF: ad5b532fdea7d0265b74281c7a2e1d6fe409d90d4d639272f1779116d4efa1cf
+  EXPECTED_HEAD_PROOF: 5d4ea6e85cf7687a54a1a69be708b4cc93eb0c53d0967c6f0e4cd37c6cc2b828
+  EXPECTED_TREE_PROOF: a3d1d06792497a59918f7f53186fb0046d347fcd53cdcb99365a7c17eb47fbb1
   EXPECTED_BASE_PROOF: 3f0e208a51fc28feb2c837cbe8cb96f8469310fef7748c8dba662800210409de
 
 jobs:
@@ -125,7 +125,6 @@ jobs:
           git diff --check "$base_sha"..HEAD
           git diff --no-renames --name-only "$base_sha"..HEAD | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF_PATHS'
-          .github/workflows/tmp-linux-production-process-loop-root-ffi.yml
           src/effect_fabric/root_supervisor_linux_process_loop.rs
           src/lib.rs
           EOF_PATHS
