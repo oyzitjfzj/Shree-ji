@@ -72,20 +72,28 @@ jobs:
 
           echo "LAS_STAGE_PROBE_ACTUAL_COUNT=$(wc -l < "$RUNNER_TEMP/actual")"
           echo "LAS_STAGE_PROBE_STAGED_COUNT=$(wc -l < "$RUNNER_TEMP/staged")"
-          while read -r path; do
-            case "$path" in
-              src/effect_fabric/root_guarded_effect_service.rs|src/effect_fabric/root_supervisor_active_runtime.rs|src/effect_fabric/root_supervisor_linux_production_bootstrap.rs|src/lib.rs|tools/tmp_apply_linux_production_runtime_composition.py|tools/tmp_fix_linux_production_runtime_activation_ownership.py|tools/tmp_refine_linux_production_runtime_composition.py) ;;
-              *) echo 'LAS_STAGE_PROBE_SCOPE=FAIL'; exit 1 ;;
-            esac
-          done <"$RUNNER_TEMP/actual"
-
           missing="$(comm -23 "$RUNNER_TEMP/actual" "$RUNNER_TEMP/staged")"
-          extra="$(comm -13 "$RUNNER_TEMP/actual" "$RUNNER_TEMP/staged")"
-          test -z "$extra"
           if [[ -n "$missing" ]]; then
             while read -r path; do
               test -n "$path" || continue
+              case "$path" in
+                src/effect_fabric/root_guarded_effect_service.rs|src/effect_fabric/root_supervisor_active_runtime.rs|src/effect_fabric/root_supervisor_linux_production_bootstrap.rs|src/lib.rs|tools/tmp_apply_linux_production_runtime_composition.py|tools/tmp_fix_linux_production_runtime_activation_ownership.py|tools/tmp_refine_linux_production_runtime_composition.py) ;;
+                *) echo 'LAS_STAGE_PROBE_SCOPE=FAIL'; exit 1 ;;
+              esac
               echo "LAS_STAGE_PROBE_MISSING=$path"
             done <<<"$missing"
+          fi
+
+          target=tools/tmp_refine_linux_production_runtime_composition.py
+          status="$(git status --porcelain=v1 -- "$target")"
+          flag="$(git ls-files -v -- "$target" | cut -c1 || true)"
+          echo "LAS_STAGE_PROBE_REFINE_STATUS=${status:0:2}"
+          echo "LAS_STAGE_PROBE_REFINE_INDEX_FLAG=${flag:-ABSENT}"
+
+          git add -u -- "$target"
+          if git diff --cached --name-only -- "$target" | grep -Fxq "$target"; then
+            echo 'LAS_STAGE_PROBE_EXPLICIT_UPDATE=STAGED'
+          else
+            echo 'LAS_STAGE_PROBE_EXPLICIT_UPDATE=NOT_STAGED'
           fi
           echo 'LAS_STAGE_PROBE=PASS'
