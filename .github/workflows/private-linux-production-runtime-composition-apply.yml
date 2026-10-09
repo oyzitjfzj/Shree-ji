@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 47cb8c7152c5b0d707dbe320203a819011431c7b6ea0da73a126c110c464f369
-  EXPECTED_HEAD_PROOF: 864de662152feeadca5ceb0a69a39ca612757add979d4129339ac5c743779282
-  EXPECTED_TREE_PROOF: 67889614ec49d64f9ba265b95913cfa954cd69a4a5e9c2ac7e2c240b2f9fad17
+  EXPECTED_HEAD_PROOF: a2090a8adcb7a2575d5a0974d5c26cfdae43d2264f3f703a820cd9f9349fc281
+  EXPECTED_TREE_PROOF: f71b54bae31c9cd27c26b73ddca05d0db2f980bdab17673e733da313f5c275fd
 
 jobs:
   verify-apply:
@@ -118,7 +118,10 @@ jobs:
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          python3 tools/tmp_apply_linux_production_process_composition.py >"$patch_log" 2>&1
+          {
+            python3 tools/tmp_apply_linux_production_process_composition.py
+            python3 tools/tmp_refine_linux_production_process_composition.py
+          } >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
@@ -137,6 +140,7 @@ jobs:
           src/effect_fabric/root_supervisor_linux_production_process.rs
           src/lib.rs
           tools/tmp_apply_linux_production_process_composition.py
+          tools/tmp_refine_linux_production_process_composition.py
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
           diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
@@ -188,9 +192,12 @@ jobs:
           run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
 
           git add -A
-          helper=tools/tmp_apply_linux_production_process_composition.py
-          test ! -e "$helper"
-          test -z "$(git ls-files -- "$helper")"
+          for helper in \
+            tools/tmp_apply_linux_production_process_composition.py \
+            tools/tmp_refine_linux_production_process_composition.py; do
+            test ! -e "$helper"
+            test -z "$(git ls-files -- "$helper")"
+          done
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
