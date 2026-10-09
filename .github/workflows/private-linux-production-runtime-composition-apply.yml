@@ -160,7 +160,7 @@ jobs:
           fi
           rm -f "$diff_log"
 
-          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
+          { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
           src/effect_fabric/root_guarded_effect_service.rs
           src/effect_fabric/root_supervisor_active_runtime.rs
@@ -223,11 +223,23 @@ jobs:
           git add -A
           echo 'LAS_PRODUCTION_RUNTIME_COMMIT_ADD=PASS'
 
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=index_invariants'
+          for helper in \
+            tools/tmp_apply_linux_production_runtime_composition.py \
+            tools/tmp_fix_linux_production_runtime_activation_ownership.py \
+            tools/tmp_refine_linux_production_runtime_composition.py; do
+            test ! -e "$helper"
+            test -z "$(git ls-files -- "$helper")"
+          done
+          test -z "$(git diff --name-only)"
+          test -z "$(git ls-files --others --exclude-standard)"
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_INDEX_INVARIANTS=PASS'
+
           echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=cached_diff_check'
           git diff --cached --check
           echo 'LAS_PRODUCTION_RUNTIME_COMMIT_CACHED_DIFF_CHECK=PASS'
 
-          git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
+          git diff --cached --no-renames --name-only | sort -u >"$RUNNER_TEMP/staged-paths"
           if ! diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null; then
             echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=staged_scope'
             echo "LAS_PRODUCTION_RUNTIME_EXPECTED_PATH_COUNT=$(wc -l < "$RUNNER_TEMP/allowed-paths")"
