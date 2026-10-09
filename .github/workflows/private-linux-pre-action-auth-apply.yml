@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 67605dc33fc06e23bd4feae6f3f959b0689250029ae6dd667555113291ab090b
-  EXPECTED_HEAD_PROOF: 38615dfeef1aef4ff3d3067eacf45bfb3890bc5d80001ef036e25be47606c0e1
-  EXPECTED_TREE_PROOF: 47195b253f894bd8208d528f97e0bcb39364f6f6799bbd1312c6ccb448093fe6
+  EXPECTED_HEAD_PROOF: 1bc562b542c66e609fe4efe41299ceb35047628e9e6030cef3a2148414b49835
+  EXPECTED_TREE_PROOF: 7ef48153d3dd169562684716ada0fb65b3dec633dc9b65b04c11f6c6299f77b0
 
 jobs:
   verify-apply:
@@ -117,16 +117,24 @@ jobs:
           echo 'LAS_PREPARED_WORK_IDENTITY=PASS'
 
           helper=tools/tmp_apply_linux_prepared_work_coordinator.py
+          helper_fix=tools/tmp_fix_linux_prepared_work_helper_anchor.py
           python3 - <<'PY'
           from pathlib import Path
-          p = "tools/tmp_apply_linux_prepared_work_coordinator.py"
-          compile(Path(p).read_text(), p, "exec")
+          for p in (
+              "tools/tmp_apply_linux_prepared_work_coordinator.py",
+              "tools/tmp_fix_linux_prepared_work_helper_anchor.py",
+          ):
+              compile(Path(p).read_text(), p, "exec")
           PY
           echo 'LAS_PREPARED_WORK_HELPER_SYNTAX=PASS'
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          (set -euo pipefail; python3 "$helper") >"$patch_log" 2>&1
+          (
+            set -euo pipefail
+            python3 "$helper_fix"
+            python3 "$helper"
+          ) >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
@@ -166,6 +174,7 @@ jobs:
           src/effect_fabric/root_supervisor_linux_production_runtime.rs
           src/lib.rs
           tools/tmp_apply_linux_prepared_work_coordinator.py
+          tools/tmp_fix_linux_prepared_work_helper_anchor.py
           EOF
             sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
             diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths"
@@ -214,7 +223,8 @@ jobs:
 
           git add -A
           test ! -e "$helper"
-          test -z "$(git ls-files -- "$helper")"
+          test ! -e "$helper_fix"
+          test -z "$(git ls-files -- "$helper" "$helper_fix")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
