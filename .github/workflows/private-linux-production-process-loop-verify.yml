@@ -12,8 +12,9 @@ permissions:
 
 env:
   TARGET_REF_HASH: 937e43eb7e37dbf1cd43ef2dbde987413754f7ff0d8629bf83d9c6d477cf455a
-  EXPECTED_HEAD_PROOF: 811990b9fc55bbb2a7644e854b5fa0ee2e2aa2db81dc34518575d0e058da7b07
-  EXPECTED_TREE_PROOF: ea32e454190a681025da1ea9b6b2d630b4a58a5372565d0b9344aa7045222840
+  BASE_REF_HASH: 67605dc33fc06e23bd4feae6f3f959b0689250029ae6dd667555113291ab090b
+  EXPECTED_HEAD_PROOF: b0a914744f085356550a98b00cb0fd2a5d613bb8b468a3df0e1814ee6147d4d1
+  EXPECTED_TREE_PROOF: ad5b532fdea7d0265b74281c7a2e1d6fe409d90d4d639272f1779116d4efa1cf
   EXPECTED_BASE_PROOF: 3f0e208a51fc28feb2c837cbe8cb96f8469310fef7748c8dba662800210409de
 
 jobs:
@@ -83,30 +84,41 @@ jobs:
           refs="$RUNNER_TEMP/private-heads"
           git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
           matched_ref=""
+          matched_base_ref=""
           start_sha=""
+          base_sha=""
           while read -r candidate_sha ref; do
-            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+            ref_hash="$(printf '%s' "$ref" | sha256sum | awk '{print $1}')"
+            if [[ "$ref_hash" == "$TARGET_REF_HASH" ]]; then
               test -z "$matched_ref"
               matched_ref="$ref"
               start_sha="$candidate_sha"
             fi
+            if [[ "$ref_hash" == "$BASE_REF_HASH" ]]; then
+              test -z "$matched_base_ref"
+              matched_base_ref="$ref"
+              base_sha="$candidate_sha"
+            fi
           done <"$refs"
           rm -f "$refs"
           test -n "$matched_ref"
+          test -n "$matched_base_ref"
           test -n "$start_sha"
+          test -n "$base_sha"
           echo "::add-mask::$matched_ref"
+          echo "::add-mask::$matched_base_ref"
           echo "::add-mask::$start_sha"
+          echo "::add-mask::$base_sha"
           test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          test "$(printf '%s' "$base_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_BASE_PROOF"
 
-          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=5 origin "$matched_ref"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=16 origin "$matched_ref" "$matched_base_ref"
           git checkout -q --detach "$start_sha"
           test "$(git rev-parse HEAD)" = "$start_sha"
           start_tree="$(git rev-parse 'HEAD^{tree}')"
-          base_sha="$(git rev-parse HEAD~4)"
           echo "::add-mask::$start_tree"
-          echo "::add-mask::$base_sha"
           test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
-          test "$(printf '%s' "$base_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_BASE_PROOF"
+          git merge-base --is-ancestor "$base_sha" "$start_sha"
           test -z "$(git status --porcelain)"
           echo 'LAS_PROCESS_LOOP_IDENTITY=PASS'
 
