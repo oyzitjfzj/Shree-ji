@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 85592314c6098ee0a2e5e494e72a49ea1ddcf347a74bbfd3ee2ab72a31028a9b
-  EXPECTED_HEAD_PROOF: 4052b4d20c8d7d6967f3efae7124d24b869bfaa4633ba554c1695c2f3a41c18c
-  EXPECTED_TREE_PROOF: 2d6935600378bbe720f9bb19229de151e2cd13231fb6b03c4c42f4c0e8b68625
+  EXPECTED_HEAD_PROOF: b4e19cd6bedf8719cf8f295626604e81cfb65450a2ac3ce51a47f010e3b5df7b
+  EXPECTED_TREE_PROOF: 5b7341b4ec23e0195d3e77b7f0c2b7ca535f246c1e3022f1b4c31f9bcdbccb99
 
 jobs:
   verify-apply:
@@ -106,6 +106,7 @@ jobs:
           echo "::add-mask::$matched_ref"
           echo "::add-mask::$start_sha"
           test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+
           git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
           test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
           git checkout -q --detach "$start_sha"
@@ -115,13 +116,17 @@ jobs:
           test -z "$(git status --porcelain)"
           echo 'LAS_PLANNING_TICKET_IDENTITY=PASS'
 
-          helper=tools/tmp_apply_linux_planning_ticket.py
+          helper_apply=tools/tmp_apply_linux_planning_ticket.py
+          helper_refine=tools/tmp_refine_linux_planning_ticket.py
           python3 - <<'PY'
           from pathlib import Path
-          p = "tools/tmp_apply_linux_planning_ticket.py"
-          compile(Path(p).read_text(), p, "exec")
+          for p in (
+              "tools/tmp_refine_linux_planning_ticket.py",
+              "tools/tmp_apply_linux_planning_ticket.py",
+          ):
+              compile(Path(p).read_text(), p, "exec")
           PY
-          echo 'LAS_PLANNING_TICKET_HELPER_SYNTAX=PASS'
+          echo 'LAS_PLANNING_TICKET_HELPER_SYNTAX_PRE=PASS'
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
@@ -140,7 +145,17 @@ jobs:
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          (set -e; python3 "$helper") >"$patch_log" 2>&1
+          (
+            set -e
+            python3 "$helper_refine"
+            python3 - <<'PY'
+          from pathlib import Path
+          p = "tools/tmp_apply_linux_planning_ticket.py"
+          compile(Path(p).read_text(), p, "exec")
+          PY
+            python3 "$helper_apply"
+            rm -f "$helper_refine"
+          ) >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
@@ -163,6 +178,7 @@ jobs:
           src/effect_fabric/root_supervisor_linux_process_ingress.rs
           src/effect_fabric/root_supervisor_linux_production_runtime.rs
           tools/tmp_apply_linux_planning_ticket.py
+          tools/tmp_refine_linux_planning_ticket.py
           EOF
             sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
             diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths"
@@ -210,8 +226,9 @@ jobs:
           run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
 
           git add -A
-          test ! -e "$helper"
-          test -z "$(git ls-files -- "$helper")"
+          test ! -e "$helper_apply"
+          test ! -e "$helper_refine"
+          test -z "$(git ls-files -- "$helper_apply" "$helper_refine")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
@@ -225,6 +242,7 @@ jobs:
           new_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$new_sha"
           echo "::add-mask::$new_tree"
+
           remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           echo "::add-mask::$remote_sha"
           test "$remote_sha" = "$start_sha"
