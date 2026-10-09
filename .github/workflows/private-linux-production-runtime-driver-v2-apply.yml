@@ -106,7 +106,6 @@ jobs:
           echo "::add-mask::$matched_ref"
           echo "::add-mask::$start_sha"
           test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
-
           git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
           test "$(git rev-parse FETCH_HEAD)" = "$start_sha"
           git checkout -q --detach "$start_sha"
@@ -143,20 +142,6 @@ jobs:
           rm -f "$patch_log"
           echo 'LAS_RUNTIME_DRIVER_private_patch=PASS'
 
-          cargo +1.98.1 fmt --all
-          git diff --check
-          { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
-          cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
-          src/effect_fabric/root_supervisor_linux_process_ingress.rs
-          src/effect_fabric/root_supervisor_linux_production_runtime.rs
-          src/lib.rs
-          tools/tmp_apply_linux_production_runtime_driver.py
-          tools/tmp_refine_linux_production_runtime_driver.py
-          EOF
-          sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
-          diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
-          echo 'LAS_RUNTIME_DRIVER_SCOPE=PASS'
-
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
 
@@ -171,6 +156,34 @@ jobs:
             git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
             echo 'LAS_RUNTIME_DRIVER_PRIVATE_DIAGNOSTIC=CAPTURED'
           }
+
+          preflight_log="$RUNNER_TEMP/preflight.log"
+          set +e
+          {
+            cargo +1.98.1 fmt --all
+            git diff --check
+            { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
+            cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
+          src/effect_fabric/root_supervisor_linux_process_ingress.rs
+          src/effect_fabric/root_supervisor_linux_production_runtime.rs
+          src/lib.rs
+          tools/tmp_apply_linux_production_runtime_driver.py
+          tools/tmp_refine_linux_production_runtime_driver.py
+          EOF
+            sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
+            diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths"
+          } >"$preflight_log" 2>&1
+          preflight_rc=$?
+          set -e
+          if [[ $preflight_rc -ne 0 ]]; then
+            echo 'LAS_RUNTIME_DRIVER_STAGE=preflight'
+            echo "LAS_RUNTIME_DRIVER_RC=$preflight_rc"
+            echo "LAS_RUNTIME_DRIVER_LOG_SHA256=$(sha256sum "$preflight_log" | awk '{print $1}')"
+            capture_private_failure preflight "$preflight_log"
+            exit "$preflight_rc"
+          fi
+          rm -f "$preflight_log"
+          echo 'LAS_RUNTIME_DRIVER_PREFLIGHT=PASS'
 
           run_gate() {
             local stage="$1"
@@ -221,7 +234,6 @@ jobs:
           new_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$new_sha"
           echo "::add-mask::$new_tree"
-
           remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           echo "::add-mask::$remote_sha"
           test "$remote_sha" = "$start_sha"
