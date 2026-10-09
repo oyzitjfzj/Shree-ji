@@ -1,0 +1,86 @@
+name: Opaque exact rustfmt diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/opaque-format-diagnostic-20261010.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 937e43eb7e37dbf1cd43ef2dbde987413754f7ff0d8629bf83d9c6d477cf455a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b71fc3bcb8cb1e8e3e107a3bfada115454581427c110670cc1e44e3714133c3e
+  EXPECTED_PRIVATE_TREE_PROOF: 5e6acd369506ecaa94da67099c1e6ea8a187019b8ec79e50524082115bdbaf83
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Install exact formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"; mkdir "$root"; cd "$root"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""; private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"; private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; test -n "$private_head"
+          echo "::add-mask::$matched_ref"; echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"
+          git checkout -q --detach "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref private_head tree candidate_sha ref
+          echo "OPAQUE_FORMAT_RECOVERY=PASS"
+
+      - name: Identify formatting drift without exposing source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          set +e
+          cargo +1.98.1 fmt --all -- --check >/dev/null 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_FORMAT_CHECK_RC=$rc"
+          if [[ "$rc" -eq 0 ]]; then
+            echo "OPAQUE_FORMAT_CHANGED_COUNT=0"
+            echo "OPAQUE_FORMAT_DIAGNOSTIC=CLEAN"
+            exit 0
+          fi
+          cargo +1.98.1 fmt --all
+          count=0
+          while IFS= read -r -d '' path; do
+            count=$((count + 1))
+            printf 'OPAQUE_FORMAT_CHANGED_PATH_HASH=%s\n' "$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
+          done < <(git diff --name-only -z -- '*.rs')
+          echo "OPAQUE_FORMAT_CHANGED_COUNT=$count"
+          test "$count" -gt 0
+          echo "OPAQUE_FORMAT_DIAGNOSTIC=DRIFT_IDENTIFIED"
