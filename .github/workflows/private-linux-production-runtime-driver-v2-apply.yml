@@ -1,4 +1,4 @@
-name: Private Linux production runtime driver v2 apply
+name: Private Linux production planning ticket apply
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: b04a74ff0e7f1b30935fd6807d8b17506c697daf0b895f7f778729cdfdcf3946
-  EXPECTED_HEAD_PROOF: bb731de724bfb4543021bcb7bdf3374677155bbb67710d02cbb404496abcba5b
-  EXPECTED_TREE_PROOF: 7ef150dabaf6639e6aee50ab8cfd47bac2927ef8a4325fce3b59384c1bfff5fb
+  TARGET_REF_HASH: 85592314c6098ee0a2e5e494e72a49ea1ddcf347a74bbfd3ee2ab72a31028a9b
+  EXPECTED_HEAD_PROOF: 4052b4d20c8d7d6967f3efae7124d24b869bfaa4633ba554c1695c2f3a41c18c
+  EXPECTED_TREE_PROOF: 2d6935600378bbe720f9bb19229de151e2cd13231fb6b03c4c42f4c0e8b68625
 
 jobs:
   verify-apply:
@@ -44,7 +44,7 @@ jobs:
           unzip -q "$archive" -d "$prefix"
           echo "$prefix/bin" >> "$GITHUB_PATH"
 
-      - name: Apply verify and commit exact private production runtime driver
+      - name: Apply verify and commit exact private planning ticket boundary
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -77,7 +77,7 @@ jobs:
           "$gpr_wrapper" --version >/dev/null
           export GPRBUILD="$gpr_wrapper"
           echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
-          echo 'LAS_RUNTIME_DRIVER_TOOLCHAIN=PASS'
+          echo 'LAS_PLANNING_TICKET_TOOLCHAIN=PASS'
 
           root="$GITHUB_WORKSPACE/private"
           mkdir "$root"
@@ -113,17 +113,15 @@ jobs:
           echo "::add-mask::$start_tree"
           test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo 'LAS_RUNTIME_DRIVER_IDENTITY=PASS'
+          echo 'LAS_PLANNING_TICKET_IDENTITY=PASS'
 
+          helper=tools/tmp_apply_linux_planning_ticket.py
           python3 - <<'PY'
           from pathlib import Path
-          for p in (
-              "tools/tmp_refine_linux_production_runtime_driver.py",
-              "tools/tmp_apply_linux_production_runtime_driver.py",
-          ):
-              compile(Path(p).read_text(), p, "exec")
+          p = "tools/tmp_apply_linux_planning_ticket.py"
+          compile(Path(p).read_text(), p, "exec")
           PY
-          echo 'LAS_RUNTIME_DRIVER_HELPER_SYNTAX=PASS'
+          echo 'LAS_PLANNING_TICKET_HELPER_SYNTAX=PASS'
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
@@ -131,33 +129,29 @@ jobs:
           capture_private_failure() {
             local stage="$1"
             local log="$2"
-            local diag_path="tools/tmp_runtime_driver_${stage}_${GITHUB_RUN_ID}.log"
+            local diag_path="tools/tmp_planning_ticket_${stage}_${GITHUB_RUN_ID}.log"
             cp "$log" "$diag_path"
             git add -- "$diag_path"
-            git commit -q -m "Capture private Linux runtime-driver ${stage} diagnostic"
-            local diag_ref="refs/heads/tmp/runtime-driver-diagnostic-${GITHUB_RUN_ID}"
+            git commit -q -m "Capture private Linux planning-ticket ${stage} diagnostic"
+            local diag_ref="refs/heads/tmp/planning-ticket-diagnostic-${GITHUB_RUN_ID}"
             git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
-            echo 'LAS_RUNTIME_DRIVER_PRIVATE_DIAGNOSTIC=CAPTURED'
+            echo 'LAS_PLANNING_TICKET_PRIVATE_DIAGNOSTIC=CAPTURED'
           }
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          (
-            set -e
-            python3 tools/tmp_refine_linux_production_runtime_driver.py
-            python3 tools/tmp_apply_linux_production_runtime_driver.py
-          ) >"$patch_log" 2>&1
+          (set -e; python3 "$helper") >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
-            echo 'LAS_RUNTIME_DRIVER_STAGE=private_patch'
-            echo "LAS_RUNTIME_DRIVER_RC=$patch_rc"
-            echo "LAS_RUNTIME_DRIVER_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            echo 'LAS_PLANNING_TICKET_STAGE=private_patch'
+            echo "LAS_PLANNING_TICKET_RC=$patch_rc"
+            echo "LAS_PLANNING_TICKET_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
             capture_private_failure private_patch "$patch_log"
             exit "$patch_rc"
           fi
           rm -f "$patch_log"
-          echo 'LAS_RUNTIME_DRIVER_private_patch=PASS'
+          echo 'LAS_PLANNING_TICKET_private_patch=PASS'
 
           preflight_log="$RUNNER_TEMP/preflight.log"
           set +e
@@ -168,9 +162,7 @@ jobs:
             cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
           src/effect_fabric/root_supervisor_linux_process_ingress.rs
           src/effect_fabric/root_supervisor_linux_production_runtime.rs
-          src/lib.rs
-          tools/tmp_apply_linux_production_runtime_driver.py
-          tools/tmp_refine_linux_production_runtime_driver.py
+          tools/tmp_apply_linux_planning_ticket.py
           EOF
             sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
             diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths"
@@ -178,14 +170,14 @@ jobs:
           preflight_rc=$?
           set -e
           if [[ $preflight_rc -ne 0 ]]; then
-            echo 'LAS_RUNTIME_DRIVER_STAGE=preflight'
-            echo "LAS_RUNTIME_DRIVER_RC=$preflight_rc"
-            echo "LAS_RUNTIME_DRIVER_LOG_SHA256=$(sha256sum "$preflight_log" | awk '{print $1}')"
+            echo 'LAS_PLANNING_TICKET_STAGE=preflight'
+            echo "LAS_PLANNING_TICKET_RC=$preflight_rc"
+            echo "LAS_PLANNING_TICKET_LOG_SHA256=$(sha256sum "$preflight_log" | awk '{print $1}')"
             capture_private_failure preflight "$preflight_log"
             exit "$preflight_rc"
           fi
           rm -f "$preflight_log"
-          echo 'LAS_RUNTIME_DRIVER_PREFLIGHT=PASS'
+          echo 'LAS_PLANNING_TICKET_PREFLIGHT=PASS'
 
           run_gate() {
             local stage="$1"
@@ -196,14 +188,14 @@ jobs:
             local rc=$?
             set -e
             if [[ $rc -ne 0 ]]; then
-              echo "LAS_RUNTIME_DRIVER_STAGE=${stage}"
-              echo "LAS_RUNTIME_DRIVER_RC=${rc}"
-              echo "LAS_RUNTIME_DRIVER_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_PLANNING_TICKET_STAGE=${stage}"
+              echo "LAS_PLANNING_TICKET_RC=${rc}"
+              echo "LAS_PLANNING_TICKET_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
               capture_private_failure "$stage" "$log"
               exit "$rc"
             fi
             rm -f "$log"
-            echo "LAS_RUNTIME_DRIVER_${stage}=PASS"
+            echo "LAS_PLANNING_TICKET_${stage}=PASS"
           }
 
           run_gate trust_contract python3 tools/verification/root_trust_input_contract.py
@@ -218,19 +210,16 @@ jobs:
           run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
 
           git add -A
-          helper_apply=tools/tmp_apply_linux_production_runtime_driver.py
-          helper_refine=tools/tmp_refine_linux_production_runtime_driver.py
-          test ! -e "$helper_apply"
-          test ! -e "$helper_refine"
-          test -z "$(git ls-files -- "$helper_apply" "$helper_refine")"
+          test ! -e "$helper"
+          test -z "$(git ls-files -- "$helper")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
           git diff --cached --no-renames --name-only | sort -u >"$RUNNER_TEMP/staged-paths"
           diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
-          echo 'LAS_RUNTIME_DRIVER_COMMIT_SCOPE=PASS'
+          echo 'LAS_PLANNING_TICKET_COMMIT_SCOPE=PASS'
 
-          git commit -q -m "Drive Linux production runtime with explicit fault policy"
+          git commit -q -m "Bind prepared guarded planning with move-only tickets"
           test "$(git rev-parse HEAD^)" = "$start_sha"
           new_sha="$(git rev-parse HEAD)"
           new_tree="$(git rev-parse 'HEAD^{tree}')"
@@ -243,6 +232,6 @@ jobs:
           git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
           post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$post_sha" = "$new_sha"
-          echo 'LAS_RUNTIME_DRIVER_PRIVATE_COMMIT=PASS'
-          echo "LAS_RUNTIME_DRIVER_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          echo "LAS_RUNTIME_DRIVER_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+          echo 'LAS_PLANNING_TICKET_PRIVATE_COMMIT=PASS'
+          echo "LAS_PLANNING_TICKET_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PLANNING_TICKET_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
