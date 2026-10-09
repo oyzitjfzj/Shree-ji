@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 67605dc33fc06e23bd4feae6f3f959b0689250029ae6dd667555113291ab090b
-  EXPECTED_HEAD_PROOF: 370860d511ec3aaf770439374d1eb93ac8361f9300f449cbe0d10d86ef979515
-  EXPECTED_TREE_PROOF: 26f3aec925ea34499f3aed8deeaed2d56441b0178fff97468a7aec596d9439da
+  EXPECTED_HEAD_PROOF: 02f9493f99cdd2399731e8f189e3d5e8be0f5af1a8683b6eb0dced0d99c85f08
+  EXPECTED_TREE_PROOF: 8a017203d9e023682b86212be24f7ce9ccd7cc3a079396ca3571429aec3eb19a
 
 jobs:
   verify-apply:
@@ -35,8 +35,7 @@ jobs:
           set -euo pipefail
           archive="$RUNNER_TEMP/alr.zip"
           prefix="$RUNNER_TEMP/alr"
-          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
-            --output "$archive" \
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$archive" \
             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
           echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" | sha256sum --check --strict
           mkdir -p "$prefix"
@@ -118,12 +117,14 @@ jobs:
           helper=tools/tmp_apply_linux_prepared_work_coordinator.py
           helper_fix=tools/tmp_fix_linux_prepared_work_helper_anchor.py
           helper_compile=tools/tmp_fix_linux_prepared_work_compile.py
+          helper_test=tools/tmp_fix_linux_prepared_work_test.py
           python3 - <<'PY'
           from pathlib import Path
           for p in (
               "tools/tmp_apply_linux_prepared_work_coordinator.py",
               "tools/tmp_fix_linux_prepared_work_helper_anchor.py",
               "tools/tmp_fix_linux_prepared_work_compile.py",
+              "tools/tmp_fix_linux_prepared_work_test.py",
           ):
               compile(Path(p).read_text(), p, "exec")
           PY
@@ -136,6 +137,7 @@ jobs:
             python3 "$helper_fix"
             python3 "$helper"
             python3 "$helper_compile"
+            python3 "$helper_test"
           ) >"$patch_log" 2>&1
           patch_rc=$?
           set -e
@@ -178,6 +180,7 @@ jobs:
           tools/tmp_apply_linux_prepared_work_coordinator.py
           tools/tmp_fix_linux_prepared_work_compile.py
           tools/tmp_fix_linux_prepared_work_helper_anchor.py
+          tools/tmp_fix_linux_prepared_work_test.py
           EOF
             sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
             diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths"
@@ -228,7 +231,8 @@ jobs:
           test ! -e "$helper"
           test ! -e "$helper_fix"
           test ! -e "$helper_compile"
-          test -z "$(git ls-files -- "$helper" "$helper_fix" "$helper_compile")"
+          test ! -e "$helper_test"
+          test -z "$(git ls-files -- "$helper" "$helper_fix" "$helper_compile" "$helper_test")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
