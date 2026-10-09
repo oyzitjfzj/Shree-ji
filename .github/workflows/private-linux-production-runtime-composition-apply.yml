@@ -1,4 +1,4 @@
-name: Private Linux production final process apply
+name: Private Linux guarded pre-action staging apply
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF_HASH: e0d9568172e768d261a5480ace95011f974ea2fc8cbc3ea21783a6f57dc23105
-  EXPECTED_HEAD_PROOF: 416d73eae2925a83fa9e091bb8ce06d72ceef58eb1d438b6933bb359eda3f039
-  EXPECTED_TREE_PROOF: 977ddc5d7737c6926513bed5a1300ccb5cf3921ff5ab2bae391011c47187a45d
+  TARGET_REF_HASH: 8148b6e25d78822fcac1bab84482dba926629456c927842eea635adbe278fc8b
+  EXPECTED_HEAD_PROOF: f3b7f9885106ff5ab5527e359c704a9d01e158e4d1b489a1e3f12401dcb2c826
+  EXPECTED_TREE_PROOF: 57c97c25755f8d96bee4095a42045364a1a74481f818ceb28ecf4be7cbbd4d42
 
 jobs:
   verify-apply:
@@ -44,7 +44,7 @@ jobs:
           unzip -q "$archive" -d "$prefix"
           echo "$prefix/bin" >> "$GITHUB_PATH"
 
-      - name: Apply verify and commit exact private final process
+      - name: Apply verify and commit exact private guarded pre-action staging
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -77,7 +77,7 @@ jobs:
           "$gpr_wrapper" --version >/dev/null
           export GPRBUILD="$gpr_wrapper"
           echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
-          echo 'LAS_PRODUCTION_FINAL_TOOLCHAIN=PASS'
+          echo 'LAS_GUARDED_PREACTION_TOOLCHAIN=PASS'
 
           root="$GITHUB_WORKSPACE/private"
           mkdir "$root"
@@ -114,36 +114,39 @@ jobs:
           echo "::add-mask::$start_tree"
           test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo 'LAS_PRODUCTION_FINAL_IDENTITY=PASS'
+          echo 'LAS_GUARDED_PREACTION_IDENTITY=PASS'
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
           {
-            python3 tools/tmp_apply_linux_production_final_process.py
-            python3 tools/tmp_refine_linux_production_final_process.py
+            python3 tools/tmp_apply_linux_guarded_preaction_stage.py
+            python3 tools/tmp_refine_linux_guarded_preaction_stage.py
           } >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
-            echo 'LAS_PRODUCTION_FINAL_STAGE=private_patch'
-            echo "LAS_PRODUCTION_FINAL_RC=$patch_rc"
-            echo "LAS_PRODUCTION_FINAL_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            echo 'LAS_GUARDED_PREACTION_STAGE=private_patch'
+            echo "LAS_GUARDED_PREACTION_RC=$patch_rc"
+            echo "LAS_GUARDED_PREACTION_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
             exit "$patch_rc"
           fi
           rm -f "$patch_log"
-          echo 'LAS_PRODUCTION_FINAL_private_patch=PASS'
+          echo 'LAS_GUARDED_PREACTION_private_patch=PASS'
 
           cargo +1.98.1 fmt --all
           git diff --check
           { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
-          src/effect_fabric/root_supervisor_linux_production_startup.rs
-          tools/tmp_apply_linux_production_final_process.py
-          tools/tmp_refine_linux_production_final_process.py
+          src/effect_fabric/root_supervisor_linux_deployment.rs
+          src/effect_fabric/root_supervisor_linux_guarded_session.rs
+          src/effect_fabric/root_supervisor_linux_process_ingress.rs
+          src/effect_fabric/root_supervisor_linux_service.rs
+          tools/tmp_apply_linux_guarded_preaction_stage.py
+          tools/tmp_refine_linux_guarded_preaction_stage.py
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
           diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
-          echo 'LAS_PRODUCTION_FINAL_SCOPE=PASS'
+          echo 'LAS_GUARDED_PREACTION_SCOPE=PASS'
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
@@ -151,13 +154,13 @@ jobs:
           capture_private_failure() {
             local stage="$1"
             local log="$2"
-            local diag_path="tools/tmp_production_final_${stage}_${GITHUB_RUN_ID}.log"
+            local diag_path="tools/tmp_guarded_preaction_${stage}_${GITHUB_RUN_ID}.log"
             cp "$log" "$diag_path"
             git add -- "$diag_path"
-            git commit -q -m "Capture private Linux production final ${stage} diagnostic"
-            local diag_ref="refs/heads/tmp/production-final-diagnostic-${GITHUB_RUN_ID}"
+            git commit -q -m "Capture private guarded pre-action ${stage} diagnostic"
+            local diag_ref="refs/heads/tmp/guarded-preaction-diagnostic-${GITHUB_RUN_ID}"
             git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
-            echo 'LAS_PRODUCTION_FINAL_PRIVATE_DIAGNOSTIC=CAPTURED'
+            echo 'LAS_GUARDED_PREACTION_PRIVATE_DIAGNOSTIC=CAPTURED'
           }
 
           run_gate() {
@@ -169,14 +172,14 @@ jobs:
             local rc=$?
             set -e
             if [[ $rc -ne 0 ]]; then
-              echo "LAS_PRODUCTION_FINAL_STAGE=${stage}"
-              echo "LAS_PRODUCTION_FINAL_RC=${rc}"
-              echo "LAS_PRODUCTION_FINAL_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_GUARDED_PREACTION_STAGE=${stage}"
+              echo "LAS_GUARDED_PREACTION_RC=${rc}"
+              echo "LAS_GUARDED_PREACTION_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
               capture_private_failure "$stage" "$log"
               exit "$rc"
             fi
             rm -f "$log"
-            echo "LAS_PRODUCTION_FINAL_${stage}=PASS"
+            echo "LAS_GUARDED_PREACTION_${stage}=PASS"
           }
 
           run_gate trust_contract python3 tools/verification/root_trust_input_contract.py
@@ -191,8 +194,8 @@ jobs:
           run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
 
           git add -A
-          helper_apply=tools/tmp_apply_linux_production_final_process.py
-          helper_refine=tools/tmp_refine_linux_production_final_process.py
+          helper_apply=tools/tmp_apply_linux_guarded_preaction_stage.py
+          helper_refine=tools/tmp_refine_linux_guarded_preaction_stage.py
           test ! -e "$helper_apply"
           test ! -e "$helper_refine"
           test -z "$(git ls-files -- "$helper_apply" "$helper_refine")"
@@ -201,9 +204,9 @@ jobs:
           git diff --cached --check
           git diff --cached --no-renames --name-only | sort -u >"$RUNNER_TEMP/staged-paths"
           diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
-          echo 'LAS_PRODUCTION_FINAL_COMMIT_SCOPE=PASS'
+          echo 'LAS_GUARDED_PREACTION_COMMIT_SCOPE=PASS'
 
-          git commit -q -m "Publish Linux production through one final process owner"
+          git commit -q -m "Stage authenticated guarded request before pre-action evidence"
           test "$(git rev-parse HEAD^)" = "$start_sha"
           new_sha="$(git rev-parse HEAD)"
           new_tree="$(git rev-parse 'HEAD^{tree}')"
@@ -217,6 +220,6 @@ jobs:
           git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
           post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$post_sha" = "$new_sha"
-          echo 'LAS_PRODUCTION_FINAL_PRIVATE_COMMIT=PASS'
-          echo "LAS_PRODUCTION_FINAL_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          echo "LAS_PRODUCTION_FINAL_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+          echo 'LAS_GUARDED_PREACTION_PRIVATE_COMMIT=PASS'
+          echo "LAS_GUARDED_PREACTION_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_GUARDED_PREACTION_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
