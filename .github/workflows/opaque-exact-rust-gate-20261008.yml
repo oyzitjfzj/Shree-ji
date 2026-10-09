@@ -11,14 +11,52 @@ permissions:
   contents: read
 
 env:
-  EXPECTED_PRIVATE_SNAPSHOT_PROOF: e57d34b4c1c961d0a348d8acc64be50c63176a504998f521d80822e3ed0a5359
+  TARGET_REF_HASH: 937e43eb7e37dbf1cd43ef2dbde987413754f7ff0d8629bf83d9c6d477cf455a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b71fc3bcb8cb1e8e3e107a3bfada115454581427c110670cc1e44e3714133c3e
+  EXPECTED_PRIVATE_TREE_PROOF: 5e6acd369506ecaa94da67099c1e6ea8a187019b8ec79e50524082115bdbaf83
 
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
+      - name: Install pinned Rust and Ada toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+
+          ALR_ZIP="$RUNNER_TEMP/alr.zip"
+          ALR_PREFIX="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$ALR_ZIP" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" \
+            >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $ALR_ZIP" \
+            | sha256sum --check --strict >/dev/null
+          mkdir -p "$ALR_PREFIX"
+          unzip -q "$ALR_ZIP" -d "$ALR_PREFIX"
+          export PATH="$ALR_PREFIX/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+
+          ALR_WS="$RUNNER_TEMP/alire-workspace"
+          mkdir -p "$ALR_WS"
+          (cd "$ALR_WS" && alr -n init --in-place --no-skel --lib las_verify_toolchain >/dev/null)
+          GPRBUILD_WRAPPER="$RUNNER_TEMP/gprbuild-wrapper"
+          cat > "$GPRBUILD_WRAPPER" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec "$ALR_PREFIX/bin/alr" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$GPRBUILD_WRAPPER"
+          echo "GPRBUILD=$GPRBUILD_WRAPPER" >> "$GITHUB_ENV"
+          echo "OPAQUE_EXACT_TOOLCHAIN=PASS"
+
       - name: Recover one exact private revision opaquely
         shell: bash
         env:
@@ -30,44 +68,49 @@ jobs:
           test -n "$PRIVATE_TOKEN"
           echo "::add-mask::$PRIVATE_REPOSITORY"
           echo "::add-mask::$PRIVATE_TOKEN"
-          mkdir target
-          cd target
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
           git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
           auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
-          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=4096 origin '+refs/heads/*:refs/remotes/origin/*'
-          resolved=""
-          matches=0
-          while IFS= read -r oid; do
-            proof="$(printf '%s' "$oid" | sha256sum | awk '{print $1}')"
-            if [[ "$proof" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF" ]]; then
-              resolved="$oid"
-              matches=$((matches + 1))
-            fi
-          done < <(git rev-list --all --max-count=65536 | sort -u)
-          test "$matches" -eq 1
-          test -n "$resolved"
-          echo "::add-mask::$resolved"
-          git checkout -q --detach "$resolved"
-          test -z "$(git status --porcelain --untracked-files=no)"
-          unset PRIVATE_TOKEN auth resolved oid proof
-          echo "OPAQUE_EXACT_RECOVERY=PASS"
+          echo "::add-mask::$auth"
 
-      - name: Install pinned Rust verification components
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup toolchain install 1.98.1 --profile minimal >/dev/null
-          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
-          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
-          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
-          echo "OPAQUE_EXACT_TOOLCHAIN=PASS"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$private_head"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"
+          git checkout -q --detach "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+
+          unset PRIVATE_TOKEN auth matched_ref private_head tree candidate_sha ref
+          echo "OPAQUE_EXACT_RECOVERY=PASS"
 
       - name: Require deterministic formatting
         shell: bash
         run: |
           set -euo pipefail
-          cd target
+          cd "$GITHUB_WORKSPACE/target"
           log="$RUNNER_TEMP/opaque-format.private.log"
           set +e
           cargo +1.98.1 fmt --all -- --check >"$log" 2>&1
@@ -76,50 +119,107 @@ jobs:
           echo "OPAQUE_EXACT_FORMAT_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
           echo "OPAQUE_EXACT_FORMAT_RC=$rc"
           test "$rc" -eq 0
+          rm -f "$log"
           echo "OPAQUE_EXACT_FORMAT=PASS"
 
-      - name: Require Linux-feature compilation with warnings denied
+      - name: Require default compilation with warnings denied
         shell: bash
         env:
           RUSTFLAGS: -Dwarnings
         run: |
           set -euo pipefail
-          cd target
-          log="$RUNNER_TEMP/opaque-check.private.log"
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/opaque-default-check.private.log"
+          set +e
+          cargo +1.98.1 check --locked --all-targets >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_EXACT_DEFAULT_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_DEFAULT_CHECK_RC=$rc"
+          test "$rc" -eq 0
+          rm -f "$log"
+          echo "OPAQUE_EXACT_DEFAULT_CHECK=PASS"
+
+      - name: Require Linux compilation with warnings denied
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/opaque-linux-check.private.log"
           set +e
           cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials >"$log" 2>&1
           rc=$?
           set -e
-          echo "OPAQUE_EXACT_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          echo "OPAQUE_EXACT_CHECK_RC=$rc"
+          echo "OPAQUE_EXACT_LINUX_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_LINUX_CHECK_RC=$rc"
           test "$rc" -eq 0
-          echo "OPAQUE_EXACT_CHECK=PASS"
+          rm -f "$log"
+          echo "OPAQUE_EXACT_LINUX_CHECK=PASS"
 
-      - name: Require strict Linux-feature Clippy
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd target
-          log="$RUNNER_TEMP/opaque-clippy.private.log"
-          set +e
-          cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials -- -D warnings >"$log" 2>&1
-          rc=$?
-          set -e
-          echo "OPAQUE_EXACT_CLIPPY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          echo "OPAQUE_EXACT_CLIPPY_RC=$rc"
-          test "$rc" -eq 0
-          echo "OPAQUE_EXACT_CLIPPY=PASS"
-
-      - name: Require serialized Linux-feature library regression
+      - name: Require isolated Root FFI compilation with warnings denied
         shell: bash
         env:
           RUSTFLAGS: -Dwarnings
         run: |
           set -euo pipefail
-          cd target
-          log="$RUNNER_TEMP/opaque-library.private.log"
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/opaque-root-check.private.log"
           set +e
-          cargo +1.98.1 test --locked --lib --features linux-peer-credentials -- --test-threads=1 >"$log" 2>&1
+          GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --all-targets --features root-ffi >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_EXACT_ROOT_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_ROOT_CHECK_RC=$rc"
+          test "$rc" -eq 0
+          rm -f "$log"
+          echo "OPAQUE_EXACT_ROOT_CHECK=PASS"
+
+      - name: Require joint production compilation with warnings denied
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/opaque-joint-check.private.log"
+          set +e
+          GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --all-targets --features root-ffi,linux-peer-credentials >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_EXACT_JOINT_CHECK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_JOINT_CHECK_RC=$rc"
+          test "$rc" -eq 0
+          rm -f "$log"
+          echo "OPAQUE_EXACT_JOINT_CHECK=PASS"
+
+      - name: Require strict joint Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/opaque-joint-clippy.private.log"
+          set +e
+          GPRBUILD="$GPRBUILD" cargo +1.98.1 clippy --locked --all-targets --features root-ffi,linux-peer-credentials -- -D warnings >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_EXACT_JOINT_CLIPPY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_JOINT_CLIPPY_RC=$rc"
+          test "$rc" -eq 0
+          rm -f "$log"
+          echo "OPAQUE_EXACT_JOINT_CLIPPY=PASS"
+
+      - name: Require serialized joint library regression
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/opaque-joint-library.private.log"
+          set +e
+          GPRBUILD="$GPRBUILD" cargo +1.98.1 test --locked --lib --features root-ffi,linux-peer-credentials -- --test-threads=1 >"$log" 2>&1
           rc=$?
           set -e
           passed_marker=0
@@ -130,17 +230,18 @@ jobs:
           grep -Eiq 'OutOfMemoryError|Killed|Cannot allocate memory|signal: 9|exit code 137|stack overflow' "$log" && resource_marker=1
           network_marker=0
           grep -Eiq 'failed to get|network failure|Could not resolve host|timed out.*download' "$log" && network_marker=1
-          echo "OPAQUE_EXACT_LIBRARY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
-          echo "OPAQUE_EXACT_LIBRARY_RC=$rc"
-          echo "OPAQUE_EXACT_LIBRARY_PASS_MARKER=$passed_marker"
-          echo "OPAQUE_EXACT_LIBRARY_FAILURE_MARKER=$failure_marker"
-          echo "OPAQUE_EXACT_LIBRARY_RESOURCE_MARKER=$resource_marker"
-          echo "OPAQUE_EXACT_LIBRARY_NETWORK_MARKER=$network_marker"
+          echo "OPAQUE_EXACT_JOINT_LIBRARY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_EXACT_JOINT_LIBRARY_RC=$rc"
+          echo "OPAQUE_EXACT_JOINT_LIBRARY_PASS_MARKER=$passed_marker"
+          echo "OPAQUE_EXACT_JOINT_LIBRARY_FAILURE_MARKER=$failure_marker"
+          echo "OPAQUE_EXACT_JOINT_LIBRARY_RESOURCE_MARKER=$resource_marker"
+          echo "OPAQUE_EXACT_JOINT_LIBRARY_NETWORK_MARKER=$network_marker"
           test "$rc" -eq 0
           test "$passed_marker" -eq 1
           test "$failure_marker" -eq 0
           test "$resource_marker" -eq 0
           test "$network_marker" -eq 0
+          rm -f "$log"
           test -z "$(git status --porcelain --untracked-files=no)"
-          echo "OPAQUE_EXACT_LIBRARY=PASS"
+          echo "OPAQUE_EXACT_JOINT_LIBRARY=PASS"
           echo "OPAQUE_EXACT_BRIDGE=PASS"
