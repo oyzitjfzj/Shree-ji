@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 1e1d58dc4adf26133cb4de7c8e2dffd04637ea011540d3dd71c8a5a4b0969311
-  EXPECTED_HEAD_PROOF: 581a6fabd7705eaf8ab353ea07c8fb65bba5c8efe866f865bc4b62f0c0bab2ce
-  EXPECTED_TREE_PROOF: 9d29f79235db9136f3c29ece35cf51ec50041e1510559fde8a4d1cd0b381e478
+  EXPECTED_HEAD_PROOF: 70afde730360f080223ca863c564faa6ef935431f4192a61ec407a71b36de13a
+  EXPECTED_TREE_PROOF: 037ab1c39a18eb7cd064d4f34fa2da1916b57310f1b263aff39abfeb09f573d5
 
 jobs:
   verify-apply:
@@ -121,6 +121,7 @@ jobs:
           {
             python3 tools/tmp_apply_linux_production_runtime_composition.py
             python3 tools/tmp_refine_linux_production_runtime_composition.py
+            python3 tools/tmp_fix_linux_production_runtime_activation_ownership.py
           } >"$patch_log" 2>&1
           patch_rc=$?
           set -e
@@ -162,9 +163,11 @@ jobs:
           { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
           cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
           src/effect_fabric/root_guarded_effect_service.rs
+          src/effect_fabric/root_supervisor_active_runtime.rs
           src/effect_fabric/root_supervisor_linux_production_bootstrap.rs
           src/lib.rs
           tools/tmp_apply_linux_production_runtime_composition.py
+          tools/tmp_fix_linux_production_runtime_activation_ownership.py
           tools/tmp_refine_linux_production_runtime_composition.py
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
