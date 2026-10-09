@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 67605dc33fc06e23bd4feae6f3f959b0689250029ae6dd667555113291ab090b
-  EXPECTED_HEAD_PROOF: 02f9493f99cdd2399731e8f189e3d5e8be0f5af1a8683b6eb0dced0d99c85f08
-  EXPECTED_TREE_PROOF: 8a017203d9e023682b86212be24f7ce9ccd7cc3a079396ca3571429aec3eb19a
+  EXPECTED_HEAD_PROOF: cb93b2002b072758bc014a0f71ce43413ddd0b34d6ff8fb6798c7080e3b13499
+  EXPECTED_TREE_PROOF: beacb6821a6f33e5bccb66c0eed0b184158b93de00c28fe727427f3fbc253884
 
 jobs:
   verify-apply:
@@ -118,6 +118,7 @@ jobs:
           helper_fix=tools/tmp_fix_linux_prepared_work_helper_anchor.py
           helper_compile=tools/tmp_fix_linux_prepared_work_compile.py
           helper_test=tools/tmp_fix_linux_prepared_work_test.py
+          helper_clippy=tools/tmp_fix_linux_prepared_work_clippy.py
           python3 - <<'PY'
           from pathlib import Path
           for p in (
@@ -125,6 +126,7 @@ jobs:
               "tools/tmp_fix_linux_prepared_work_helper_anchor.py",
               "tools/tmp_fix_linux_prepared_work_compile.py",
               "tools/tmp_fix_linux_prepared_work_test.py",
+              "tools/tmp_fix_linux_prepared_work_clippy.py",
           ):
               compile(Path(p).read_text(), p, "exec")
           PY
@@ -138,6 +140,7 @@ jobs:
             python3 "$helper"
             python3 "$helper_compile"
             python3 "$helper_test"
+            python3 "$helper_clippy"
           ) >"$patch_log" 2>&1
           patch_rc=$?
           set -e
@@ -178,6 +181,7 @@ jobs:
           src/effect_fabric/root_supervisor_linux_production_runtime.rs
           src/lib.rs
           tools/tmp_apply_linux_prepared_work_coordinator.py
+          tools/tmp_fix_linux_prepared_work_clippy.py
           tools/tmp_fix_linux_prepared_work_compile.py
           tools/tmp_fix_linux_prepared_work_helper_anchor.py
           tools/tmp_fix_linux_prepared_work_test.py
@@ -232,7 +236,8 @@ jobs:
           test ! -e "$helper_fix"
           test ! -e "$helper_compile"
           test ! -e "$helper_test"
-          test -z "$(git ls-files -- "$helper" "$helper_fix" "$helper_compile" "$helper_test")"
+          test ! -e "$helper_clippy"
+          test -z "$(git ls-files -- "$helper" "$helper_fix" "$helper_compile" "$helper_test" "$helper_clippy")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
