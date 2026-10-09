@@ -212,29 +212,54 @@ jobs:
           run_gate production_release_check env RUSTFLAGS=-Dwarnings cargo +1.98.1 check --release --locked --all-targets --features "root-ffi linux-peer-credentials"
           run_gate production_release_tests env RUSTFLAGS=-Dwarnings cargo +1.98.1 test --release --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
 
-          git add -A -- \
-            src/effect_fabric/root_guarded_effect_service.rs \
-            src/effect_fabric/root_supervisor_linux_production_bootstrap.rs \
-            src/lib.rs \
-            tools/tmp_apply_linux_production_runtime_composition.py
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=add'
+          git add -A
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_ADD=PASS'
+
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=cached_diff_check'
           git diff --cached --check
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_CACHED_DIFF_CHECK=PASS'
+
           git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
-          diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
+          if ! diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null; then
+            echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=staged_scope'
+            echo "LAS_PRODUCTION_RUNTIME_EXPECTED_PATH_COUNT=$(wc -l < "$RUNNER_TEMP/allowed-paths")"
+            echo "LAS_PRODUCTION_RUNTIME_ACTUAL_PATH_COUNT=$(wc -l < "$RUNNER_TEMP/actual-paths")"
+            echo "LAS_PRODUCTION_RUNTIME_STAGED_PATH_COUNT=$(wc -l < "$RUNNER_TEMP/staged-paths")"
+            echo "LAS_PRODUCTION_RUNTIME_ACTUAL_PATHS_SHA256=$(sha256sum "$RUNNER_TEMP/actual-paths" | awk '{print $1}')"
+            echo "LAS_PRODUCTION_RUNTIME_STAGED_PATHS_SHA256=$(sha256sum "$RUNNER_TEMP/staged-paths" | awk '{print $1}')"
+            exit 1
+          fi
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGED_SCOPE=PASS'
+
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=local_commit'
           git commit -q -m "Compose concrete Linux production Root runtime"
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_LOCAL=PASS'
+
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=parent_check'
           test "$(git rev-parse HEAD^)" = "$start_sha"
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_PARENT=PASS'
+
           new_sha="$(git rev-parse HEAD)"
           new_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$new_sha"
           echo "::add-mask::$new_tree"
 
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=remote_compare'
           remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           echo "::add-mask::$remote_sha"
           test "$remote_sha" = "$start_sha"
           test "$(printf '%s' "$remote_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
-          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_REMOTE_COMPARE=PASS'
 
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=push'
+          git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_PUSH=PASS'
+
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_STAGE=post_read'
           post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$post_sha" = "$new_sha"
+          echo 'LAS_PRODUCTION_RUNTIME_COMMIT_POST_READ=PASS'
           echo 'LAS_PRODUCTION_RUNTIME_PRIVATE_COMMIT=PASS'
           echo "LAS_PRODUCTION_RUNTIME_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
           echo "LAS_PRODUCTION_RUNTIME_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
