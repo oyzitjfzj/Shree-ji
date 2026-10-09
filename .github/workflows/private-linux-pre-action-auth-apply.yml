@@ -1,4 +1,4 @@
-name: Private Linux pre-action authenticator owner apply
+name: Private Linux prepared-work coordinator apply
 
 on:
   push:
@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 67605dc33fc06e23bd4feae6f3f959b0689250029ae6dd667555113291ab090b
-  EXPECTED_HEAD_PROOF: 1bb2d3bd9eba8937d84613ef5cefbee9db531f2f9319b99249a307b575368203
-  EXPECTED_TREE_PROOF: 70aa7cc59a8de8f4d8b17816f9f2aaa9efa387361400d6d912c882e92c5794f3
+  EXPECTED_HEAD_PROOF: 38615dfeef1aef4ff3d3067eacf45bfb3890bc5d80001ef036e25be47606c0e1
+  EXPECTED_TREE_PROOF: 47195b253f894bd8208d528f97e0bcb39364f6f6799bbd1312c6ccb448093fe6
 
 jobs:
   verify-apply:
@@ -44,7 +44,7 @@ jobs:
           unzip -q "$archive" -d "$prefix"
           echo "$prefix/bin" >> "$GITHUB_PATH"
 
-      - name: Apply verify and commit exact private authenticator owner
+      - name: Apply verify and commit exact private prepared-work coordinator
         shell: bash
         env:
           PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
@@ -77,7 +77,7 @@ jobs:
           "$gpr_wrapper" --version >/dev/null
           export GPRBUILD="$gpr_wrapper"
           echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
-          echo 'LAS_PRE_ACTION_OWNER_TOOLCHAIN=PASS'
+          echo 'LAS_PREPARED_WORK_TOOLCHAIN=PASS'
 
           root="$GITHUB_WORKSPACE/private"
           mkdir "$root"
@@ -114,37 +114,29 @@ jobs:
           echo "::add-mask::$start_tree"
           test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
           test -z "$(git status --porcelain)"
-          echo 'LAS_PRE_ACTION_OWNER_IDENTITY=PASS'
+          echo 'LAS_PREPARED_WORK_IDENTITY=PASS'
 
-          helper=tools/tmp_refine_linux_pre_action_authenticator_owner.py
-          helper_fix=tools/tmp_fix_linux_pre_action_owner_test_scope.py
+          helper=tools/tmp_apply_linux_prepared_work_coordinator.py
           python3 - <<'PY'
           from pathlib import Path
-          for p in (
-              "tools/tmp_refine_linux_pre_action_authenticator_owner.py",
-              "tools/tmp_fix_linux_pre_action_owner_test_scope.py",
-          ):
-              compile(Path(p).read_text(), p, "exec")
+          p = "tools/tmp_apply_linux_prepared_work_coordinator.py"
+          compile(Path(p).read_text(), p, "exec")
           PY
-          echo 'LAS_PRE_ACTION_OWNER_HELPER_SYNTAX=PASS'
+          echo 'LAS_PREPARED_WORK_HELPER_SYNTAX=PASS'
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          (
-            set -euo pipefail
-            python3 "$helper"
-            python3 "$helper_fix"
-          ) >"$patch_log" 2>&1
+          (set -euo pipefail; python3 "$helper") >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
-            echo 'LAS_PRE_ACTION_OWNER_STAGE=private_patch'
-            echo "LAS_PRE_ACTION_OWNER_RC=$patch_rc"
-            echo "LAS_PRE_ACTION_OWNER_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            echo 'LAS_PREPARED_WORK_STAGE=private_patch'
+            echo "LAS_PREPARED_WORK_RC=$patch_rc"
+            echo "LAS_PREPARED_WORK_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
             exit "$patch_rc"
           fi
           rm -f "$patch_log"
-          echo 'LAS_PRE_ACTION_OWNER_private_patch=PASS'
+          echo 'LAS_PREPARED_WORK_private_patch=PASS'
 
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
@@ -152,13 +144,13 @@ jobs:
           capture_private_failure() {
             local stage="$1"
             local log="$2"
-            local diag_path="tools/tmp_pre_action_owner_${stage}_${GITHUB_RUN_ID}.log"
+            local diag_path="tools/tmp_prepared_work_${stage}_${GITHUB_RUN_ID}.log"
             cp "$log" "$diag_path"
             git add -- "$diag_path"
-            git commit -q -m "Capture private pre-action-owner ${stage} diagnostic"
-            local diag_ref="refs/heads/tmp/pre-action-owner-diagnostic-${GITHUB_RUN_ID}"
+            git commit -q -m "Capture private prepared-work ${stage} diagnostic"
+            local diag_ref="refs/heads/tmp/prepared-work-diagnostic-${GITHUB_RUN_ID}"
             git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
-            echo 'LAS_PRE_ACTION_OWNER_PRIVATE_DIAGNOSTIC=CAPTURED'
+            echo 'LAS_PREPARED_WORK_PRIVATE_DIAGNOSTIC=CAPTURED'
           }
 
           preflight_log="$RUNNER_TEMP/preflight.log"
@@ -169,11 +161,11 @@ jobs:
             git diff --check
             { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
             cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
-          src/effect_fabric/root_supervisor_linux_pre_action_authenticator.rs
-          src/effect_fabric/root_supervisor_linux_pre_action_plan.rs
+          src/effect_fabric/root_supervisor_linux_prepared_work_coordinator.rs
+          src/effect_fabric/root_supervisor_linux_process_ingress.rs
+          src/effect_fabric/root_supervisor_linux_production_runtime.rs
           src/lib.rs
-          tools/tmp_fix_linux_pre_action_owner_test_scope.py
-          tools/tmp_refine_linux_pre_action_authenticator_owner.py
+          tools/tmp_apply_linux_prepared_work_coordinator.py
           EOF
             sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
             diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths"
@@ -181,14 +173,14 @@ jobs:
           preflight_rc=$?
           set -e
           if [[ $preflight_rc -ne 0 ]]; then
-            echo 'LAS_PRE_ACTION_OWNER_STAGE=preflight'
-            echo "LAS_PRE_ACTION_OWNER_RC=$preflight_rc"
-            echo "LAS_PRE_ACTION_OWNER_LOG_SHA256=$(sha256sum "$preflight_log" | awk '{print $1}')"
+            echo 'LAS_PREPARED_WORK_STAGE=preflight'
+            echo "LAS_PREPARED_WORK_RC=$preflight_rc"
+            echo "LAS_PREPARED_WORK_LOG_SHA256=$(sha256sum "$preflight_log" | awk '{print $1}')"
             capture_private_failure preflight "$preflight_log"
             exit "$preflight_rc"
           fi
           rm -f "$preflight_log"
-          echo 'LAS_PRE_ACTION_OWNER_PREFLIGHT=PASS'
+          echo 'LAS_PREPARED_WORK_PREFLIGHT=PASS'
 
           run_gate() {
             local stage="$1"
@@ -199,14 +191,14 @@ jobs:
             local rc=$?
             set -e
             if [[ $rc -ne 0 ]]; then
-              echo "LAS_PRE_ACTION_OWNER_STAGE=${stage}"
-              echo "LAS_PRE_ACTION_OWNER_RC=${rc}"
-              echo "LAS_PRE_ACTION_OWNER_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+              echo "LAS_PREPARED_WORK_STAGE=${stage}"
+              echo "LAS_PREPARED_WORK_RC=${rc}"
+              echo "LAS_PREPARED_WORK_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
               capture_private_failure "$stage" "$log"
               exit "$rc"
             fi
             rm -f "$log"
-            echo "LAS_PRE_ACTION_OWNER_${stage}=PASS"
+            echo "LAS_PREPARED_WORK_${stage}=PASS"
           }
 
           run_gate trust_contract python3 tools/verification/root_trust_input_contract.py
@@ -222,21 +214,21 @@ jobs:
 
           git add -A
           test ! -e "$helper"
-          test ! -e "$helper_fix"
-          test -z "$(git ls-files -- "$helper" "$helper_fix")"
+          test -z "$(git ls-files -- "$helper")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
           git diff --cached --no-renames --name-only | sort -u >"$RUNNER_TEMP/staged-paths"
           diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
-          echo 'LAS_PRE_ACTION_OWNER_COMMIT_SCOPE=PASS'
+          echo 'LAS_PREPARED_WORK_COMMIT_SCOPE=PASS'
 
-          git commit -q -m "Make Linux pre-action authenticator ownership failure-atomic"
+          git commit -q -m "Close failure-atomic Linux prepared-work ownership"
           test "$(git rev-parse HEAD^)" = "$start_sha"
           new_sha="$(git rev-parse HEAD)"
           new_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$new_sha"
           echo "::add-mask::$new_tree"
+
           remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           echo "::add-mask::$remote_sha"
           test "$remote_sha" = "$start_sha"
@@ -244,6 +236,6 @@ jobs:
           git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$matched_ref"
           post_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           test "$post_sha" = "$new_sha"
-          echo 'LAS_PRE_ACTION_OWNER_PRIVATE_COMMIT=PASS'
-          echo "LAS_PRE_ACTION_OWNER_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
-          echo "LAS_PRE_ACTION_OWNER_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
+          echo 'LAS_PREPARED_WORK_PRIVATE_COMMIT=PASS'
+          echo "LAS_PREPARED_WORK_PRIVATE_COMMIT_PROOF=$(printf '%s' "$new_sha" | sha256sum | awk '{print $1}')"
+          echo "LAS_PREPARED_WORK_PRIVATE_TREE_PROOF=$(printf '%s' "$new_tree" | sha256sum | awk '{print $1}')"
