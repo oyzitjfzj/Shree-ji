@@ -1,0 +1,91 @@
+name: Private production runtime staging probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/private-production-runtime-staging-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 1e1d58dc4adf26133cb4de7c8e2dffd04637ea011540d3dd71c8a5a4b0969311
+  EXPECTED_HEAD_PROOF: 2ba69f2db73f97516261786259b30a89f5a485dbb4f01d41b0608638d0417fc9
+  EXPECTED_TREE_PROOF: 5c697034cddb2d10e864dca3ca8dfb5abc86e3af148a0cd07a8757e22b97e7ef
+
+jobs:
+  stage-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Probe exact staging delta without private write authority
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_READ_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_READ_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_READ_TOKEN"
+
+          root="$RUNNER_TEMP/private"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          read_auth="$(printf 'x-access-token:%s' "$PRIVATE_READ_TOKEN" | base64 -w0)"
+          echo "::add-mask::$read_auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          start_sha=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" == "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              start_sha="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$start_sha"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$start_sha"
+          test "$(printf '%s' "$start_sha" | sha256sum | awk '{print $1}')" = "$EXPECTED_HEAD_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $read_auth" fetch -q --depth=1 origin "$matched_ref"
+          git checkout -q --detach "$start_sha"
+          start_tree="$(git rev-parse 'HEAD^{tree}')"
+          test "$(printf '%s' "$start_tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_TREE_PROOF"
+
+          python3 tools/tmp_apply_linux_production_runtime_composition.py
+          python3 tools/tmp_refine_linux_production_runtime_composition.py
+          python3 tools/tmp_fix_linux_production_runtime_activation_ownership.py
+
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual"
+          git add -A
+          git diff --cached --name-only | sort -u >"$RUNNER_TEMP/staged"
+
+          echo "LAS_STAGE_PROBE_ACTUAL_COUNT=$(wc -l < "$RUNNER_TEMP/actual")"
+          echo "LAS_STAGE_PROBE_STAGED_COUNT=$(wc -l < "$RUNNER_TEMP/staged")"
+          while read -r path; do
+            case "$path" in
+              src/effect_fabric/root_guarded_effect_service.rs|src/effect_fabric/root_supervisor_active_runtime.rs|src/effect_fabric/root_supervisor_linux_production_bootstrap.rs|src/lib.rs|tools/tmp_apply_linux_production_runtime_composition.py|tools/tmp_fix_linux_production_runtime_activation_ownership.py|tools/tmp_refine_linux_production_runtime_composition.py) ;;
+              *) echo 'LAS_STAGE_PROBE_SCOPE=FAIL'; exit 1 ;;
+            esac
+          done <"$RUNNER_TEMP/actual"
+
+          missing="$(comm -23 "$RUNNER_TEMP/actual" "$RUNNER_TEMP/staged")"
+          extra="$(comm -13 "$RUNNER_TEMP/actual" "$RUNNER_TEMP/staged")"
+          test -z "$extra"
+          if [[ -n "$missing" ]]; then
+            while read -r path; do
+              test -n "$path" || continue
+              echo "LAS_STAGE_PROBE_MISSING=$path"
+            done <<<"$missing"
+          fi
+          echo 'LAS_STAGE_PROBE=PASS'
