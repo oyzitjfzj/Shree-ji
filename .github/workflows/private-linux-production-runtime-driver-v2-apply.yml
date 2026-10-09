@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: b04a74ff0e7f1b30935fd6807d8b17506c697daf0b895f7f778729cdfdcf3946
-  EXPECTED_HEAD_PROOF: d2bbb1946fbd6aa7de0fa6643120ef96a8d42f20682686ed235a199fcc49aa50
-  EXPECTED_TREE_PROOF: 01f68b25d7cf83106df084e15f7213a746f6001237e4d9630dbaf6b25bd8e3d7
+  EXPECTED_HEAD_PROOF: a937b8353e7b4049d01c5f76fa299638d347cc6f6b1cb41df85375bdd123dc6e
+  EXPECTED_TREE_PROOF: 63fee137c8e4ff1c66bf62dd6f53262c526334e7e998c059a76d64bc76872a5f
 
 jobs:
   verify-apply:
@@ -125,23 +125,6 @@ jobs:
           PY
           echo 'LAS_RUNTIME_DRIVER_HELPER_SYNTAX=PASS'
 
-          patch_log="$RUNNER_TEMP/private-patch.log"
-          set +e
-          {
-            python3 tools/tmp_refine_linux_production_runtime_driver.py
-            python3 tools/tmp_apply_linux_production_runtime_driver.py
-          } >"$patch_log" 2>&1
-          patch_rc=$?
-          set -e
-          if [[ $patch_rc -ne 0 ]]; then
-            echo 'LAS_RUNTIME_DRIVER_STAGE=private_patch'
-            echo "LAS_RUNTIME_DRIVER_RC=$patch_rc"
-            echo "LAS_RUNTIME_DRIVER_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
-            exit "$patch_rc"
-          fi
-          rm -f "$patch_log"
-          echo 'LAS_RUNTIME_DRIVER_private_patch=PASS'
-
           git config user.name "LAS Verification Committer"
           git config user.email "las-verification@users.noreply.github.com"
 
@@ -156,6 +139,25 @@ jobs:
             git -c http.extraHeader="AUTHORIZATION: basic $write_auth" push -q origin HEAD:"$diag_ref"
             echo 'LAS_RUNTIME_DRIVER_PRIVATE_DIAGNOSTIC=CAPTURED'
           }
+
+          patch_log="$RUNNER_TEMP/private-patch.log"
+          set +e
+          (
+            set -e
+            python3 tools/tmp_refine_linux_production_runtime_driver.py
+            python3 tools/tmp_apply_linux_production_runtime_driver.py
+          ) >"$patch_log" 2>&1
+          patch_rc=$?
+          set -e
+          if [[ $patch_rc -ne 0 ]]; then
+            echo 'LAS_RUNTIME_DRIVER_STAGE=private_patch'
+            echo "LAS_RUNTIME_DRIVER_RC=$patch_rc"
+            echo "LAS_RUNTIME_DRIVER_LOG_SHA256=$(sha256sum "$patch_log" | awk '{print $1}')"
+            capture_private_failure private_patch "$patch_log"
+            exit "$patch_rc"
+          fi
+          rm -f "$patch_log"
+          echo 'LAS_RUNTIME_DRIVER_private_patch=PASS'
 
           preflight_log="$RUNNER_TEMP/preflight.log"
           set +e
