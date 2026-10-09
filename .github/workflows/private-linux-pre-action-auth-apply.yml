@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: 67605dc33fc06e23bd4feae6f3f959b0689250029ae6dd667555113291ab090b
-  EXPECTED_HEAD_PROOF: 1bc562b542c66e609fe4efe41299ceb35047628e9e6030cef3a2148414b49835
-  EXPECTED_TREE_PROOF: 7ef48153d3dd169562684716ada0fb65b3dec633dc9b65b04c11f6c6299f77b0
+  EXPECTED_HEAD_PROOF: 370860d511ec3aaf770439374d1eb93ac8361f9300f449cbe0d10d86ef979515
+  EXPECTED_TREE_PROOF: 26f3aec925ea34499f3aed8deeaed2d56441b0178fff97468a7aec596d9439da
 
 jobs:
   verify-apply:
@@ -38,8 +38,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
             --output "$archive" \
             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
-          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" \
-            | sha256sum --check --strict
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" | sha256sum --check --strict
           mkdir -p "$prefix"
           unzip -q "$archive" -d "$prefix"
           echo "$prefix/bin" >> "$GITHUB_PATH"
@@ -118,11 +117,13 @@ jobs:
 
           helper=tools/tmp_apply_linux_prepared_work_coordinator.py
           helper_fix=tools/tmp_fix_linux_prepared_work_helper_anchor.py
+          helper_compile=tools/tmp_fix_linux_prepared_work_compile.py
           python3 - <<'PY'
           from pathlib import Path
           for p in (
               "tools/tmp_apply_linux_prepared_work_coordinator.py",
               "tools/tmp_fix_linux_prepared_work_helper_anchor.py",
+              "tools/tmp_fix_linux_prepared_work_compile.py",
           ):
               compile(Path(p).read_text(), p, "exec")
           PY
@@ -134,6 +135,7 @@ jobs:
             set -euo pipefail
             python3 "$helper_fix"
             python3 "$helper"
+            python3 "$helper_compile"
           ) >"$patch_log" 2>&1
           patch_rc=$?
           set -e
@@ -174,6 +176,7 @@ jobs:
           src/effect_fabric/root_supervisor_linux_production_runtime.rs
           src/lib.rs
           tools/tmp_apply_linux_prepared_work_coordinator.py
+          tools/tmp_fix_linux_prepared_work_compile.py
           tools/tmp_fix_linux_prepared_work_helper_anchor.py
           EOF
             sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
@@ -224,7 +227,8 @@ jobs:
           git add -A
           test ! -e "$helper"
           test ! -e "$helper_fix"
-          test -z "$(git ls-files -- "$helper" "$helper_fix")"
+          test ! -e "$helper_compile"
+          test -z "$(git ls-files -- "$helper" "$helper_fix" "$helper_compile")"
           test -z "$(git diff --name-only)"
           test -z "$(git ls-files --others --exclude-standard)"
           git diff --cached --check
@@ -238,7 +242,6 @@ jobs:
           new_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$new_sha"
           echo "::add-mask::$new_tree"
-
           remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           echo "::add-mask::$remote_sha"
           test "$remote_sha" = "$start_sha"
