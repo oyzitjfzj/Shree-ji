@@ -1,0 +1,184 @@
+name: Opaque exact TLC gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/opaque-exact-tlc-gate-20261010.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 937e43eb7e37dbf1cd43ef2dbde987413754f7ff0d8629bf83d9c6d477cf455a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: b71fc3bcb8cb1e8e3e107a3bfada115454581427c110670cc1e44e3714133c3e
+  EXPECTED_PRIVATE_TREE_PROOF: 5e6acd369506ecaa94da67099c1e6ea8a187019b8ec79e50524082115bdbaf83
+  TARGET_TLA_PATH_HASH: 9f492431a41ba215fd54bead52131d0b9391807937ea3be0a374fceac7b217cc
+  TARGET_CFG_PATH_HASH: c8a0c6f41f191aaba6776f1d1b4c8c8942cc3832026c2390dab046a5cc2fc385
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Recover one exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$private_head"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"
+          git checkout -q --detach "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+
+          unset PRIVATE_TOKEN auth matched_ref private_head tree candidate_sha ref
+          echo "OPAQUE_TLC_RECOVERY=PASS"
+
+      - name: Resolve exact private model without publishing paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          tla=""
+          cfg=""
+          while IFS= read -r -d '' path; do
+            path_hash="$(printf '%s' "$path" | sha256sum | awk '{print $1}')"
+            if [[ "$path_hash" = "$TARGET_TLA_PATH_HASH" ]]; then
+              test -z "$tla"
+              tla="$path"
+            fi
+            if [[ "$path_hash" = "$TARGET_CFG_PATH_HASH" ]]; then
+              test -z "$cfg"
+              cfg="$path"
+            fi
+          done < <(git ls-files -z)
+          test -n "$tla"
+          test -n "$cfg"
+          test -f "$tla"
+          test -f "$cfg"
+          test "$(dirname "$tla")" = "$(dirname "$cfg")"
+          echo "::add-mask::$tla"
+          echo "::add-mask::$cfg"
+          printf 'PRIVATE_TLA_PATH=%s\nPRIVATE_CFG_PATH=%s\n' "$tla" "$cfg" >>"$GITHUB_ENV"
+          echo "OPAQUE_TLC_TARGET_RESOLUTION=PASS"
+
+      - name: Fetch pinned TLA+ tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/tla2tools.jar"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar" \
+            >/dev/null 2>&1
+          echo "bee4a54f3ee3d4afc347c3240ec2d9e93b075104  $jar" \
+            | sha1sum --check --strict >/dev/null
+          java -version >/dev/null 2>&1
+          echo "OPAQUE_TLC_TOOLCHAIN=PASS"
+
+      - name: Parse exact private model
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          log="$RUNNER_TEMP/opaque-sany.private.log"
+          set +e
+          java -cp "$RUNNER_TEMP/tla2tools.jar" tla2sany.SANY "$PRIVATE_TLA_PATH" >"$log" 2>&1
+          rc=$?
+          set -e
+          echo "OPAQUE_TLC_SANY_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_TLC_SANY_RC=$rc"
+          test "$rc" -eq 0
+          rm -f "$log"
+          echo "OPAQUE_TLC_SANY=PASS"
+
+      - name: Exhaustively model-check exact private gate
+        shell: bash
+        env:
+          JAVA_TOOL_OPTIONS: -Xmx5g
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          cfg_dir="$(dirname "$PRIVATE_CFG_PATH")"
+          cfg_base="$(basename "$PRIVATE_CFG_PATH")"
+          tla_base="$(basename "$PRIVATE_TLA_PATH")"
+          log="$RUNNER_TEMP/opaque-tlc.private.log"
+          set +e
+          (
+            cd "$cfg_dir"
+            java -XX:+UseParallelGC -jar "$RUNNER_TEMP/tla2tools.jar" \
+              -workers 2 \
+              -fp 0 \
+              -config "$cfg_base" \
+              "$tla_base"
+          ) >"$log" 2>&1
+          rc=$?
+          set -e
+
+          severe='Invariant .* is violated|Property .* is violated|Temporal propert(y|ies).*violat|liveness.*violat|Deadlock reached|Parsing or semantic analysis failed|parse error|semantic error|fingerprint.*collision|collision.*fingerprint|OutOfMemoryError|Cannot allocate memory|No space left on device|Disk quota exceeded|Exception in thread|java\.lang\.|java\.io\.|java\.nio\.|TLC threw an unexpected exception|TLC Bug|AssertionError|An error occurred while running TLC'
+          severe_marker=0
+          grep -Eiq "$severe" "$log" && severe_marker=1
+          metrics="$(python3 - "$log" <<'PY'
+          import re, sys
+          text=open(sys.argv[1], encoding='utf-8', errors='replace').read()
+          matches=re.findall(r'([0-9,]+) states generated.*?, ([0-9,]+) distinct states found.*?, ([0-9,]+) states left on queue', text)
+          if matches:
+              g,d,q=matches[-1]
+              print(g.replace(',',''), d.replace(',',''), q.replace(',',''))
+          else:
+              print('0 0 0')
+          PY
+          )"
+          read -r generated distinct queued <<<"$metrics"
+          echo "OPAQUE_TLC_LOG_SHA256=$(sha256sum "$log" | awk '{print $1}')"
+          echo "OPAQUE_TLC_RC=$rc"
+          echo "OPAQUE_TLC_SEVERE_MARKER=$severe_marker"
+          echo "OPAQUE_TLC_GENERATED=$generated"
+          echo "OPAQUE_TLC_DISTINCT=$distinct"
+          echo "OPAQUE_TLC_QUEUE=$queued"
+          test "$rc" -eq 0
+          test "$severe_marker" -eq 0
+          test "$distinct" -gt 0
+          test "$queued" -eq 0
+          rm -f "$log"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "OPAQUE_TLC_MODEL_CHECK=PASS"
+          echo "OPAQUE_TLC_BRIDGE=PASS"
