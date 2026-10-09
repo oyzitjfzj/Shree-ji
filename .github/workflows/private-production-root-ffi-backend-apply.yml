@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: f46e7170826acc481e19f9edf9fbf433362defdfb251fbfa87e7c67295183437
-  EXPECTED_HEAD_PROOF: 894f934c87ab3c8325713b3ca243e58ffa180166ff9c5dc93613f3d917e648d7
-  EXPECTED_TREE_PROOF: f5ee0a195ace97dc833257f73911df7e173c1332cc10122600b039641485f321
+  EXPECTED_HEAD_PROOF: 09a567f5f9b8504df4d6dac53a548e7b41d9f70d869773747626eb09b2e5fc5b
+  EXPECTED_TREE_PROOF: 8c5ee69af6e6178a1dd8d68c93e51d77e9ee45432fb122159e9a76da329a251a
 
 jobs:
   verify-apply:
@@ -118,7 +118,10 @@ jobs:
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          python3 tools/tmp_apply_production_root_ffi_backend.py >"$patch_log" 2>&1
+          {
+            python3 tools/tmp_apply_production_root_ffi_backend.py
+            python3 tools/tmp_refine_production_root_ffi_backend.py
+          } >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
@@ -161,8 +164,10 @@ jobs:
           src/effect_fabric/dispatch_commit.rs
           src/effect_fabric/root_control_channel_authority.rs
           src/effect_fabric/root_ffi.rs
+          src/effect_fabric/trusted_root_ingress.rs
           src/lib.rs
           tools/tmp_apply_production_root_ffi_backend.py
+          tools/tmp_refine_production_root_ffi_backend.py
           EOF
           sed -i 's/^[[:space:]]*//' "$RUNNER_TEMP/allowed-paths"
           diff -u "$RUNNER_TEMP/allowed-paths" "$RUNNER_TEMP/actual-paths" >/dev/null
@@ -218,8 +223,10 @@ jobs:
             src/effect_fabric/dispatch_commit.rs \
             src/effect_fabric/root_control_channel_authority.rs \
             src/effect_fabric/root_ffi.rs \
+            src/effect_fabric/trusted_root_ingress.rs \
             src/lib.rs \
-            tools/tmp_apply_production_root_ffi_backend.py
+            tools/tmp_apply_production_root_ffi_backend.py \
+            tools/tmp_refine_production_root_ffi_backend.py
           git diff --cached --check
           git diff --cached --name-only | sort >"$RUNNER_TEMP/staged-paths"
           diff -u "$RUNNER_TEMP/actual-paths" "$RUNNER_TEMP/staged-paths" >/dev/null
