@@ -12,8 +12,8 @@ permissions:
 
 env:
   TARGET_REF_HASH: e089fda1e2738baf1bb2fe08a55c08ae2464c642ea61671289d13a01f8dbe324
-  EXPECTED_HEAD_PROOF: cc8358c28166ef7eecc0480b419e0d866efd3e44e46c16a5ee1928e5504d247d
-  EXPECTED_TREE_PROOF: 8e021ba4c85ef10163590c7363046213bd1d94ba87b2607692a58d306f8e1af0
+  EXPECTED_HEAD_PROOF: 482dc25d7e6ef7777120b7a7f3ae6c358ca57b9d147f4d0dde061f81bc619e3e
+  EXPECTED_TREE_PROOF: 4af47ee24b15bf32d8c2495ed4afe47eea2ad8461c6c101b3a0904f3b27447fc
 
 jobs:
   verify-apply:
@@ -126,10 +126,7 @@ jobs:
 
           patch_log="$RUNNER_TEMP/private-patch.log"
           set +e
-          (
-            set -euo pipefail
-            python3 "$helper"
-          ) >"$patch_log" 2>&1
+          (set -euo pipefail; python3 "$helper") >"$patch_log" 2>&1
           patch_rc=$?
           set -e
           if [[ $patch_rc -ne 0 ]]; then
@@ -164,6 +161,7 @@ jobs:
             git diff --check
             { git diff --no-renames --name-only; git ls-files --others --exclude-standard; } | sort -u >"$RUNNER_TEMP/actual-paths"
             cat >"$RUNNER_TEMP/allowed-paths" <<'EOF'
+          src/effect_fabric/root_supervisor_linux_pre_action_plan.rs
           src/effect_fabric/root_supervisor_linux_process_ingress.rs
           src/lib.rs
           tools/tmp_apply_linux_pre_action_auth.py
@@ -229,7 +227,6 @@ jobs:
           new_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "::add-mask::$new_sha"
           echo "::add-mask::$new_tree"
-
           remote_sha="$(git -c http.extraHeader="AUTHORIZATION: basic $write_auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
           echo "::add-mask::$remote_sha"
           test "$remote_sha" = "$start_sha"
