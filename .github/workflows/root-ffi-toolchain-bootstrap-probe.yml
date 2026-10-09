@@ -1,0 +1,75 @@
+name: Root FFI toolchain bootstrap probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/root-ffi-toolchain-bootstrap-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          cargo +1.98.1 --version
+          rustc +1.98.1 --version
+
+      - name: Install checksum-pinned Alire
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/alr.zip"
+          prefix="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" \
+            | sha256sum --check --strict
+          mkdir -p "$prefix"
+          unzip -q "$archive" -d "$prefix"
+          test -x "$prefix/bin/alr"
+          echo "ALR_BIN=$prefix/bin/alr" >> "$GITHUB_ENV"
+          echo 'LAS_ROOT_FFI_BOOTSTRAP_ALIRE=PASS'
+
+      - name: Select exact Ada toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ALR_BIN" -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          echo 'LAS_ROOT_FFI_BOOTSTRAP_SELECT=PASS'
+
+      - name: Initialize isolated Alire workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="$RUNNER_TEMP/root-ffi-alire-workspace"
+          mkdir -p "$workspace"
+          cd "$workspace"
+          "$ALR_BIN" -n init --in-place --no-skel --lib las_root_ffi_toolchain >/dev/null
+          echo "ALR_WS=$workspace" >> "$GITHUB_ENV"
+          echo 'LAS_ROOT_FFI_BOOTSTRAP_WORKSPACE=PASS'
+
+      - name: Prove gprbuild through workspace wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          wrapper="$RUNNER_TEMP/gprbuild-wrapper"
+          cat >"$wrapper" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ALR_WS"
+          exec "$ALR_BIN" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$wrapper"
+          "$wrapper" --version
+          echo 'LAS_ROOT_FFI_BOOTSTRAP_GPRBUILD=PASS'
