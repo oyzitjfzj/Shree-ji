@@ -1,0 +1,112 @@
+name: Opaque current joint diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/opaque-current-joint-diagnostic-20261010.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 937e43eb7e37dbf1cd43ef2dbde987413754f7ff0d8629bf83d9c6d477cf455a
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 710a309e77aeccf5935ca7c02b77981f096492a11f01986ffd0ff152506ad819
+  EXPECTED_PRIVATE_TREE_PROOF: bd939b1de56145614211e39e815aec3637182e478cc57b932272b6e6e8874dbe
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Install pinned joint toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          archive="$RUNNER_TEMP/alr.zip"; prefix="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$archive" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip" >/dev/null 2>&1
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" | sha256sum --check --strict >/dev/null
+          mkdir -p "$prefix"; unzip -q "$archive" -d "$prefix"; export PATH="$prefix/bin:$PATH"
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          ws="$RUNNER_TEMP/alire-workspace"; mkdir -p "$ws"
+          (cd "$ws" && alr -n init --in-place --no-skel --lib las_diag_toolchain >/dev/null)
+          wrapper="$RUNNER_TEMP/gprbuild-wrapper"
+          cat >"$wrapper" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$ws"
+          exec "$prefix/bin/alr" exec -- gprbuild "\$@"
+          EOF
+          chmod +x "$wrapper"; echo "GPRBUILD=$wrapper" >> "$GITHUB_ENV"
+
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"; mkdir "$root"; cd "$root"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"; git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""; private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"; private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; test -n "$private_head"
+          echo "::add-mask::$matched_ref"; echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"; git checkout -q --detach "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref private_head tree candidate_sha ref
+          echo "OPAQUE_JOINT_DIAG_RECOVERY=PASS"
+
+      - name: Emit privacy-safe compiler fingerprints
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          json="$RUNNER_TEMP/joint.private.jsonl"
+          set +e
+          GPRBUILD="$GPRBUILD" cargo +1.98.1 check --locked --all-targets --features root-ffi,linux-peer-credentials --message-format=json >"$json" 2>/dev/null
+          rc=$?
+          set -e
+          echo "OPAQUE_JOINT_DIAG_RC=$rc"
+          python3 - "$json" <<'PY'
+          import hashlib, json, sys
+          count = 0
+          with open(sys.argv[1], 'r', encoding='utf-8', errors='replace') as fh:
+              for raw in fh:
+                  try: obj = json.loads(raw)
+                  except Exception: continue
+                  if obj.get('reason') != 'compiler-message': continue
+                  msg = obj.get('message') or {}
+                  if msg.get('level') != 'error': continue
+                  code = ((msg.get('code') or {}).get('code')) or 'NO_CODE'
+                  text = str(msg.get('message') or '')
+                  primaries = [s for s in (msg.get('spans') or []) if s.get('is_primary')]
+                  if not primaries:
+                      count += 1
+                      print(f'OPAQUE_JOINT_DIAG_{count}={code}:NO_SPAN:0:0:{hashlib.sha256(text.encode()).hexdigest()[:16]}')
+                  for span in primaries:
+                      count += 1
+                      path = str(span.get('file_name') or '')
+                      print(f'OPAQUE_JOINT_DIAG_{count}={code}:{hashlib.sha256(path.encode()).hexdigest()}:{int(span.get("line_start") or 0)}:{int(span.get("column_start") or 0)}:{hashlib.sha256(text.encode()).hexdigest()[:16]}')
+          print(f'OPAQUE_JOINT_DIAG_COUNT={count}')
+          PY
+          rm -f "$json"
+          test "$rc" -ne 0
+          echo "OPAQUE_JOINT_DIAG_CAPTURE=PASS"
