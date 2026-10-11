@@ -149,3 +149,5 @@ jobs:
           test "$failures" -eq 0
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "OPAQUE_LINUX_OWNER_BINDING_TLC=PASS"
+
+# Verification request nonce: 1
