@@ -1,0 +1,3 @@
+Diagnostic split of the exact private retired-archive formal matrix.
+Runs EvidenceArchive and OwnerArchiveBinding SANY/TLC as independent parallel jobs on the same private formal SHA/tree.
+The jobs supplement, not replace, the full exact-revision closure gate.
