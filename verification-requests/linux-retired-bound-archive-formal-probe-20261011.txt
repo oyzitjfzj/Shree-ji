@@ -1,0 +1,3 @@
+Diagnostic-only exact private probe for the new retired bound-archive composition model.
+Runs only SANY + TLC for RootSupervisorLinuxRetiredBoundArchive on the exact private formal revision.
+This probe does not replace the full same-SHA Rust + three-model closure gate.
