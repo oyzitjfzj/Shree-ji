@@ -1,0 +1,169 @@
+name: Opaque Linux retired bound archive formal closure
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/opaque-linux-retired-bound-archive-formal-20261011.yml"
+      - "verification-requests/linux-retired-bound-archive-formal-20261011.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 796fcd5332e4e54fde6aca1fe8943840f55e4289c8cf44aba13138cd796cf13d
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 53e1242ebfe4b4604023a319d283c4e5a5f8d1e0aaf7e14c04c48a8950194008
+  EXPECTED_PRIVATE_TREE_PROOF: 67285ae5e609041486a2777a4153eefe0a3628d0a87aabe548aaecd21580c312
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$private_head"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"
+          git checkout -q --detach "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref private_head tree candidate_sha ref
+          echo "OPAQUE_BOUND_FORMAL_EXACT_RECOVERY=PASS"
+
+      - name: Install pinned Rust and TLA tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$RUNNER_TEMP/tla2tools.jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/v1.7.2/tla2tools.jar"
+          echo "7f21faa2cdae3189e7d5fadb4488f0dfcc658407  $RUNNER_TEMP/tla2tools.jar" \
+            | sha1sum --check --strict >/dev/null
+          echo "OPAQUE_BOUND_FORMAL_TOOLCHAIN=PASS"
+
+      - name: Run exact private Rust gates without private logs
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          failures=0
+          run_gate() {
+            label="$1"; shift
+            log="$RUNNER_TEMP/${label}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            rc=$?
+            set -e
+            printf 'OPAQUE_BOUND_FORMAL_%s_LOG_SHA256=%s\n' "$label" "$(sha256sum "$log" | awk '{print $1}')"
+            printf 'OPAQUE_BOUND_FORMAL_%s_RC=%s\n' "$label" "$rc"
+            rm -f "$log"
+            return "$rc"
+          }
+          run_gate FORMAT cargo +1.98.1 fmt --all -- --check || failures=$((failures + 1))
+          run_gate CHECK cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials || failures=$((failures + 1))
+          run_gate CLIPPY cargo +1.98.1 clippy --locked --all-targets --features linux-peer-credentials -- -D warnings || failures=$((failures + 1))
+          run_gate TEST cargo +1.98.1 test --locked --lib --features linux-peer-credentials root_supervisor_linux_retired_bound_archive -- --test-threads=1 || failures=$((failures + 1))
+          echo "OPAQUE_BOUND_FORMAL_RUST_FAILURE_COUNT=$failures"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$failures" -eq 0
+          echo "OPAQUE_BOUND_FORMAL_RUST=PASS"
+
+      - name: Parse exact private retired archive specifications without private logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          failures=0
+          run_sany() {
+            label="$1"; file="$2"
+            log="$RUNNER_TEMP/${label}.private.log"
+            set +e
+            java -cp "$RUNNER_TEMP/tla2tools.jar" tla2sany.SANY "$file" >"$log" 2>&1
+            rc=$?
+            set -e
+            printf 'OPAQUE_BOUND_FORMAL_%s_LOG_SHA256=%s\n' "$label" "$(sha256sum "$log" | awk '{print $1}')"
+            printf 'OPAQUE_BOUND_FORMAL_%s_RC=%s\n' "$label" "$rc"
+            rm -f "$log"
+            return "$rc"
+          }
+          run_sany SANY_EVIDENCE spec/root_authority/RootSupervisorLinuxRetiredEvidenceArchive.tla || failures=$((failures + 1))
+          run_sany SANY_OWNER spec/root_authority/RootSupervisorLinuxRetiredOwnerArchiveBinding.tla || failures=$((failures + 1))
+          run_sany SANY_BOUND spec/root_authority/RootSupervisorLinuxRetiredBoundArchive.tla || failures=$((failures + 1))
+          run_sany SANY_BOUND_CRASH spec/root_authority/RootSupervisorLinuxRetiredBoundArchiveCrashAmbiguity.tla || failures=$((failures + 1))
+          echo "OPAQUE_BOUND_FORMAL_SANY_FAILURE_COUNT=$failures"
+          test "$failures" -eq 0
+          echo "OPAQUE_BOUND_FORMAL_SANY=PASS"
+
+      - name: Model-check exact private retired archive specifications without private logs
+        shell: bash
+        env:
+          JAVA_TOOL_OPTIONS: -Xmx5g
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          failures=0
+          run_tlc() {
+            label="$1"; cfg="$2"; spec="$3"
+            log="$RUNNER_TEMP/${label}.private.log"
+            metadir="$RUNNER_TEMP/${label}.states"
+            set +e
+            java -XX:+UseParallelGC -jar "$RUNNER_TEMP/tla2tools.jar" \
+              -workers 2 -fp 0 -deadlock -metadir "$metadir" \
+              -config "$cfg" "$spec" >"$log" 2>&1
+            rc=$?
+            set -e
+            printf 'OPAQUE_BOUND_FORMAL_%s_LOG_SHA256=%s\n' "$label" "$(sha256sum "$log" | awk '{print $1}')"
+            printf 'OPAQUE_BOUND_FORMAL_%s_RC=%s\n' "$label" "$rc"
+            rm -rf "$log" "$metadir"
+            return "$rc"
+          }
+          run_tlc TLC_EVIDENCE spec/root_authority/RootSupervisorLinuxRetiredEvidenceArchive.cfg spec/root_authority/RootSupervisorLinuxRetiredEvidenceArchive.tla || failures=$((failures + 1))
+          run_tlc TLC_OWNER spec/root_authority/RootSupervisorLinuxRetiredOwnerArchiveBinding.cfg spec/root_authority/RootSupervisorLinuxRetiredOwnerArchiveBinding.tla || failures=$((failures + 1))
+          run_tlc TLC_BOUND spec/root_authority/RootSupervisorLinuxRetiredBoundArchive.cfg spec/root_authority/RootSupervisorLinuxRetiredBoundArchive.tla || failures=$((failures + 1))
+          run_tlc TLC_BOUND_CRASH spec/root_authority/RootSupervisorLinuxRetiredBoundArchiveCrashAmbiguity.cfg spec/root_authority/RootSupervisorLinuxRetiredBoundArchiveCrashAmbiguity.tla || failures=$((failures + 1))
+          echo "OPAQUE_BOUND_FORMAL_TLC_FAILURE_COUNT=$failures"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$failures" -eq 0
+          echo "OPAQUE_BOUND_FORMAL_TLC=PASS"

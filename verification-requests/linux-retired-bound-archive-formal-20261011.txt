@@ -1,0 +1,3 @@
+Trigger exact private verification for retired bound archive formal composition closure.
+Private source identity is bound opaquely by the workflow ref, snapshot, and tree proofs.
+Required evidence: Rust fmt/check/clippy/targeted tests plus SANY/TLC for retired evidence archive, owner binding, bound archive composition, and the focused persist-crash ambiguity refinement on one exact private revision.
