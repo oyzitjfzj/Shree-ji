@@ -1,0 +1,248 @@
+name: Opaque retired effect owner candidate v5
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/opaque-retired-effect-owner-candidate-v5-20261011.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: a7195b2116dc080ad9d3be4184fef8c5fc791983798984d5fc25cd3f38e878ab
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f19cdc8dfdaa4c496cb2c7a891b937bfb2f5ffb278f398eddb574c2b7470f5a5
+  EXPECTED_PRIVATE_TREE_PROOF: 66eaccac21386e08a9295af3aa709fc2d407e2274ead7428fe3649607fd733a0
+  HELPER_PATH_HASH: b24292ddb8ac88c004949711dfe57ce53a512e522ef6c2d2dbc682e15e124fe9
+  HELPER_CONTENT_HASH: 8523f794dbee565175410dd0e7df301fdd9f502375650a81717a6c6f697fdf70
+  TRUST_TOOL_PATH_HASH: d7b484606d720f36d8de9a8dd2e4418c923630462bbc1cf359f102ce7a1e4b52
+  EXPECTED_CHANGED_PATH_HASHES: 933fb5901ecca40e0c510961bb42f77a92e97a8edd4cf46633dd4b0889a52a73;5b89ebd95ae5bd0a2001acc3da8f2b30646a3a49483966e6f7c71c7538f55336;577cbe123ea611e0205c0a595ea25d41e1c43c507c8439264a148f4906dba9a0;b68c1a40c3bd9e1a111e13782c2040df87dba050dd5e911c0586bc750209a1e9;c6dab830b8322ddb21d865595d3d99a36d8457044f9901beecb0df6373ceaaf5;f1ed409300b965a0572e7559552f652feba637a9b4363860b0bb3f598c05d566
+  RECIPIENT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVXVENDQXNHZ0F3SUJBZ0lVS0dLQTFUZjhKeEFNVzZhdTdRU24vWEhJRlpVd0RRWUpLb1pJaHZjTkFRRUwKQlFBd1BERTZNRGdHQTFVRUF3d3hURUZUSUhKbGRHbHlaV1FnWldabVpXTjBJSEJ5YjJwbFkzUnBiMjRnWlhCbwpaVzFsY21Gc0lISmxZMmx3YVdWdWREQWVGdzB5TmpFd01URXhNalEyTWpoYUZ3MHlOakV3TVRNeE1qUTJNamhhCk1Ed3hPakE0QmdOVkJBTU1NVXhCVXlCeVpYUnBjbVZrSUdWbVptVmpkQ0J3Y205cVpXTjBhVzl1SUdWd2FHVnQKWlhKaGJDQnlaV05wY0dsbGJuUXdnZ0dpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCandBd2dnR0tBb0lCZ1FDagpuemlwMFZpRm5RQmlBMVplZWJaWm52dlVwYnZEWmwzWnZuWnlFVHp1Zi9Qb2t4TlhEb0RBdzYxd0x5YWVNeUlXCm5EZC8xRGIybWFCYWIzZWRoaUVTMTVwREFSN1pkUWs2UEYrMk1BZGU0QXk3TXVZSHlQSlFZVzJLSmhXTksrZ2wKZGQwODNNaDVRNmh1RUdpcDFUR08yT0l2SWpGRE9UWmVlUHNEQkwzVXJlSVo2M2VVaEM2TFptTGtMc05ZOTBOUwpLZ1dHY3RSVEZ0c3JVcjFidWZmbjl1ZW00WTAwRE9DcjBsbVduRFl0bWtuTysyRHd5M1J1N0pzZXgzUGV5dzkvCjBJbnFWcjUwZkhvZ1B6OVFPMWU5c29sVEplM1lFbTNoMVR5WnFwTE8zM0pRL2w5QXFKN3VqVnc5K1R2U2dxdkcKNGlQTTY2anF1bDc3eVBwZURhVjl5MUJSazZRSk43cFhMKzhGb2tZbWFNQ3VDR0hhT2plVmk5NEhhVWVhYkJhcQpvdXlJUkhIdW9KcUh6Wms3V3Nuc252ZzVCTW5kKzllQVV6MzBjNHR1S3I4Q1JvTG1HYVhaUnJ2WTVBZGpzYjhoCmx6anZ4MDJMMHBMOEtHU0t0WW93OEdSVWZTSlhyWEJ0OExPd3M3bUo4OTg2NE43SGR2QVhrVitZY0dLakFma0MKQXdFQUFhTlRNRkV3SFFZRFZSME9CQllFRkdsdnRocjJ1QmFxMGZqdnhnVS9Pb1BETWdBOU1COEdBMVVkSXdRWQpNQmFBRkdsdnRocjJ1QmFxMGZqdnhnVS9Pb1BETWdBOU1BOEdBMVVkRXdFQi93UUZNQU1CQWY4d0RRWUpLb1pJCmh2Y05BUUVMQlFBRGdnR0JBQkFpS1M5VjhGem9PT0dVMkU4MU5Qak1xVk50aVZNbnNHelJUWU50ZE92Q0pXNUQKYk1pTDNVbTlFWGdUdTk5aU85T25NRHB6ekhOVnBDOTFVTTF2RFE5c0RGR2drSHQ3bTY5RUZObmhmcXZ3WVd4cQpBS3k5a2NuclMrRUJpdDRJRzBsVlJJZzdmRnkzeXJueDVPZ3MrM1dNWkUyMTkza3Z0dHpBSmhTNCtmYlNseE9mCmFUWmpjYk5mVlZ6ZVY0TUc1L0UrL1BKckJ6Q0luRWltMW4xaFFaZ21TNm1meHVtNVZvakltUDFiWDdXNlI2VkYKbDQ0dlVNK0ZGVSs1SDB6ZzRQOVZoTTNkZlM4dXR5ejUyYUpyL3lrK2FOZU1PdDl4T21GUTNOc01EYTZzL0NTTwpySTUzOG9qcnJ6Z2JabVJZejJBMnhNOVd1ZkZvRFptTitUS29KaHNkL1pvdm1ib3lVbVhrYVJYa0pNSWVNaExHCkRSTXhPQ0FlcTNuTkFLa3BtTlR5dXVGWjQrcFpXNUNuREl3c3k2bENzSmRpTFdwNXlhTmErcS9YaUJYa1I0SjQKZmZNOXlTVll0TFdKZEpJaEMycUtuR2dRZDBkWTQwNFRyL1FSUXAyMUFmTm9qL0NjK0Y3N0FaNjRzanJmKzZuZgpKYnVOUE1ZalQvakpNVjlCTXc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$RUNNER_TEMP/private-target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$private_head"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"
+          git checkout -q --detach "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref private_head tree candidate_sha ref
+          echo "EFFECT_CANDIDATE_EXACT_RECOVERY=PASS"
+
+      - name: Apply private transform and enforce exact path boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          helper=""
+          while IFS= read -r -d '' path; do
+            if [[ "$(printf '%s' "$path" | sha256sum | awk '{print $1}')" = "$HELPER_PATH_HASH" ]]; then
+              test -z "$helper"
+              helper="$path"
+            fi
+          done < <(git ls-files -z)
+          test -n "$helper"
+          echo "::add-mask::$helper"
+          test "$(sha256sum "$helper" | awk '{print $1}')" = "$HELPER_CONTENT_HASH"
+          python3 "$helper" --apply >"$RUNNER_TEMP/transform.private.log" 2>&1
+          python3 - <<'PY'
+          import hashlib, os, subprocess
+          expected=set(os.environ['EXPECTED_CHANGED_PATH_HASHES'].split(';'))
+          raw=subprocess.check_output(['git','diff','--name-only','-z'])
+          names=[p for p in raw.decode().split('\0') if p]
+          actual={hashlib.sha256(p.encode()).hexdigest() for p in names}
+          if actual != expected or len(names) != len(expected):
+              raise SystemExit('unexpected private transform path set')
+          PY
+          git diff --check >"$RUNNER_TEMP/preformat.private.log" 2>&1
+          echo "EFFECT_CANDIDATE_TRANSFORM=PASS"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          echo "EFFECT_CANDIDATE_RUST_TOOLCHAIN=PASS"
+
+      - name: Install checksum-pinned Ada toolchain launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/alr.zip"
+          prefix="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$archive"             "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive"             | sha256sum --check --strict >/dev/null
+          mkdir -p "$prefix"
+          unzip -q "$archive" -d "$prefix"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          echo "EFFECT_CANDIDATE_ALR=PASS"
+
+      - name: Select pinned Ada build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          alr_bin="$(command -v alr)"
+          workspace="$RUNNER_TEMP/root-production-toolchain"
+          mkdir -p "$workspace"
+          cd "$workspace"
+          alr -n init --in-place --no-skel --lib root_production_toolchain >/dev/null
+          gpr_wrapper="$RUNNER_TEMP/gprbuild-wrapper"
+          cat >"$gpr_wrapper" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$workspace"
+          exec "$alr_bin" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$gpr_wrapper"
+          "$gpr_wrapper" --version >/dev/null
+          echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
+          echo "EFFECT_CANDIDATE_ADA_TOOLCHAIN=PASS"
+
+      - name: Format, verify, and package private candidate
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-target"
+          failures=0
+          status="$RUNNER_TEMP/gate-status"
+          : >"$status"
+          run_gate() {
+            id="$1"; shift
+            log="$RUNNER_TEMP/${id}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            rc=$?
+            set -e
+            printf '%s %s %s\n' "$id" "$rc" "$(sha256sum "$log" | awk '{print $1}')" >>"$status"
+            printf 'EFFECT_CANDIDATE_%s_RC=%s\n' "$id" "$rc"
+            printf 'EFFECT_CANDIDATE_%s_LOG_SHA256=%s\n' "$id" "$(sha256sum "$log" | awk '{print $1}')"
+            if [[ "$rc" -ne 0 ]]; then failures=$((failures + 1)); fi
+          }
+
+          run_gate G00 cargo +1.98.1 fmt --all
+          python3 - <<'PY'
+          import hashlib, os, subprocess
+          expected=set(os.environ['EXPECTED_CHANGED_PATH_HASHES'].split(';'))
+          raw=subprocess.check_output(['git','diff','--name-only','-z'])
+          names=[p for p in raw.decode().split('\0') if p]
+          actual={hashlib.sha256(p.encode()).hexdigest() for p in names}
+          if actual != expected or len(names) != len(expected):
+              raise SystemExit('unexpected post-format private path set')
+          PY
+
+          trust_tool=""
+          while IFS= read -r -d '' path; do
+            if [[ "$(printf '%s' "$path" | sha256sum | awk '{print $1}')" = "$TRUST_TOOL_PATH_HASH" ]]; then
+              test -z "$trust_tool"
+              trust_tool="$path"
+            fi
+          done < <(git ls-files -z)
+          test -n "$trust_tool"
+          echo "::add-mask::$trust_tool"
+
+          run_gate G01 python3 "$trust_tool"
+          run_gate G02 cargo +1.98.1 fmt --all -- --check
+          run_gate G03 cargo +1.98.1 check --locked --all-targets
+          run_gate G04 cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials
+          run_gate G05 cargo +1.98.1 check --locked --all-targets --features "root-ffi linux-peer-credentials"
+          run_gate G06 cargo +1.98.1 clippy --locked --all-targets --features "root-ffi linux-peer-credentials" -- -D warnings
+          run_gate G07 cargo +1.98.1 test --locked --lib --features linux-peer-credentials -- --test-threads=1
+          run_gate G08 cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1
+          run_gate G09 cargo +1.98.1 check --release --locked --all-targets --features "root-ffi linux-peer-credentials"
+          run_gate G10 git diff --check
+
+          helper=""
+          while IFS= read -r -d '' path; do
+            if [[ "$(printf '%s' "$path" | sha256sum | awk '{print $1}')" = "$HELPER_PATH_HASH" ]]; then
+              test -z "$helper"
+              helper="$path"
+            fi
+          done < <(git ls-files -z)
+          test -n "$helper"
+          python3 "$helper" --export "$RUNNER_TEMP/candidate.tar" >"$RUNNER_TEMP/export.private.log" 2>&1
+          git diff --binary --no-ext-diff >"$RUNNER_TEMP/candidate.patch"
+          test -s "$RUNNER_TEMP/candidate.tar"
+          test -s "$RUNNER_TEMP/candidate.patch"
+
+          bundle="$RUNNER_TEMP/private-bundle"
+          mkdir "$bundle"
+          cp "$RUNNER_TEMP/candidate.tar" "$bundle/candidate.tar"
+          cp "$RUNNER_TEMP/candidate.patch" "$bundle/candidate.patch"
+          cp "$status" "$bundle/gate-status"
+          cp "$RUNNER_TEMP/transform.private.log" "$bundle/g00-transform.log"
+          cp "$RUNNER_TEMP/preformat.private.log" "$bundle/g00-preformat.log"
+          cp "$RUNNER_TEMP/export.private.log" "$bundle/g00-export.log"
+          for log in "$RUNNER_TEMP"/G*.private.log; do cp "$log" "$bundle/$(basename "$log")"; done
+          printf '%s\n' "$failures" >"$bundle/failure-count"
+          tar -czf "$RUNNER_TEMP/private-effect-candidate.tgz" -C "$bundle" .
+          printf '%s' "$RECIPIENT_CERT_B64" | base64 -d >"$RUNNER_TEMP/recipient-cert.pem"
+          openssl x509 -in "$RUNNER_TEMP/recipient-cert.pem" -noout >/dev/null
+          openssl cms -encrypt -binary -aes-256-cbc -outform DER             -in "$RUNNER_TEMP/private-effect-candidate.tgz"             -out "$RUNNER_TEMP/private-effect-candidate.cms"             "$RUNNER_TEMP/recipient-cert.pem"
+          echo "EFFECT_CANDIDATE_FAILURE_COUNT=$failures"
+          echo "EFFECT_CANDIDATE_CIPHERTEXT_SHA256=$(sha256sum "$RUNNER_TEMP/private-effect-candidate.cms" | awk '{print $1}')"
+          rm -rf "$bundle" "$RUNNER_TEMP/private-effect-candidate.tgz" "$RUNNER_TEMP/recipient-cert.pem"             "$RUNNER_TEMP/candidate.tar" "$RUNNER_TEMP/candidate.patch" "$status"             "$RUNNER_TEMP"/*.private.log
+          printf '%s\n' "$failures" >"$RUNNER_TEMP/failure-count-public"
+
+      - name: Upload ciphertext only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opaque-retired-effect-owner-candidate-v5
+          path: ${{ runner.temp }}/private-effect-candidate.cms
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Assert private candidate gates
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$RUNNER_TEMP/failure-count-public"
+          test "$(cat "$RUNNER_TEMP/failure-count-public")" = "0"
+          echo "EFFECT_CANDIDATE=PASS"

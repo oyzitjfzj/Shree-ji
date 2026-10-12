@@ -1,0 +1,155 @@
+name: Opaque Linux retired-owner projections v4
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/opaque-linux-retired-owner-projections-v4-20261011.yml"
+      - "verification-requests/linux-retired-owner-projections-v4-20261011.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: a7195b2116dc080ad9d3be4184fef8c5fc791983798984d5fc25cd3f38e878ab
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 2237e43984727417ff077996b49aa7102c80d1ed8b26c82af8c4fd245138625f
+  EXPECTED_PRIVATE_TREE_PROOF: 3fdc5b78d549b0b8fdf6d8806250ae6843953678c2bcf6e8f9c006b77108ebc7
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Recover exact private revision opaquely
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$private_head"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"
+          git checkout -q --detach "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          unset PRIVATE_TOKEN auth matched_ref private_head tree candidate_sha ref
+          echo "OPAQUE_OWNER_PROJECTION_EXACT_RECOVERY=PASS"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          echo "OPAQUE_OWNER_PROJECTION_RUST_TOOLCHAIN=PASS"
+
+      - name: Install checksum-pinned Ada toolchain launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/alr.zip"
+          prefix="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$archive" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" \
+            | sha256sum --check --strict >/dev/null
+          mkdir -p "$prefix"
+          unzip -q "$archive" -d "$prefix"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          echo "OPAQUE_OWNER_PROJECTION_ALR=PASS"
+
+      - name: Select pinned Ada build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          alr_bin="$(command -v alr)"
+          workspace="$RUNNER_TEMP/root-production-toolchain"
+          mkdir -p "$workspace"
+          cd "$workspace"
+          alr -n init --in-place --no-skel --lib root_production_toolchain >/dev/null
+          gpr_wrapper="$RUNNER_TEMP/gprbuild-wrapper"
+          cat >"$gpr_wrapper" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$workspace"
+          exec "$alr_bin" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$gpr_wrapper"
+          "$gpr_wrapper" --version >/dev/null
+          echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
+          echo "OPAQUE_OWNER_PROJECTION_ADA_TOOLCHAIN=PASS"
+
+      - name: Run exact private projection gates without private logs
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          failures=0
+          run_gate() {
+            label="$1"; shift
+            log="$RUNNER_TEMP/${label}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            rc=$?
+            set -e
+            printf 'OPAQUE_OWNER_PROJECTION_%s_LOG_SHA256=%s\n' "$label" "$(sha256sum "$log" | awk '{print $1}')"
+            printf 'OPAQUE_OWNER_PROJECTION_%s_RC=%s\n' "$label" "$rc"
+            rm -f "$log"
+            return "$rc"
+          }
+
+          run_gate TRUST_CONTRACT python3 tools/verification/root_trust_input_contract.py || failures=$((failures + 1))
+          run_gate FORMAT cargo +1.98.1 fmt --all -- --check || failures=$((failures + 1))
+          run_gate DEFAULT_CHECK cargo +1.98.1 check --locked --all-targets || failures=$((failures + 1))
+          run_gate LINUX_CHECK cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials || failures=$((failures + 1))
+          run_gate PRODUCTION_CHECK cargo +1.98.1 check --locked --all-targets --features "root-ffi linux-peer-credentials" || failures=$((failures + 1))
+          run_gate PRODUCTION_CLIPPY cargo +1.98.1 clippy --locked --all-targets --features "root-ffi linux-peer-credentials" -- -D warnings || failures=$((failures + 1))
+          run_gate SINK_TEST cargo +1.98.1 test --locked --lib --features linux-peer-credentials root_supervisor_linux_retired_owner_projection -- --test-threads=1 || failures=$((failures + 1))
+          run_gate PEER_POLICY_TEST cargo +1.98.1 test --locked --lib --features linux-peer-credentials root_supervisor_peer_policy -- --test-threads=1 || failures=$((failures + 1))
+          run_gate PRE_ACTION_POLICY_TEST cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" root_supervisor_linux_pre_action_plan -- --test-threads=1 || failures=$((failures + 1))
+          run_gate PRE_ACTION_OWNER_TEST cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" root_supervisor_linux_pre_action_authenticator -- --test-threads=1 || failures=$((failures + 1))
+          run_gate GUARDED_SESSION_TEST cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" root_supervisor_linux_guarded_session -- --test-threads=1 || failures=$((failures + 1))
+          run_gate LINUX_SERVICE_TEST cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" root_supervisor_linux_service -- --test-threads=1 || failures=$((failures + 1))
+          run_gate PRODUCTION_LIB_TEST cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1 || failures=$((failures + 1))
+          run_gate RELEASE_CHECK cargo +1.98.1 check --release --locked --all-targets --features "root-ffi linux-peer-credentials" || failures=$((failures + 1))
+
+          echo "OPAQUE_OWNER_PROJECTION_FAILURE_COUNT=$failures"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$failures" -eq 0
+          echo "OPAQUE_OWNER_PROJECTION=PASS"

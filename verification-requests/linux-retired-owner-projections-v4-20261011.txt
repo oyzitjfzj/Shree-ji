@@ -1,0 +1,3 @@
+Trigger exact private verification for retired-owner semantic projection v4.
+Private source identity is bound opaquely by the workflow ref, type-repaired snapshot, and tree proofs.
+Required evidence: trust-input contract, Rust fmt, default/Linux/production checks, strict production Clippy, projection/peer/pre-action tests, full production library tests, and release-mode production check on the exact private revision.
