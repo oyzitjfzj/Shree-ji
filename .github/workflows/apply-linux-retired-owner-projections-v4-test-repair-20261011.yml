@@ -1,0 +1,113 @@
+name: Apply retired-owner projection test repair v4
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/apply-linux-retired-owner-projections-v4-test-repair-20261011.yml"
+      - "verification-requests/apply-linux-retired-owner-projections-v4-test-repair-20261011.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: 1fac30945223ebc9f0cc8e1bbadc2bffd24839393c448896663afd60ae943539
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: 5097792041cfdcc5ef4cd368b49c91188d7f79606dd347f6ad927e029a96d967
+  EXPECTED_PRIVATE_TREE_PROOF: d6232af599a26f118bcc077a3fdcfb712654382bd1b74e2b30e08f54cfa8d894
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Recover exact private branch with write lease
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"; mkdir "$root"; cd "$root"; git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""; private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"; matched_ref="$ref"; private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"; test -n "$matched_ref"; test -n "$private_head"
+          echo "::add-mask::$matched_ref"; echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"
+          git checkout -q -b repair-target "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          printf '%s' "$matched_ref" >"$RUNNER_TEMP/matched-ref"
+          printf '%s' "$private_head" >"$RUNNER_TEMP/private-head"
+          printf '%s' "$auth" >"$RUNNER_TEMP/auth"
+          chmod 600 "$RUNNER_TEMP/matched-ref" "$RUNNER_TEMP/private-head" "$RUNNER_TEMP/auth"
+          echo "PRIVATE_REPOSITORY=$PRIVATE_REPOSITORY" >> "$GITHUB_ENV"
+          echo "OPAQUE_OWNER_PROJECTION_APPLY_RECOVERY=PASS"
+
+      - name: Install pinned Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt >/dev/null
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+
+      - name: Apply exact test ownership repair and verify narrow diff
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          file="src/effect_fabric/root_supervisor_peer_policy.rs"
+          python3 - "$file" <<'PY'
+          import pathlib,sys
+          path=pathlib.Path(sys.argv[1])
+          text=path.read_text()
+          old='''        assert_ne!(projection(&guarded_left.seal()), projection(&guarded_right.seal()));\n        assert_ne!(projection(&guarded_right.seal()), projection(&control.seal()));\n'''
+          new='''        let guarded_left = guarded_left.seal();\n        let guarded_right = guarded_right.seal();\n        let control = control.seal();\n\n        assert_ne!(projection(&guarded_left), projection(&guarded_right));\n        assert_ne!(projection(&guarded_right), projection(&control));\n'''
+          if text.count(old) != 1:
+              raise SystemExit('exact repair anchor missing or ambiguous')
+          path.write_text(text.replace(old,new))
+          PY
+          cargo +1.98.1 fmt --all
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = "$file"
+          cargo +1.98.1 fmt --all -- --check
+          cargo +1.98.1 check --locked --all-targets --features linux-peer-credentials >/dev/null
+          cargo +1.98.1 test --locked --lib --features linux-peer-credentials root_supervisor_peer_policy -- --test-threads=1 >/dev/null
+          echo "OPAQUE_OWNER_PROJECTION_APPLY_NARROW_REPAIR=PASS"
+
+      - name: Commit and push only under exact remote-head lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          matched_ref="$(cat "$RUNNER_TEMP/matched-ref")"
+          expected_head="$(cat "$RUNNER_TEMP/private-head")"
+          auth="$(cat "$RUNNER_TEMP/auth")"
+          current="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$current" = "$expected_head"
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git add src/effect_fabric/root_supervisor_peer_policy.rs
+          test "$(git diff --cached --name-only | wc -l)" -eq 1
+          git commit -q -m "Repair retired peer projection ownership test"
+          new_head="$(git rev-parse HEAD)"; echo "::add-mask::$new_head"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin "HEAD:$matched_ref"
+          observed="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$observed" = "$new_head"
+          rm -f "$RUNNER_TEMP/matched-ref" "$RUNNER_TEMP/private-head" "$RUNNER_TEMP/auth"
+          echo "OPAQUE_OWNER_PROJECTION_APPLY_PUSH=PASS"

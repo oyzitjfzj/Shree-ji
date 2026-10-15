@@ -1,0 +1,1 @@
+Run the encrypted production-feature compiler diagnostic for the repaired exact private retired-owner projections v4 snapshot. No plaintext private compiler output may leave the runner.

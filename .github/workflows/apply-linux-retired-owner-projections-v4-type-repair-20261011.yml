@@ -1,0 +1,184 @@
+name: Opaque private retired-owner apply lane
+
+on:
+  push:
+    branches:
+      - diagnose/linux-retired-owner-projections-v4-20261011
+    paths:
+      - ".github/workflows/apply-linux-retired-owner-projections-v4-type-repair-20261011.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_REF_HASH: d73e1cef0bffe2458a50827f6407f422be639f2cdbd1c1a838ac8491f09306cf
+  EXPECTED_PRIVATE_SNAPSHOT_PROOF: f57846f7b73d7e6cdab7d3dae0750e60038feda11caabf1efef7c6e3c2876f83
+  EXPECTED_PRIVATE_TREE_PROOF: 5e3a4624bde78519afb013b51e5fc92e151ec4cf52f1f750651091e7c642e667
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Recover exact private branch with write lease
+        shell: bash
+        env:
+          PRIVATE_REPOSITORY: ${{ secrets.LAS_PRIVATE_REPOSITORY }}
+          PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          root="$GITHUB_WORKSPACE/target"
+          mkdir "$root"
+          cd "$root"
+          git init -q
+          git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          refs="$RUNNER_TEMP/private-heads"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
+          matched_ref=""
+          private_head=""
+          while read -r candidate_sha ref; do
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+              private_head="$candidate_sha"
+            fi
+          done <"$refs"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          test -n "$private_head"
+          echo "::add-mask::$matched_ref"
+          echo "::add-mask::$private_head"
+          test "$(printf '%s' "$private_head" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q origin "$matched_ref"
+          test "$(git rev-parse FETCH_HEAD)" = "$private_head"
+          git checkout -q -b transform-target "$private_head"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
+          test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
+          test -z "$(git status --porcelain)"
+          printf '%s' "$matched_ref" >"$RUNNER_TEMP/matched-ref"
+          printf '%s' "$private_head" >"$RUNNER_TEMP/private-head"
+          printf '%s' "$auth" >"$RUNNER_TEMP/auth"
+          chmod 600 "$RUNNER_TEMP/matched-ref" "$RUNNER_TEMP/private-head" "$RUNNER_TEMP/auth"
+          echo "PRIVATE_REPOSITORY=$PRIVATE_REPOSITORY" >> "$GITHUB_ENV"
+          echo "OPAQUE_PRIVATE_APPLY_RECOVERY=PASS"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal >/dev/null
+          rustup component add --toolchain 1.98.1 rustfmt clippy >/dev/null
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          test "$(cargo +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          echo "OPAQUE_PRIVATE_APPLY_RUST=PASS"
+
+      - name: Install checksum-pinned Ada toolchain launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/alr.zip"
+          prefix="$RUNNER_TEMP/alr"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --output "$archive" \
+            "https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip"
+          echo "09c66bcd8c35dd4b97b72c3d9b76e44caa6964a2db35aba069f396f00f1f64c7  $archive" | sha256sum --check --strict >/dev/null
+          mkdir -p "$prefix"
+          unzip -q "$archive" -d "$prefix"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          echo "OPAQUE_PRIVATE_APPLY_ALR=PASS"
+
+      - name: Select pinned Ada build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          alr -n toolchain --select gnat_native=16.1.0 gprbuild=26.0.1 >/dev/null
+          alr_bin="$(command -v alr)"
+          workspace="$RUNNER_TEMP/root-production-toolchain"
+          mkdir -p "$workspace"
+          cd "$workspace"
+          alr -n init --in-place --no-skel --lib root_production_toolchain >/dev/null
+          gpr_wrapper="$RUNNER_TEMP/gprbuild-wrapper"
+          cat >"$gpr_wrapper" <<EOF_GPR
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$workspace"
+          exec "$alr_bin" exec -- gprbuild "\$@"
+          EOF_GPR
+          chmod +x "$gpr_wrapper"
+          "$gpr_wrapper" --version >/dev/null
+          echo "GPRBUILD=$gpr_wrapper" >> "$GITHUB_ENV"
+          echo "OPAQUE_PRIVATE_APPLY_ADA=PASS"
+
+      - name: Apply private transform and verify without private logs
+        shell: bash
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          failures=0
+          run_gate() {
+            label="$1"; shift
+            log="$RUNNER_TEMP/${label}.private.log"
+            set +e
+            "$@" >"$log" 2>&1
+            rc=$?
+            set -e
+            printf 'OPAQUE_PRIVATE_APPLY_%s_LOG_SHA256=%s\n' "$label" "$(sha256sum "$log" | awk '{print $1}')"
+            printf 'OPAQUE_PRIVATE_APPLY_%s_RC=%s\n' "$label" "$rc"
+            rm -f "$log"
+            return "$rc"
+          }
+
+          run_gate TRANSFORM python3 tools/verification/private_apply_retired_ingress_owner_projection.py || failures=$((failures + 1))
+          run_gate CLIPPY_FIX python3 tools/verification/private_fix_retired_ingress_projection_clippy.py || failures=$((failures + 1))
+          test "$failures" -eq 0
+          test ! -e tools/verification/private_apply_retired_ingress_owner_projection.py
+          test ! -e tools/verification/private_fix_retired_ingress_projection_clippy.py
+          test "$(git status --porcelain | wc -l)" -eq 4
+          test "$(git diff --name-only --diff-filter=M | wc -l)" -eq 2
+          test "$(git diff --name-only --diff-filter=D | wc -l)" -eq 2
+
+          run_gate FORMAT_APPLY cargo +1.98.1 fmt --all || failures=$((failures + 1))
+          run_gate TRUST_CONTRACT python3 tools/verification/root_trust_input_contract.py || failures=$((failures + 1))
+          run_gate FORMAT_CHECK cargo +1.98.1 fmt --all -- --check || failures=$((failures + 1))
+          run_gate PRODUCTION_CHECK cargo +1.98.1 check --locked --all-targets --features "root-ffi linux-peer-credentials" || failures=$((failures + 1))
+          run_gate PRODUCTION_CLIPPY cargo +1.98.1 clippy --locked --all-targets --features "root-ffi linux-peer-credentials" -- -D warnings || failures=$((failures + 1))
+          run_gate GUARDED_SESSION_TEST cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" root_supervisor_linux_guarded_session -- --test-threads=1 || failures=$((failures + 1))
+          run_gate LINUX_SERVICE_TEST cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" root_supervisor_linux_service -- --test-threads=1 || failures=$((failures + 1))
+          run_gate PRODUCTION_LIB_TEST cargo +1.98.1 test --locked --lib --features "root-ffi linux-peer-credentials" -- --test-threads=1 || failures=$((failures + 1))
+          run_gate RELEASE_CHECK cargo +1.98.1 check --release --locked --all-targets --features "root-ffi linux-peer-credentials" || failures=$((failures + 1))
+
+          echo "OPAQUE_PRIVATE_APPLY_FAILURE_COUNT=$failures"
+          test "$failures" -eq 0
+          test "$(git status --porcelain | wc -l)" -eq 4
+          echo "OPAQUE_PRIVATE_APPLY_GATES=PASS"
+
+      - name: Commit under exact remote-head lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/target"
+          matched_ref="$(cat "$RUNNER_TEMP/matched-ref")"
+          expected_head="$(cat "$RUNNER_TEMP/private-head")"
+          auth="$(cat "$RUNNER_TEMP/auth")"
+          current="$(git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote origin "$matched_ref" | awk '{print $1}')"
+          test "$current" = "$expected_head"
+          git add -u
+          test "$(git diff --cached --name-only | wc -l)" -eq 4
+          test "$(git diff --cached --name-only --diff-filter=M | wc -l)" -eq 2
+          test "$(git diff --cached --name-only --diff-filter=D | wc -l)" -eq 2
+          git config user.name "LAS Verification Committer"
+          git config user.email "las-verification@users.noreply.github.com"
+          git commit -q -m "Project retired Linux ingress owner semantics"
+          new_head="$(git rev-parse HEAD)"
+          echo "::add-mask::$new_head"
+          git -c http.extraHeader="AUTHORIZATION: basic $auth" push -q origin "HEAD:$matched_ref"
+          echo "OPAQUE_PRIVATE_APPLY_PUSH=PASS"

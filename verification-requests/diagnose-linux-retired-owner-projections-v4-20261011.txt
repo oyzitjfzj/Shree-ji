@@ -1,0 +1,1 @@
+Run encrypted diagnostics for the exact private retired-owner projections v4 snapshot. Diagnostic plaintext must not be printed or uploaded; only encrypted compact output may leave the runner.
