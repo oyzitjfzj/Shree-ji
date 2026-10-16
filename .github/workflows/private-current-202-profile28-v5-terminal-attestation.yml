@@ -34,7 +34,12 @@ env:
   EXPECTED_WORKFLOW_BLOB: bc1e449b0d224d6b8d88f84d367d04d1e450219d
   EXPECTED_CHECKPOINT_SCHEMA: current-202-profile28-storage-reclaim-v5
   EXPECTED_OLD_CHECKPOINT_SCHEMA: current-202-periodic-barrier-v4
+  EXPECTED_OLD_RUNNER_REF: current-202-tlc-continuation-v4-runner
   EXPECTED_OLD_RUNNER_SHA: 3d37edb1debc9a4dd32da51ec3164840dbc4b252
+  EXPECTED_OLD_WRAPPER_PATH: .github/workflows/private-assurance-slow-tlc-continuation.yml
+  EXPECTED_OLD_WRAPPER_BLOB: 70b8c18144f55625460e86337e8c5999a699facf
+  EXPECTED_OLD_SLICE_PATH: .github/workflows/_private-assurance-tlc-continuation-slice.yml
+  EXPECTED_OLD_SLICE_BLOB: 30f44487a8d433045bfc5c3310aa7356a5b8d2ea
   EXPECTED_SOURCE_RUN_ID: "38884360037"
   EXPECTED_SOURCE_ARTIFACT: current-202-v4-state-28-12
   EXPECTED_SOURCE_ARTIFACT_ID: "12041147939"
@@ -43,6 +48,7 @@ env:
   EXPECTED_SOURCE_SEGMENT: "12"
   EXPECTED_TLC_WORKERS: "4"
   EXPECTED_MIN_RECLAIM_KB: "16777216"
+  EXPECTED_MIN_TLC_START_FREE_KB: "50331648"
 
 jobs:
   verify:
@@ -57,7 +63,10 @@ jobs:
       distinct: ${{ steps.terminal.outputs.distinct }}
       queued: ${{ steps.terminal.outputs.queued }}
       runtime_seconds: ${{ steps.terminal.outputs.runtime_seconds }}
+      source_checkpoint_bytes: ${{ steps.terminal.outputs.source_checkpoint_bytes }}
       reclaimed_kb: ${{ steps.terminal.outputs.reclaimed_kb }}
+      tlc_start_free_kb: ${{ steps.terminal.outputs.tlc_start_free_kb }}
+      resume_mode: ${{ steps.terminal.outputs.resume_mode }}
     steps:
       - name: Checkout attestation request
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -90,86 +99,200 @@ jobs:
           PRIVATE_TOKEN: ${{ secrets.LAS_PRIVATE_READ_TOKEN }}
         run: |
           set -euo pipefail
-          test -n "$PRIVATE_REPOSITORY"; test -n "$PRIVATE_TOKEN"
-          echo "::add-mask::$PRIVATE_REPOSITORY"; echo "::add-mask::$PRIVATE_TOKEN"
-          ROOT="$GITHUB_WORKSPACE/private-target"; mkdir "$ROOT"; cd "$ROOT"; git init -q
+          test -n "$PRIVATE_REPOSITORY"
+          test -n "$PRIVATE_TOKEN"
+          echo "::add-mask::$PRIVATE_REPOSITORY"
+          echo "::add-mask::$PRIVATE_TOKEN"
+          ROOT="$GITHUB_WORKSPACE/private-target"
+          mkdir "$ROOT"
+          cd "$ROOT"
+          git init -q
           git remote add origin "https://github.com/${PRIVATE_REPOSITORY}.git"
-          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"; echo "::add-mask::$auth"
+          auth="$(printf 'x-access-token:%s' "$PRIVATE_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
           refs="$RUNNER_TEMP/private-heads"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" ls-remote --heads origin >"$refs"
           matched_ref=""
           while read -r sha ref; do
-            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then test -z "$matched_ref"; matched_ref="$ref"; fi
+            if [[ "$(printf '%s' "$ref" | sha256sum | awk '{print $1}')" = "$TARGET_REF_HASH" ]]; then
+              test -z "$matched_ref"
+              matched_ref="$ref"
+            fi
           done <"$refs"
-          rm -f "$refs"; test -n "$matched_ref"; echo "::add-mask::$matched_ref"
+          rm -f "$refs"
+          test -n "$matched_ref"
+          echo "::add-mask::$matched_ref"
           git -c http.extraHeader="AUTHORIZATION: basic $auth" fetch -q --depth=1 origin "$matched_ref"
-          actual="$(git rev-parse FETCH_HEAD)"; echo "::add-mask::$actual"
+          actual="$(git rev-parse FETCH_HEAD)"
+          echo "::add-mask::$actual"
           test "$(printf '%s' "$actual" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_SNAPSHOT_PROOF"
           git checkout -q --detach "$actual"
-          tree="$(git rev-parse 'HEAD^{tree}')"; echo "::add-mask::$tree"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "::add-mask::$tree"
           test "$(printf '%s' "$tree" | sha256sum | awk '{print $1}')" = "$EXPECTED_PRIVATE_TREE_PROOF"
           test "$(git hash-object tools/verify_codespaces_all.sh)" = "$EXPECTED_VERIFIER_BLOB"
+
           map_py="$RUNNER_TEMP/attest-map.py"
           python3 - tools/verify_codespaces_all.sh "$map_py" <<'PY'
           from pathlib import Path
           import sys
-          src=Path(sys.argv[1]).read_text(encoding='utf-8')
-          mh='python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'; me='\nPY\n\nrun_tlc_profile() {'
-          if src.count(mh)!=1 or src.count(me)!=1: raise SystemExit('canonical map anchors not unique')
-          start=src.index(mh)+len(mh); end=src.index(me,start)
-          Path(sys.argv[2]).write_text(src[start:end]+'\n',encoding='utf-8')
+          src = Path(sys.argv[1]).read_text(encoding="utf-8")
+          mh = 'python3 - "$ROOT" > "$TLC_MAP" <<\'PY\'\n'
+          me = '\nPY\n\nrun_tlc_profile() {'
+          if src.count(mh) != 1 or src.count(me) != 1:
+              raise SystemExit("canonical map anchors not unique")
+          start = src.index(mh) + len(mh)
+          end = src.index(me, start)
+          Path(sys.argv[2]).write_text(src[start:end] + "\n", encoding="utf-8")
           PY
-          map="$RUNNER_TEMP/attest-map.tsv"; map_err="$RUNNER_TEMP/attest-map.private.err"
-          if ! python3 "$map_py" "$ROOT" >"$map" 2>"$map_err"; then echo "LAS_CURRENT_202_V5_ATTEST_MAP_ERROR_SHA256=$(sha256sum "$map_err" | awk '{print $1}')"; rm -f "$map_err"; exit 1; fi
+          map="$RUNNER_TEMP/attest-map.tsv"
+          map_err="$RUNNER_TEMP/attest-map.private.err"
+          if ! python3 "$map_py" "$ROOT" >"$map" 2>"$map_err"; then
+            echo "LAS_CURRENT_202_V5_ATTEST_MAP_ERROR_SHA256=$(sha256sum "$map_err" | awk '{print $1}')"
+            rm -f "$map_err"
+            exit 1
+          fi
           rm -f "$map_err"
           test "$(wc -l <"$map" | tr -d ' ')" = "$EXPECTED_TLC_PROFILE_COUNT"
           test "$(sha256sum "$map" | awk '{print $1}')" = "$EXPECTED_TLC_MAP_SHA256"
-          line="$(sed -n '29p' "$map")"; IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
-          test -n "$cfg"; test -n "$tla"; test -z "$expectation"
-          test "$(printf '%s\0%s\0%s\0%s' "$cfg" "$tla" "$deadlock" "$expectation" | sha256sum | awk '{print $1}')" = "$EXPECTED_PROFILE_BINDING_SHA256"
+          line="$(sed -n '29p' "$map")"
+          test -n "$line"
+          IFS=$'\t' read -r cfg tla deadlock expectation <<<"$line"
+          test -n "$cfg"
+          test -n "$tla"
+          test -z "$expectation"
+          profile_binding="$(printf '%s\0%s\0%s\0%s' "$cfg" "$tla" "$deadlock" "$expectation" | sha256sum | awk '{print $1}')"
+          test "$profile_binding" = "$EXPECTED_PROFILE_BINDING_SHA256"
           test -z "$(git status --porcelain --untracked-files=no)"
           echo "LAS_CURRENT_202_V5_ATTEST_PRIVATE_BINDING=PASS"
           echo "LAS_CURRENT_202_V5_ATTEST_MAP_BINDING=PASS"
-          unset PRIVATE_TOKEN auth matched_ref actual tree line cfg tla deadlock expectation
+          rm -f "$map_py" "$map"
+          unset PRIVATE_TOKEN auth matched_ref actual tree line cfg tla deadlock expectation profile_binding
 
-      - name: Verify immutable v5 runner and original v4 source artifact
+      - name: Verify immutable runners and exact v4 source provenance
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           api="https://api.github.com/repos/$GITHUB_REPOSITORY"
-          ref_json="$RUNNER_TEMP/ref.json"; workflow_json="$RUNNER_TEMP/workflow.json"; artifacts_json="$RUNNER_TEMP/source-artifacts.json"
-          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/git/ref/heads/$EXPECTED_RUNNER_REF" >"$ref_json"
+          ref_json="$RUNNER_TEMP/v5-ref.json"
+          workflow_json="$RUNNER_TEMP/v5-workflow.json"
+          source_run_json="$RUNNER_TEMP/source-run.json"
+          artifacts_json="$RUNNER_TEMP/source-artifacts.json"
+          old_wrapper_json="$RUNNER_TEMP/old-wrapper.json"
+          old_slice_json="$RUNNER_TEMP/old-slice.json"
+
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api/git/ref/heads/$EXPECTED_RUNNER_REF" >"$ref_json"
           test "$(python3 - "$ref_json" <<'PY'
-          import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['object']['sha'])
+          import json, sys
+          print(json.load(open(sys.argv[1], encoding="utf-8"))["object"]["sha"])
           PY
           )" = "$EXPECTED_RUNNER_SHA"
+
           encoded_path="$(python3 - "$EXPECTED_WORKFLOW_PATH" <<'PY'
-          import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe='/'))
+          import sys, urllib.parse
+          print(urllib.parse.quote(sys.argv[1], safe="/"))
           PY
           )"
-          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/contents/$encoded_path?ref=$EXPECTED_RUNNER_SHA" >"$workflow_json"
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api/contents/$encoded_path?ref=$EXPECTED_RUNNER_SHA" >"$workflow_json"
           test "$(python3 - "$workflow_json" <<'PY'
-          import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8')).get('sha',''))
+          import json, sys
+          print(json.load(open(sys.argv[1], encoding="utf-8")).get("sha", ""))
           PY
           )" = "$EXPECTED_WORKFLOW_BLOB"
-          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/actions/runs/$EXPECTED_SOURCE_RUN_ID/artifacts?per_page=100" >"$artifacts_json"
-          python3 - "$artifacts_json" "$EXPECTED_SOURCE_ARTIFACT" "$EXPECTED_SOURCE_ARTIFACT_ID" "$EXPECTED_SOURCE_ARTIFACT_SIZE" "$EXPECTED_SOURCE_ARTIFACT_DIGEST" "$EXPECTED_OLD_RUNNER_SHA" <<'PY'
-          import json,sys
-          path,name,artifact_id,size,digest,old_sha=sys.argv[1:]
-          data=json.load(open(path,encoding='utf-8')); matches=[a for a in data.get('artifacts',[]) if a.get('name')==name]
-          if len(matches)!=1: raise SystemExit('source artifact is missing or ambiguous')
-          a=matches[0]
-          expected={'id':int(artifact_id),'size_in_bytes':int(size),'digest':digest,'expired':False}
-          for key,value in expected.items():
-              if a.get(key)!=value: raise SystemExit(f'source artifact binding mismatch: {key}')
-          run=a.get('workflow_run') or {}
-          if run.get('id')!=int(sys.argv[1] and 38884360037) or run.get('head_sha')!=old_sha:
-              raise SystemExit('source artifact workflow provenance mismatch')
+
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api/actions/runs/$EXPECTED_SOURCE_RUN_ID" >"$source_run_json"
+          python3 - "$source_run_json" "$GITHUB_REPOSITORY" "$EXPECTED_SOURCE_RUN_ID" "$EXPECTED_OLD_RUNNER_REF" "$EXPECTED_OLD_RUNNER_SHA" "$EXPECTED_OLD_WRAPPER_PATH" "$EXPECTED_OLD_SLICE_PATH" <<'PY'
+          import json, sys
+          path, repository, run_id, runner_ref, runner_sha, wrapper_path, slice_path = sys.argv[1:]
+          data = json.load(open(path, encoding="utf-8"))
+          expected = {
+              "id": int(run_id),
+              "status": "completed",
+              "conclusion": "success",
+              "run_attempt": 1,
+              "event": "workflow_dispatch",
+              "head_branch": runner_ref,
+              "head_sha": runner_sha,
+              "path": wrapper_path,
+          }
+          for key, value in expected.items():
+              if data.get(key) != value:
+                  raise SystemExit(f"source run binding mismatch: {key}")
+          refs = data.get("referenced_workflows") or []
+          if len(refs) != 1:
+              raise SystemExit("source run reusable workflow binding is not exact")
+          ref = refs[0]
+          if ref.get("sha") != runner_sha or ref.get("ref") != f"refs/heads/{runner_ref}":
+              raise SystemExit("source run reusable workflow revision mismatch")
+          if ref.get("path") != f"{repository}/{slice_path}@{runner_sha}":
+              raise SystemExit("source run reusable workflow path mismatch")
           PY
-          rm -f "$ref_json" "$workflow_json" "$artifacts_json"
+
+          for spec in \
+            "$EXPECTED_OLD_WRAPPER_PATH|$EXPECTED_OLD_WRAPPER_BLOB|$old_wrapper_json" \
+            "$EXPECTED_OLD_SLICE_PATH|$EXPECTED_OLD_SLICE_BLOB|$old_slice_json"; do
+            IFS='|' read -r path expected_blob out <<<"$spec"
+            encoded="$(python3 - "$path" <<'PY'
+          import sys, urllib.parse
+          print(urllib.parse.quote(sys.argv[1], safe="/"))
+          PY
+          )"
+            curl --proto '=https' --tlsv1.2 --fail-with-body -sS \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$api/contents/$encoded?ref=$EXPECTED_OLD_RUNNER_SHA" >"$out"
+            test "$(python3 - "$out" <<'PY'
+          import json, sys
+          print(json.load(open(sys.argv[1], encoding="utf-8")).get("sha", ""))
+          PY
+          )" = "$expected_blob"
+          done
+
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api/actions/runs/$EXPECTED_SOURCE_RUN_ID/artifacts?per_page=100" >"$artifacts_json"
+          python3 - "$artifacts_json" "$EXPECTED_SOURCE_ARTIFACT" "$EXPECTED_SOURCE_ARTIFACT_ID" "$EXPECTED_SOURCE_ARTIFACT_SIZE" "$EXPECTED_SOURCE_ARTIFACT_DIGEST" "$EXPECTED_SOURCE_RUN_ID" "$EXPECTED_OLD_RUNNER_SHA" <<'PY'
+          import json, sys
+          path, name, artifact_id, size, digest, run_id, old_sha = sys.argv[1:]
+          data = json.load(open(path, encoding="utf-8"))
+          matches = [a for a in data.get("artifacts", []) if a.get("name") == name]
+          if len(matches) != 1:
+              raise SystemExit("source artifact is missing or ambiguous")
+          artifact = matches[0]
+          expected = {
+              "id": int(artifact_id),
+              "size_in_bytes": int(size),
+              "digest": digest,
+              "expired": False,
+          }
+          for key, value in expected.items():
+              if artifact.get(key) != value:
+                  raise SystemExit(f"source artifact binding mismatch: {key}")
+          run = artifact.get("workflow_run") or {}
+          if run.get("id") != int(run_id) or run.get("head_sha") != old_sha:
+              raise SystemExit("source artifact workflow provenance mismatch")
+          PY
+
+          rm -f "$ref_json" "$workflow_json" "$source_run_json" "$artifacts_json" "$old_wrapper_json" "$old_slice_json"
           echo "LAS_CURRENT_202_V5_ATTEST_RUNNER_BINDING=PASS"
+          echo "LAS_CURRENT_202_V5_ATTEST_SOURCE_RUN=PASS"
           echo "LAS_CURRENT_202_V5_ATTEST_SOURCE_ARTIFACT=PASS"
 
       - name: Verify exact terminal v5 run
@@ -181,68 +304,165 @@ jobs:
         run: |
           set -euo pipefail
           api="https://api.github.com/repos/$GITHUB_REPOSITORY"
-          run_json="$RUNNER_TEMP/terminal-run.json"; jobs_json="$RUNNER_TEMP/terminal-jobs.json"; terminal_log="$RUNNER_TEMP/terminal.log"
-          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/actions/runs/$TERMINAL_RUN_ID" >"$run_json"
+          run_json="$RUNNER_TEMP/terminal-run.json"
+          jobs_json="$RUNNER_TEMP/terminal-jobs.json"
+          terminal_log="$RUNNER_TEMP/terminal.log"
+
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api/actions/runs/$TERMINAL_RUN_ID" >"$run_json"
           python3 - "$run_json" "$EXPECTED_RUNNER_REF" "$EXPECTED_RUNNER_SHA" "$EXPECTED_WORKFLOW_PATH" <<'PY'
-          import json,sys
-          path,ref,sha,workflow=sys.argv[1:]; data=json.load(open(path,encoding='utf-8'))
-          expected={'status':'completed','conclusion':'success','run_attempt':1,'head_branch':ref,'head_sha':sha,'path':workflow}
-          for key,value in expected.items():
-              if data.get(key)!=value: raise SystemExit(f'unexpected terminal run {key}')
-          if data.get('event') not in {'push','workflow_dispatch'}: raise SystemExit('unexpected terminal run event')
+          import json, sys
+          path, ref, sha, workflow = sys.argv[1:]
+          data = json.load(open(path, encoding="utf-8"))
+          expected = {
+              "status": "completed",
+              "conclusion": "success",
+              "run_attempt": 1,
+              "head_branch": ref,
+              "head_sha": sha,
+              "path": workflow,
+          }
+          for key, value in expected.items():
+              if data.get(key) != value:
+                  raise SystemExit(f"unexpected terminal run {key}")
+          if data.get("event") not in {"push", "workflow_dispatch"}:
+              raise SystemExit("unexpected terminal run event")
+          if data.get("referenced_workflows") not in (None, []):
+              raise SystemExit("v5 terminal run unexpectedly references another workflow")
           PY
-          curl --proto '=https' --tlsv1.2 --fail-with-body -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/actions/runs/$TERMINAL_RUN_ID/jobs?filter=latest&per_page=100" >"$jobs_json"
+
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api/actions/runs/$TERMINAL_RUN_ID/jobs?filter=latest&per_page=100" >"$jobs_json"
           terminal_job_id="$(python3 - "$jobs_json" <<'PY'
-          import json,sys
-          data=json.load(open(sys.argv[1],encoding='utf-8')); jobs=data.get('jobs',[])
-          if data.get('total_count')!=1 or len(jobs)!=1 or jobs[0].get('name')!='slice': raise SystemExit('terminal job set is not exact')
-          job=jobs[0]
-          if job.get('status')!='completed' or job.get('conclusion')!='success': raise SystemExit('terminal job is not successful')
-          steps={s.get('name'):(s.get('status'),s.get('conclusion')) for s in job.get('steps',[])}
-          required=['Validate exact immutable migration request','Reclaim runner storage for exhaustive TLC','Recover exact frozen private candidate','Bind exact canonical map and profile 28','Download exact prior authenticated checkpoint','Authenticate restore and reclaim prior ciphertext','Run exact canonical TLC profile 28 slice']
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          jobs = data.get("jobs", [])
+          if data.get("total_count") != 1 or len(jobs) != 1:
+              raise SystemExit("terminal job set is not exact")
+          job = jobs[0]
+          if job.get("name") != "slice" or job.get("status") != "completed" or job.get("conclusion") != "success":
+              raise SystemExit("terminal job is not exact successful slice")
+          steps = {s.get("name"): (s.get("status"), s.get("conclusion")) for s in job.get("steps", [])}
+          required = [
+              "Validate exact immutable migration request",
+              "Reclaim runner storage for exhaustive TLC",
+              "Recover exact frozen private candidate",
+              "Bind exact canonical map and profile 28",
+              "Download exact prior authenticated checkpoint",
+              "Authenticate restore and reclaim prior ciphertext",
+              "Run exact canonical TLC profile 28 slice",
+          ]
           for name in required:
-              if steps.get(name)!=('completed','success'): raise SystemExit(f'required terminal step not successful: {name}')
-          for name in ['Seal lineage-bound v5 checkpoint','Upload authenticated v5 checkpoint','Dispatch next exact v5 slice']:
-              if steps.get(name)!=('completed','skipped'): raise SystemExit(f'terminal PASS unexpectedly continued chain: {name}')
-          print(job['id'])
+              if steps.get(name) != ("completed", "success"):
+                  raise SystemExit(f"required terminal step not successful: {name}")
+          for name in [
+              "Seal lineage-bound v5 checkpoint",
+              "Upload authenticated v5 checkpoint",
+              "Dispatch next exact v5 slice",
+          ]:
+              if steps.get(name) != ("completed", "skipped"):
+                  raise SystemExit(f"terminal PASS unexpectedly continued chain: {name}")
+          print(job["id"])
           PY
           )"
           [[ "$terminal_job_id" =~ ^[1-9][0-9]*$ ]]
-          curl --proto '=https' --tlsv1.2 --fail-with-body -sSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api/actions/jobs/$terminal_job_id/logs" >"$terminal_log"
-          read -r segment tlc_log_sha generated distinct queued runtime_seconds reclaimed_kb < <(python3 - "$terminal_log" "$EXPECTED_CHECKPOINT_SCHEMA" "$EXPECTED_TLC_WORKERS" "$EXPECTED_MIN_RECLAIM_KB" <<'PY'
-          import re,sys
-          path,schema,workers,min_reclaim=sys.argv[1:]
-          stamp=re.compile(r'^\d{4}-\d{2}-\d{2}T\S+Z (.*)$')
-          lines=[]
-          for raw in open(path,encoding='utf-8',errors='replace'):
-              m=stamp.match(raw.rstrip('\n'))
-              if m: lines.append(m.group(1))
-          required={'LAS_CURRENT_202_V5_REQUEST=PASS','LAS_CURRENT_202_V5_REF_BINDING=PASS',f'LAS_CURRENT_202_V5_SCHEMA={schema}',f'LAS_CURRENT_202_V5_WORKERS={workers}','LAS_CURRENT_202_V5_RECOVERY=PASS','LAS_CURRENT_202_V5_BINDING=PASS','LAS_CURRENT_202_V5_CHECKPOINT_AUTH=PASS','LAS_CURRENT_202_V5_RC=0','LAS_CURRENT_202_V5_RESULT=PASS'}
-          if required.difference(lines): raise SystemExit('missing terminal v5 PASS markers')
-          forbidden=('LAS_CURRENT_202_V5_RESULT=FAIL','LAS_CURRENT_202_V5_RESULT=FAIL_CLOSED','LAS_CURRENT_202_V5_RESULT=FAIL_BARRIER','LAS_CURRENT_202_V5_RESULT=SLICE_CHECKPOINT','LAS_CURRENT_202_V5_BARRIER_REQUESTED=1','LAS_CURRENT_202_V5_BARRIER_TIMEOUT=1')
-          if any(line.startswith(forbidden) for line in lines): raise SystemExit('terminal log contains non-PASS continuation evidence')
-          def one(pattern,label):
-              values=[m.group(1) for line in lines if (m:=re.fullmatch(pattern,line))]
-              if len(values)!=1: raise SystemExit(f'missing or ambiguous {label}')
+
+          curl --proto '=https' --tlsv1.2 --fail-with-body -sSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$api/actions/jobs/$terminal_job_id/logs" >"$terminal_log"
+
+          read -r segment tlc_log_sha generated distinct queued runtime_seconds source_checkpoint_bytes reclaimed_kb tlc_start_free_kb resume_mode < <(
+            python3 - "$terminal_log" "$EXPECTED_CHECKPOINT_SCHEMA" "$EXPECTED_TLC_WORKERS" "$EXPECTED_MIN_RECLAIM_KB" "$EXPECTED_MIN_TLC_START_FREE_KB" <<'PY'
+          import re, sys
+          path, schema, workers, min_reclaim, min_start_free = sys.argv[1:]
+          stamp = re.compile(r'^\d{4}-\d{2}-\d{2}T\S+Z (.*)$')
+          lines = []
+          for raw in open(path, encoding="utf-8", errors="replace"):
+              match = stamp.match(raw.rstrip("\n"))
+              if match:
+                  lines.append(match.group(1))
+
+          required = {
+              "LAS_CURRENT_202_V5_REQUEST=PASS",
+              "LAS_CURRENT_202_V5_REF_BINDING=PASS",
+              f"LAS_CURRENT_202_V5_SCHEMA={schema}",
+              f"LAS_CURRENT_202_V5_WORKERS={workers}",
+              "LAS_CURRENT_202_V5_RECOVERY=PASS",
+              "LAS_CURRENT_202_V5_BINDING=PASS",
+              "LAS_CURRENT_202_V5_CHECKPOINT_AUTH=PASS",
+              "LAS_CURRENT_202_V5_RC=0",
+              "LAS_CURRENT_202_V5_RESULT=PASS",
+          }
+          missing = required.difference(lines)
+          if missing:
+              raise SystemExit(f"missing terminal v5 PASS markers: {sorted(missing)}")
+          forbidden = (
+              "LAS_CURRENT_202_V5_RESULT=FAIL",
+              "LAS_CURRENT_202_V5_RESULT=FAIL_CLOSED",
+              "LAS_CURRENT_202_V5_RESULT=FAIL_BARRIER",
+              "LAS_CURRENT_202_V5_RESULT=SLICE_CHECKPOINT",
+              "LAS_CURRENT_202_V5_BARRIER_REQUESTED=1",
+              "LAS_CURRENT_202_V5_BARRIER_TIMEOUT=1",
+          )
+          if any(line.startswith(forbidden) for line in lines):
+              raise SystemExit("terminal log contains non-PASS continuation evidence")
+
+          def one(pattern, label):
+              values = [m.group(1) for line in lines if (m := re.fullmatch(pattern, line))]
+              if len(values) != 1:
+                  raise SystemExit(f"missing or ambiguous {label}")
               return values[0]
-          segment=int(one(r'LAS_CURRENT_202_V5_SEGMENT=([1-9][0-9]*)','segment'))
-          index=int(one(r'LAS_CURRENT_202_V5_INDEX=([0-9]+)','index'))
-          if index!=28 or segment<13: raise SystemExit('terminal profile or segment invalid')
-          if segment==13:
-              if 'LAS_CURRENT_202_V5_V4_MIGRATION_BINDING=PASS' not in lines: raise SystemExit('missing v4 migration binding')
+
+          segment = int(one(r'LAS_CURRENT_202_V5_SEGMENT=([1-9][0-9]*)', "segment"))
+          index = int(one(r'LAS_CURRENT_202_V5_INDEX=([0-9]+)', "index"))
+          tlc_log = one(r'LAS_CURRENT_202_V5_LOG_SHA256=([0-9a-f]{64})', "TLC log digest")
+          generated = int(one(r'LAS_CURRENT_202_V5_GENERATED=([0-9]+)', "generated"))
+          distinct = int(one(r'LAS_CURRENT_202_V5_DISTINCT=([0-9]+)', "distinct"))
+          queued = int(one(r'LAS_CURRENT_202_V5_QUEUE=([0-9]+)', "queued"))
+          runtime = int(one(r'LAS_CURRENT_202_V5_RUNTIME_SECONDS=([0-9]+)', "runtime"))
+          cut = one(r'LAS_CURRENT_202_V5_CUT_REASON=([a-z]+)', "cut reason")
+          source_bytes = int(one(r'LAS_CURRENT_202_V5_SOURCE_CHECKPOINT_BYTES=([0-9]+)', "source checkpoint bytes"))
+          reclaimed = int(one(r'LAS_CURRENT_202_V5_RECLAIMED_KB=(-?[0-9]+)', "reclaimed storage"))
+          pre_reclaim = int(one(r'LAS_CURRENT_202_V5_FREE_KB_PRE_CIPHERTEXT_RECLAIM=([0-9]+)', "pre-reclaim free space"))
+          post_reclaim = int(one(r'LAS_CURRENT_202_V5_FREE_KB_POST_CIPHERTEXT_RECLAIM=([0-9]+)', "post-reclaim free space"))
+          start_free = int(one(r'LAS_CURRENT_202_V5_TLC_START_FREE_KB=([0-9]+)', "TLC start free space"))
+
+          if index != 28 or segment < 13:
+              raise SystemExit("terminal profile or segment invalid")
+          has_v4 = "LAS_CURRENT_202_V5_V4_MIGRATION_BINDING=PASS" in lines
+          has_v5 = "LAS_CURRENT_202_V5_V5_RESUME_BINDING=PASS" in lines
+          if segment == 13:
+              if not has_v4 or has_v5:
+                  raise SystemExit("initial v4-to-v5 migration binding is not exclusive")
+              mode = "v4-migration"
           else:
-              if 'LAS_CURRENT_202_V5_V5_RESUME_BINDING=PASS' not in lines: raise SystemExit('missing v5 resume binding')
-          tlc_log=one(r'LAS_CURRENT_202_V5_LOG_SHA256=([0-9a-f]{64})','TLC log digest')
-          generated=int(one(r'LAS_CURRENT_202_V5_GENERATED=([0-9]+)','generated'))
-          distinct=int(one(r'LAS_CURRENT_202_V5_DISTINCT=([0-9]+)','distinct'))
-          queued=int(one(r'LAS_CURRENT_202_V5_QUEUE=([0-9]+)','queued'))
-          runtime=int(one(r'LAS_CURRENT_202_V5_RUNTIME_SECONDS=([0-9]+)','runtime'))
-          cut=one(r'LAS_CURRENT_202_V5_CUT_REASON=([a-z]+)','cut reason')
-          reclaimed=int(one(r'LAS_CURRENT_202_V5_RECLAIMED_KB=([0-9]+)','reclaimed storage'))
-          if queued!=0 or cut!='none' or runtime<=0 or reclaimed<int(min_reclaim): raise SystemExit('terminal completion metrics are invalid')
-          print(segment,tlc_log,generated,distinct,queued,runtime,reclaimed)
+              if has_v4 or not has_v5:
+                  raise SystemExit("v5 resume binding is not exclusive")
+              mode = "v5-resume"
+
+          if generated <= 0 or distinct <= 0 or generated < distinct:
+              raise SystemExit("terminal TLC state counts are invalid")
+          if queued != 0 or cut != "none" or runtime <= 0:
+              raise SystemExit("terminal TLC completion metrics are invalid")
+          if source_bytes <= 0:
+              raise SystemExit("terminal run lacks a non-empty authenticated source checkpoint")
+          if reclaimed < int(min_reclaim) or post_reclaim <= pre_reclaim:
+              raise SystemExit("ciphertext reclaim evidence is insufficient")
+          if start_free <= int(min_start_free):
+              raise SystemExit("TLC did not start above the storage barrier")
+
+          print(segment, tlc_log, generated, distinct, queued, runtime, source_bytes, reclaimed, start_free, mode)
           PY
           )
+
           terminal_log_sha256="$(sha256sum "$terminal_log" | awk '{print $1}')"
           echo "terminal_run_id=$TERMINAL_RUN_ID" >>"$GITHUB_OUTPUT"
           echo "terminal_job_id=$terminal_job_id" >>"$GITHUB_OUTPUT"
@@ -253,7 +473,10 @@ jobs:
           echo "distinct=$distinct" >>"$GITHUB_OUTPUT"
           echo "queued=$queued" >>"$GITHUB_OUTPUT"
           echo "runtime_seconds=$runtime_seconds" >>"$GITHUB_OUTPUT"
+          echo "source_checkpoint_bytes=$source_checkpoint_bytes" >>"$GITHUB_OUTPUT"
           echo "reclaimed_kb=$reclaimed_kb" >>"$GITHUB_OUTPUT"
+          echo "tlc_start_free_kb=$tlc_start_free_kb" >>"$GITHUB_OUTPUT"
+          echo "resume_mode=$resume_mode" >>"$GITHUB_OUTPUT"
           echo "LAS_CURRENT_202_V5_TERMINAL_RUN=PASS"
           rm -f "$run_json" "$jobs_json" "$terminal_log"
 
@@ -272,12 +495,16 @@ jobs:
       DISTINCT: ${{ needs.verify.outputs.distinct }}
       QUEUED: ${{ needs.verify.outputs.queued }}
       RUNTIME_SECONDS: ${{ needs.verify.outputs.runtime_seconds }}
+      SOURCE_CHECKPOINT_BYTES: ${{ needs.verify.outputs.source_checkpoint_bytes }}
       RECLAIMED_KB: ${{ needs.verify.outputs.reclaimed_kb }}
+      TLC_START_FREE_KB: ${{ needs.verify.outputs.tlc_start_free_kb }}
+      RESUME_MODE: ${{ needs.verify.outputs.resume_mode }}
     steps:
       - name: Checkout public control shell
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+
       - name: Record durable profile 28 v5 terminal attestation
         shell: bash
         run: |
@@ -285,56 +512,72 @@ jobs:
           git fetch -q origin main
           git checkout -q -B current-202-profile28-v5-attestation origin/main
           python3 - <<'PY'
-          import json,os
+          import json, os
           from pathlib import Path
-          path=Path('LAS_CURRENT_202_PROFILE28_V5_TERMINAL.json')
-          data={
-            'schema':'las-current-202-profile28-v5-terminal-v1',
-            'private_snapshot_proof':os.environ['EXPECTED_PRIVATE_SNAPSHOT_PROOF'],
-            'private_tree_proof':os.environ['EXPECTED_PRIVATE_TREE_PROOF'],
-            'canonical_verifier_blob':os.environ['EXPECTED_VERIFIER_BLOB'],
-            'tlc_map_sha256':os.environ['EXPECTED_TLC_MAP_SHA256'],
-            'profile_index':28,
-            'profile_binding_sha256':os.environ['EXPECTED_PROFILE_BINDING_SHA256'],
-            'runner_ref':os.environ['EXPECTED_RUNNER_REF'],
-            'runner_sha':os.environ['EXPECTED_RUNNER_SHA'],
-            'workflow_path':os.environ['EXPECTED_WORKFLOW_PATH'],
-            'workflow_blob':os.environ['EXPECTED_WORKFLOW_BLOB'],
-            'checkpoint_schema':os.environ['EXPECTED_CHECKPOINT_SCHEMA'],
-            'lineage_source_runner':os.environ['EXPECTED_OLD_RUNNER_SHA'],
-            'lineage_source_schema':os.environ['EXPECTED_OLD_CHECKPOINT_SCHEMA'],
-            'lineage_source_run_id':int(os.environ['EXPECTED_SOURCE_RUN_ID']),
-            'lineage_source_artifact':os.environ['EXPECTED_SOURCE_ARTIFACT'],
-            'lineage_source_artifact_id':int(os.environ['EXPECTED_SOURCE_ARTIFACT_ID']),
-            'lineage_source_artifact_size':int(os.environ['EXPECTED_SOURCE_ARTIFACT_SIZE']),
-            'lineage_source_artifact_digest':os.environ['EXPECTED_SOURCE_ARTIFACT_DIGEST'],
-            'lineage_source_segment':int(os.environ['EXPECTED_SOURCE_SEGMENT']),
-            'terminal_run_id':int(os.environ['TERMINAL_RUN_ID']),
-            'terminal_job_id':int(os.environ['TERMINAL_JOB_ID']),
-            'terminal_segment':int(os.environ['TERMINAL_SEGMENT']),
-            'terminal_job_log_sha256':os.environ['TERMINAL_LOG_SHA256'],
-            'tlc_log_sha256':os.environ['TLC_LOG_SHA256'],
-            'states_generated':int(os.environ['GENERATED']),
-            'distinct_states':int(os.environ['DISTINCT']),
-            'states_left_on_queue':int(os.environ['QUEUED']),
-            'runtime_seconds':int(os.environ['RUNTIME_SECONDS']),
-            'ciphertext_reclaimed_kb':int(os.environ['RECLAIMED_KB']),
-            'cut_reason':'none',
-            'result':'PASS'
+
+          path = Path("LAS_CURRENT_202_PROFILE28_V5_TERMINAL.json")
+          data = {
+              "schema": "las-current-202-profile28-v5-terminal-v2",
+              "private_snapshot_proof": os.environ["EXPECTED_PRIVATE_SNAPSHOT_PROOF"],
+              "private_tree_proof": os.environ["EXPECTED_PRIVATE_TREE_PROOF"],
+              "canonical_verifier_blob": os.environ["EXPECTED_VERIFIER_BLOB"],
+              "tlc_map_sha256": os.environ["EXPECTED_TLC_MAP_SHA256"],
+              "profile_index": 28,
+              "profile_binding_sha256": os.environ["EXPECTED_PROFILE_BINDING_SHA256"],
+              "runner_ref": os.environ["EXPECTED_RUNNER_REF"],
+              "runner_sha": os.environ["EXPECTED_RUNNER_SHA"],
+              "workflow_path": os.environ["EXPECTED_WORKFLOW_PATH"],
+              "workflow_blob": os.environ["EXPECTED_WORKFLOW_BLOB"],
+              "checkpoint_schema": os.environ["EXPECTED_CHECKPOINT_SCHEMA"],
+              "workers": int(os.environ["EXPECTED_TLC_WORKERS"]),
+              "lineage_source_runner_ref": os.environ["EXPECTED_OLD_RUNNER_REF"],
+              "lineage_source_runner": os.environ["EXPECTED_OLD_RUNNER_SHA"],
+              "lineage_source_schema": os.environ["EXPECTED_OLD_CHECKPOINT_SCHEMA"],
+              "lineage_source_run_id": int(os.environ["EXPECTED_SOURCE_RUN_ID"]),
+              "lineage_source_artifact": os.environ["EXPECTED_SOURCE_ARTIFACT"],
+              "lineage_source_artifact_id": int(os.environ["EXPECTED_SOURCE_ARTIFACT_ID"]),
+              "lineage_source_artifact_size": int(os.environ["EXPECTED_SOURCE_ARTIFACT_SIZE"]),
+              "lineage_source_artifact_digest": os.environ["EXPECTED_SOURCE_ARTIFACT_DIGEST"],
+              "lineage_source_segment": int(os.environ["EXPECTED_SOURCE_SEGMENT"]),
+              "terminal_run_id": int(os.environ["TERMINAL_RUN_ID"]),
+              "terminal_job_id": int(os.environ["TERMINAL_JOB_ID"]),
+              "terminal_segment": int(os.environ["TERMINAL_SEGMENT"]),
+              "resume_mode": os.environ["RESUME_MODE"],
+              "terminal_job_log_sha256": os.environ["TERMINAL_LOG_SHA256"],
+              "tlc_log_sha256": os.environ["TLC_LOG_SHA256"],
+              "states_generated": int(os.environ["GENERATED"]),
+              "distinct_states": int(os.environ["DISTINCT"]),
+              "states_left_on_queue": int(os.environ["QUEUED"]),
+              "runtime_seconds": int(os.environ["RUNTIME_SECONDS"]),
+              "source_checkpoint_bytes": int(os.environ["SOURCE_CHECKPOINT_BYTES"]),
+              "ciphertext_reclaimed_kb": int(os.environ["RECLAIMED_KB"]),
+              "tlc_start_free_kb": int(os.environ["TLC_START_FREE_KB"]),
+              "cut_reason": "none",
+              "result": "PASS",
           }
           if path.exists():
-              prior=json.loads(path.read_text(encoding='utf-8'))
-              if prior!=data: raise SystemExit('conflicting profile 28 v5 terminal attestation already exists')
-          path.write_text(json.dumps(data,indent=2,sort_keys=False)+'\n',encoding='utf-8')
+              prior = json.loads(path.read_text(encoding="utf-8"))
+              if prior != data:
+                  raise SystemExit("conflicting profile 28 v5 terminal attestation already exists")
+          path.write_text(json.dumps(data, indent=2, sort_keys=False) + "\n", encoding="utf-8")
           PY
           git add LAS_CURRENT_202_PROFILE28_V5_TERMINAL.json
-          if git diff --cached --quiet; then echo "LAS_CURRENT_202_V5_TERMINAL_ATTESTATION=UNCHANGED"; exit 0; fi
+          if git diff --cached --quiet; then
+            echo "LAS_CURRENT_202_V5_TERMINAL_ATTESTATION=UNCHANGED"
+            exit 0
+          fi
           git -c user.name='LAS Verification Attestor' -c user.email='las-verification@users.noreply.github.com' commit -q -m 'Record exact current-202 profile 28 v5 terminal attestation'
           pushed=0
           for attempt in 1 2 3; do
-            if git push -q origin HEAD:main; then pushed=1; break; fi
-            git fetch -q origin main; git rebase -q origin/main
+            if git push -q origin HEAD:main; then
+              pushed=1
+              break
+            fi
+            git fetch -q origin main
+            git rebase -q origin/main
           done
           test "$pushed" -eq 1
-          attestation_commit="$(git rev-parse HEAD)"; git fetch -q origin main; git merge-base --is-ancestor "$attestation_commit" origin/main
+          attestation_commit="$(git rev-parse HEAD)"
+          git fetch -q origin main
+          git merge-base --is-ancestor "$attestation_commit" origin/main
           echo "LAS_CURRENT_202_V5_TERMINAL_ATTESTATION=PASS"
